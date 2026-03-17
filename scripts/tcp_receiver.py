@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Semplice server TCP che stampa i bytes ricevuti.
+"""Semplice server TCP che stampa i bytes ricevuti o JSON.
 
 Questo script è utile per vedere cosa il proxy invia dopo la conversione.
 
@@ -8,18 +8,30 @@ Uso:
   2) Avvia il proxy nel repo (che inoltra a 127.0.0.1:9000).
   3) Manda un messaggio di test con scripts/send_test_packet.py.
 
-Il proxy dovrebbe connettersi e inviare i bytes convertiti.
+Il proxy dovrebbe connettersi e inviare i bytes convertiti o JSON.
 """
 
 import argparse
 import socket
 import struct
+import json
 
 
 def dump_packet(data: bytes):
     print(f"Ricevuti {len(data)} byte")
     print("Raw:", data.hex())
 
+    # Prova prima a interpretare come JSON
+    try:
+        json_str = data.decode('utf-8')
+        json_data = json.loads(json_str)
+        print("JSON ricevuto:")
+        print(json.dumps(json_data, indent=2))
+        return
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        pass
+
+    # Se non è JSON, interpreta come dati binari originali
     if len(data) >= 24:
         # Interpretazione in ordine host (little-endian su sistemi x86)
         hdr = struct.unpack_from("<I I I I", data, 0)
@@ -51,14 +63,37 @@ def main():
         s.bind((args.host, args.port))
         s.listen(1)
         print(f"In ascolto su {args.host}:{args.port}... (CTRL-C per uscire)")
-        conn, addr = s.accept()
-        with conn:
-            print(f"Connessione stabilita da {addr}")
-            while True:
-                data = conn.recv(4096)
-                if not data:
-                    break
-                dump_packet(data)
+        
+        while True:  # Loop principale per accettare più connessioni
+            try:
+                conn, addr = s.accept()
+                with conn:
+                    print(f"Connessione stabilita da {addr}")
+                    buffer = b""
+                    
+                    while True:
+                        data = conn.recv(4096)
+                        if not data:
+                            print(f"Connessione chiusa da {addr}")
+                            break
+                        
+                        buffer += data
+                        
+                        # Prova a processare il buffer come messaggio completo
+                        # Assumiamo che ogni connessione TCP corrisponda a un singolo messaggio
+                        if buffer:
+                            dump_packet(buffer)
+                            buffer = b""
+                            # Chiudi la connessione dopo aver processato il messaggio
+                            print(f"Elaborazione completata, chiudo connessione con {addr}")
+                            #break  # Esci dal loop interno per accettare nuove connessioni
+                            
+            except KeyboardInterrupt:
+                print("\nUscita richiesta dall'utente")
+                break
+            except Exception as e:
+                print(f"Errore: {e}")
+                continue
 
 
 if __name__ == "__main__":

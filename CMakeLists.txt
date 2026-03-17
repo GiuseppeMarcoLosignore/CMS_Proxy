@@ -1,27 +1,19 @@
 cmake_minimum_required(VERSION 3.15)
-
-# Nome del progetto
 project(CMS_Proxy VERSION 1.0.0 LANGUAGES CXX)
 
-# Standard C++ 20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
-# --- RICERCA DIPENDENZE ---
+# --- POLICY ---
+cmake_policy(SET CMP0167 OLD)
 
-# Cerca Boost (Asio, System). vcpkg gestisce il puntamento automatico.
+# --- DIPENDENZE ---
+set(Boost_ROOT "C:/Users/HP840G8/vcpkg/installed/x64-windows")
 find_package(Boost REQUIRED COMPONENTS system)
-
-# Necessario per la gestione dei thread
 find_package(Threads REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
-# --- CONFIGURAZIONE SORGENTI ---
-
-# Cartella degli header
-include_directories(include)
-
-# Lista completa dei file sorgente
+# --- SORGENTI ---
 set(SOURCES
     src/main.cpp
     src/ProxyEngine.cpp
@@ -30,46 +22,31 @@ set(SOURCES
     src/BinaryConverter.cpp
 )
 
-# Forza la versione di Windows a Windows 10/11 (evita i warning _WIN32_WINNT)
-add_definitions(-D_WIN32_WINNT=0x0A00)
-
-# --- CREAZIONE ESEGUIBILE ---
-
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# --- LINK LIBRERIE ---
+# --- TARGET CONFIGURATION (La via moderna) ---
 
+# Invece di include_directories globale, usa target_include_directories
+target_include_directories(${PROJECT_NAME} PRIVATE include)
+
+# Definizioni specifiche
+target_compile_definitions(${PROJECT_NAME} PRIVATE _WIN32_WINNT=0x0A00)
+
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /wd4244 /wd4189)
+    if(WIN32)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+else()
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+endif()
+
+# --- LINK LIBRERIE ---
 target_link_libraries(${PROJECT_NAME} 
     PRIVATE 
     Boost::boost
     Boost::system
     Threads::Threads
+    nlohmann_json::nlohmann_json
+    $<$<PLATFORM_ID:Windows>:ws2_32 mswsock>
 )
-
-# Configurazione specifica per Windows (Winsock)
-if(WIN32)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 mswsock)
-    # Evita i warning sulle funzioni "unsafe" di Windows (come memcpy)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
-endif()
-
-# --- OTTIMIZZAZIONI COMPILATORE (RISOLUZIONE ERRORE D8016) ---
-
-if(MSVC)
-    # Impostazioni generali per Visual Studio
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
-    target_compile_options(${PROJECT_NAME} PRIVATE /wd4244 /wd4189)
-    # Applichiamo /O2 (velocità) SOLO se NON siamo in modalità Debug
-    # Questo risolve l'errore D8016 evitando il conflitto con /RTC1
-    target_compile_options(${PROJECT_NAME} PRIVATE 
-        $<$<NOT:$<CONFIG:Debug>>:/O2>
-    )
-else()
-    # Impostazioni per GCC/Clang (fallback)
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
-    target_compile_options(${PROJECT_NAME} PRIVATE 
-        $<$<NOT:$<CONFIG:Debug>>:-O3>
-    )
-endif()
-
-message(STATUS "Configurazione CMS_Proxy completata. Target pronto per la build.")

@@ -19,16 +19,20 @@ import struct
 import time
 
 
-def build_test_packet(message_id=1, sender=2, payload=None):
+# Identificatore fissato per inviare esattamente un CS_LRAS_change_configuration_order_INS.
+MESSAGE_ID_CS_LRAS_CHANGE_CONFIGURATION_ORDER_INS = 1679949825
+
+
+def build_test_packet(sender=2, payload=None):
     # payload: bytes
     if payload is None:
         # default payload (big endian)
-        # actionId=0xAABBCCDD, lradId=0x1234, configuration=0x5678
+        # actionId=0x00000003, lradId=0x0002, configuration=0x0001
         payload = struct.pack(
             ">IHH",  # big-endian: uint32, uint16, uint16
-            0xAABBCCDD,
-            0x1234,
-            0x5678,
+            0x00000003,
+            0x0002,
+            0x0001,
         )
 
     payload_len = len(payload)
@@ -37,7 +41,7 @@ def build_test_packet(message_id=1, sender=2, payload=None):
 
     header = struct.pack(
         ">I I I I",  # all big-endian uint32
-        message_id,
+        MESSAGE_ID_CS_LRAS_CHANGE_CONFIGURATION_ORDER_INS,
         (sender << 16) | (payload_len & 0xFFFF),
         timestamp_sec,
         timestamp_usec,
@@ -47,19 +51,20 @@ def build_test_packet(message_id=1, sender=2, payload=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Invia un messaggio di test al proxy UDP multicast")
-    parser.add_argument("--group", default="239.0.0.1", help="Indirizzo multicast di destinazione")
+    parser = argparse.ArgumentParser(description="Invia un messaggio CS_LRAS_change_configuration_order_INS al proxy UDP multicast")
+    parser.add_argument("--group", default="127.0.0.1", help="Indirizzo di destinazione (localhost per test)")
     parser.add_argument("--port", type=int, default=12345, help="Porta UDP di destinazione")
-    parser.add_argument("--ttl", type=int, default=1, help="TTL del pacchetto multicast")
-    parser.add_argument("--message-id", type=int, default=1, help="MessageId del pacchetto")
+    parser.add_argument("--ttl", type=int, default=1, help="TTL del pacchetto (ignorato per localhost)")
     parser.add_argument("--sender", type=int, default=2, help="Sender Id del pacchetto")
     args = parser.parse_args()
 
-    packet = build_test_packet(message_id=args.message_id, sender=args.sender)
-    print(f"Invio pacchetto di {len(packet)} byte a {args.group}:{args.port}")
+    packet = build_test_packet(sender=args.sender)
+    print(f"Invio pacchetto CS_LRAS_change_configuration_order_INS di {len(packet)} byte a {args.group}:{args.port}")
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, struct.pack("b", args.ttl))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # Per localhost non serve TTL multicast
+    if args.group != "127.0.0.1":
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, struct.pack("b", args.ttl))
     sock.sendto(packet, (args.group, args.port))
     sock.close()
     print("Pacchetto inviato.")

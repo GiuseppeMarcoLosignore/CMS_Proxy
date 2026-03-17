@@ -10,6 +10,9 @@ public:
     
     // Implementazione del contratto ISender
     void send(const RawPacket& packet) override;
+    
+    // Imposta l'indirizzo unicast di destinazione
+    void set_unicast_target(const std::string& unicast_host);
 
 private:
     void connect();
@@ -19,4 +22,5 @@ private:
     boost::asio::ip::tcp::endpoint endpoint_;
     std::string host_;
     int port_;
+    std::string unicast_host_;
 };
