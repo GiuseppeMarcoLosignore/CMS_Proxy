@@ -30,9 +30,9 @@ def build_test_packet(sender=2, payload=None):
         # actionId=0x00000003, lradId=0x0002, configuration=0x0001
         payload = struct.pack(
             ">IHH",  # big-endian: uint32, uint16, uint16
-            0x00000003,
+            0x00000000,
             0x0002,
-            0x0001,
+            0x0000,
         )
 
     payload_len = len(payload)

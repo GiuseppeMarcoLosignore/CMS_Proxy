@@ -25,57 +25,59 @@ void TcpSender::connect() {
     }
 }
 
-void TcpSender::send(const RawPacket& packet) {
+void TcpSender::send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) {
     boost::system::error_code ec;
     
-    // Determina l'endpoint target
+    // 1. Determina l'endpoint target usando i parametri passati
     boost::asio::ip::tcp::endpoint target_endpoint;
-    if (!unicast_host_.empty()) {
+    try {
         boost::asio::ip::tcp::resolver resolver(io_ctx_);
+        // Risolve l'host e la porta passati come argomenti
         boost::asio::ip::tcp::resolver::results_type results = 
-            resolver.resolve(unicast_host_, std::to_string(port_));
+            resolver.resolve(target_host, std::to_string(target_port));
         target_endpoint = *results.begin();
-    } else {
-        target_endpoint = endpoint_;
+    } catch (const boost::system::system_error& e) {
+        std::cerr << "[TCP Sender] Errore risoluzione host " << target_host << ": " << e.what() << std::endl;
+        return;
     }
     
-    // Controlla se dobbiamo riconnettere
+    // 2. Controlla se dobbiamo riconnettere
     bool need_reconnect = false;
     if (!socket_.is_open()) {
         need_reconnect = true;
     } else {
         try {
+            // Se il socket è aperto, verifichiamo se è già connesso alla destinazione richiesta
             auto current_endpoint = socket_.remote_endpoint();
             if (current_endpoint != target_endpoint) {
+                std::cout << "[TCP Sender] Cambio destinazione rilevato. Riconnessione..." << std::endl;
                 need_reconnect = true;
                 socket_.close();
             }
         } catch (const boost::system::system_error&) {
-            // Socket non valido, riconnetti
+            // Se remote_endpoint() fallisce, il socket è "orfano", riconnetti
             need_reconnect = true;
             socket_.close();
         }
     }
     
-    // Riconnetti se necessario
+    // 3. Riconnetti se necessario (nuova destinazione o socket chiuso)
     if (need_reconnect) {
         socket_.connect(target_endpoint, ec);
         if (ec) {
-            std::cerr << "[TCP Sender] Errore connessione a " 
-                      << (unicast_host_.empty() ? host_ : unicast_host_) 
-                      << ":" << port_ << ": " << ec.message() << std::endl;
+            std::cerr << "[TCP Sender] Errore connessione a " << target_host 
+                      << ":" << target_port << ": " << ec.message() << std::endl;
             return;
         } else {
             std::cout << "[TCP Sender] Connessione stabilita con " 
-                      << (unicast_host_.empty() ? host_ : unicast_host_) 
-                      << ":" << port_ << std::endl;
+                      << target_host << ":" << target_port << std::endl;
         }
     }
     
-    // Invia i dati
+    // 4. Invia i dati
     boost::asio::write(socket_, boost::asio::buffer(packet.data), ec);
     if (ec) {
-        std::cerr << "[TCP Sender] Errore invio: " << ec.message() 
+        std::cerr << "[TCP Sender] Errore invio a " << target_host << ": " << ec.message() 
                   << ". Chiudo connessione..." << std::endl;
         socket_.close();
     }

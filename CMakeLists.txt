@@ -22,6 +22,7 @@ set(SOURCES
     src/BinaryConverter.cpp
 )
 
+
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 # --- TARGET CONFIGURATION (La via moderna) ---

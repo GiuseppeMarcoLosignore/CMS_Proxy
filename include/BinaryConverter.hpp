@@ -2,6 +2,10 @@
 #include "IInterfaces.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
+#include <functional>
+#include <unordered_map>
+
 #ifdef _WIN32
     #include <winsock2.h>
 #else
@@ -12,16 +16,29 @@ using json = nlohmann::json;
 
 class BinaryConverter : public IProtocolConverter {
 public:
-    RawPacket convert(const RawPacket& input) override;
+    BinaryConverter();
+
+    std::vector<RawPacket> convert(const RawPacket& input);
 
 private:
-    // Converte un messaggio specifico in host byte order e lo trasforma in JSON.
-    // Restituisce true se la conversione è andata a buon fine.
-    bool convert_CS_LRAS_change_configuration_order_INS(RawPacket& packet) const;
-    
-    // Aggiungi qui le funzioni per altri messaggi
-    bool convert_CS_LRAS_status_update(RawPacket& packet) const;
-    
-    // Estrae i dati dal payload e crea un JSON basato sul messageId
-    json extractPayloadToJson(const RawPacket& packet, uint32_t messageId) const;
+    struct ConvertedMessage {
+        json payload;
+        uint16_t destinationLradId;
+    };
+
+    using HandlerFunc = std::function<std::vector<ConvertedMessage>(BinaryConverter*, const RawPacket&)>;
+
+    struct MessageMapping {
+        uint32_t messageId;
+        HandlerFunc handler;
+    };
+
+    std::unordered_map<uint32_t, HandlerFunc> dispatchTable;
+
+    void initializeDispatcher();
+
+    std::vector<ConvertedMessage> handle_ChangeConfiguration(const RawPacket& packet);
+    std::vector<ConvertedMessage> handle_CS_LRAS_change_configuration_order_INS(const RawPacket& packet);
+
+    std::string mapMasterMode(uint8_t modeCode);
 };

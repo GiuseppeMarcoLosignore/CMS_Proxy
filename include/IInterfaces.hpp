@@ -16,11 +16,11 @@ public:
 class ISender {
 public:
     virtual ~ISender() = default;
-    virtual void send(const RawPacket& packet) = 0;
+    virtual void send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) = 0;
 };
 
 class IProtocolConverter {
 public:
     virtual ~IProtocolConverter() = default;
-    virtual RawPacket convert(const RawPacket& input) = 0;
+    virtual std::vector<RawPacket> convert(const RawPacket& input) = 0;
 };
