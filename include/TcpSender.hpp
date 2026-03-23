@@ -9,7 +9,7 @@ public:
     TcpSender(boost::asio::io_context& io_ctx, const std::string& host, int port);
     
     // Implementazione del contratto ISender
-    void send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) override;
+    SendResult send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) override;
     
     // Imposta l'indirizzo unicast di destinazione
     void set_unicast_target(const std::string& unicast_host);

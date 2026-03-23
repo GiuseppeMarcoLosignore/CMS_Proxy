@@ -1,5 +1,6 @@
 #pragma once
 #include "IInterfaces.hpp"
+#include <boost/asio.hpp>
 #include <map>
 #include <memory>
 #include <string>
@@ -20,7 +21,14 @@ public:
     std::map<uint16_t, LradDestination> getNetworkConfig();
 
 private:
+    void sendAckToMulticast(const RawPacket& ack_packet);
+
     std::shared_ptr<IReceiver> receiver_;
     std::shared_ptr<IProtocolConverter> converter_;
     std::shared_ptr<ISender> sender_;
+
+    boost::asio::io_context ack_io_ctx_;
+    boost::asio::ip::udp::socket ack_socket_;
+    boost::asio::ip::udp::endpoint ack_multicast_endpoint_;
+    bool ack_multicast_ready_;
 };

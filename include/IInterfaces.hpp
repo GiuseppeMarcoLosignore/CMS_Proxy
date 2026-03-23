@@ -2,6 +2,14 @@
 #include "RawPacket.hpp"
 #include <functional>
 #include <memory>
+#include <string>
+
+struct SendResult {
+    bool success = false;
+    int error_value = 0;
+    std::string error_category;
+    std::string error_message;
+};
 
 class IReceiver {
 public:
@@ -16,7 +24,7 @@ public:
 class ISender {
 public:
     virtual ~ISender() = default;
-    virtual void send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) = 0;
+    virtual SendResult send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) = 0;
 };
 
 class IProtocolConverter {
