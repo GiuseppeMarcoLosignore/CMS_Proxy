@@ -1,8 +1,10 @@
 ﻿#include "BinaryConverter.hpp"
+#include <cmath>
 #include <cstring>
 
 namespace {
     constexpr size_t HeaderSize = 16;
+    constexpr float Pi = 3.14159265358979323846f;
 
     constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
     constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
@@ -64,6 +66,29 @@ namespace {
         
         return input.data.size() >= (HeaderSize + out.messageLength);
     }
+
+    uint16_t read_u16_be(const std::vector<uint8_t>& data, size_t offset) {
+        uint16_t value = 0;
+        std::memcpy(&value, data.data() + offset, sizeof(uint16_t));
+        return ntohs(value);
+    }
+
+    uint32_t read_u32_be(const std::vector<uint8_t>& data, size_t offset) {
+        uint32_t value = 0;
+        std::memcpy(&value, data.data() + offset, sizeof(uint32_t));
+        return ntohl(value);
+    }
+
+    float read_f32_be(const std::vector<uint8_t>& data, size_t offset) {
+        uint32_t raw = read_u32_be(data, offset);
+        float value = 0.0f;
+        std::memcpy(&value, &raw, sizeof(float));
+        return value;
+    }
+
+    float rad_to_deg(float radians) {
+        return radians * (180.0f / Pi);
+    }
 }
 
 BinaryConverter::BinaryConverter() {
@@ -75,6 +100,7 @@ void BinaryConverter::initializeDispatcher() {
     std::vector<MessageMapping> mappings = {
         { MessageId_CS_LRAS_change_configuration_order_INS,      &BinaryConverter::handle_CS_LRAS_change_configuration_order_INS      },
         { MessageId_CS_LRAS_cueing_order_cancellation_INS,        &BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS        },
+        { MessageId_CS_LRAS_cueing_order_INS,                     &BinaryConverter::handle_CS_LRAS_cueing_order_INS                     },
     };
 
     for (const auto& m : mappings) {
@@ -184,6 +210,78 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
 
     ConvertedMessage message;
     message.payload          = j;
+    message.destinationLradId = lradId;
+    results.push_back(message);
+
+    return results;
+}
+
+std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_cueing_order_INS(const RawPacket& packet) {
+    std::vector<ConvertedMessage> results;
+
+    // Campo minimo letto fino a kinematics type (offset 36 + 2 byte).
+    constexpr size_t MinPayloadSize = 22;
+    if (packet.data.size() < HeaderSize + MinPayloadSize) return results;
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint16_t lradId = read_u16_be(packet.data, 20);
+    const uint16_t cueingType = read_u16_be(packet.data, 22);
+    const uint32_t cstn = read_u32_be(packet.data, 24);
+    const uint16_t kinematicsType = read_u16_be(packet.data, 36);
+
+    // Coordinate nelle strutture cartesiane (offset assoluti da specifica allegata).
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    bool hasCartesianCoordinates = false;
+
+    switch (kinematicsType) {
+        case 1: // 3D Cartesian Kinematics
+        case 2: // 3D Cartesian Position
+            if (packet.data.size() >= 52) {
+                x = read_f32_be(packet.data, 40);
+                y = read_f32_be(packet.data, 44);
+                z = read_f32_be(packet.data, 48);
+                hasCartesianCoordinates = true;
+            }
+            break;
+        case 3: // 2D Cartesian Kinematics
+        case 4: // 2D Cartesian Position
+            if (packet.data.size() >= 48) {
+                x = read_f32_be(packet.data, 40);
+                y = read_f32_be(packet.data, 44);
+                z = 0.0f;
+                hasCartesianCoordinates = true;
+            }
+            break;
+        default:
+            // Per i tipi non cartesiani gli angoli restano di default finche non arrivano dettagli aggiuntivi.
+            break;
+    }
+
+    float azimuthDeg = 0.0f;
+    float elevationDeg = 0.0f;
+    if (hasCartesianCoordinates) {
+        azimuthDeg = rad_to_deg(std::atan2(y, x));
+        const float horizontalDistance = std::sqrt((x * x) + (y * y));
+        elevationDeg = rad_to_deg(std::atan2(z, horizontalDistance));
+    }
+
+    json j;
+    j["header"] = "TRCK";
+    j["type"] = "CMD";
+    j["sender"] = "CMS";
+    j["param"] = {
+        {"action_id", actionId},
+        {"cueing_type", cueingType},
+        {"cstn", cstn},
+        {"kinematics_type", kinematicsType},
+        {"azimuth", azimuthDeg},
+        {"elevation", elevationDeg}
+    };
+
+    ConvertedMessage message;
+    message.payload = j;
     message.destinationLradId = lradId;
     results.push_back(message);
 

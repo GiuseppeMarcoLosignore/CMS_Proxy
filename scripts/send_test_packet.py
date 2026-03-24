@@ -12,6 +12,8 @@ Messaggi supportati (selezionabili con --message-id / -m):
                  payload: actionId(4)=0 + lradId(2) + configuration(2)
   1679949826  -> CS_LRAS_cueing_order_cancellation_INS
                  payload: actionId(4)=0 + lradId(2)
+    1679949827  -> CS_LRAS_cueing_order_INS
+                                 payload: actionId(4)=0 + lradId(2) + cueingType(2) + cstn(4) + kinematics(36)
 
 Uso:
   python scripts/send_test_packet.py -m 1679949825 --lrad-id 2 --configuration 1
@@ -38,6 +40,46 @@ MESSAGES = {
         "builder":     lambda lrad_id, configuration: struct.pack(">IH", 0, lrad_id),
     },
 }
+
+
+def build_cueing_order_payload(args) -> bytes:
+    """Build payload for CS_LRAS_cueing_order_INS (48 bytes)."""
+    payload = bytearray(48)
+
+    now = time.time()
+    seconds = int(now)
+    microseconds = int((now - seconds) * 1_000_000)
+
+    # Base fields
+    struct.pack_into(">I", payload, 0, 0)  # action_id (fixed to 0)
+    struct.pack_into(">H", payload, 4, args.lrad_id)
+    struct.pack_into(">H", payload, 6, args.cueing_type)
+    struct.pack_into(">I", payload, 8, args.cstn)
+
+    # Time of validity
+    struct.pack_into(">I", payload, 12, seconds)
+    struct.pack_into(">I", payload, 16, microseconds)
+
+    # Kinematics union header
+    struct.pack_into(">H", payload, 20, args.kinematics_type)
+
+    # Cartesian fields (offsets aligned to the spec table)
+    # x @ payload[24], y @ payload[28], z @ payload[32]
+    struct.pack_into(">f", payload, 24, float(args.x))
+    struct.pack_into(">f", payload, 28, float(args.y))
+    if args.kinematics_type in (1, 2):
+        struct.pack_into(">f", payload, 32, float(args.z))
+
+    # Optional velocities for kinematics variants
+    if args.kinematics_type == 1:
+        struct.pack_into(">f", payload, 36, float(args.vx))
+        struct.pack_into(">f", payload, 40, float(args.vy))
+        struct.pack_into(">f", payload, 44, float(args.vz))
+    elif args.kinematics_type == 3:
+        struct.pack_into(">f", payload, 32, float(args.vx))
+        struct.pack_into(">f", payload, 36, float(args.vy))
+
+    return bytes(payload)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,6 +116,7 @@ def main():
             "ID numerico del messaggio da inviare:\n"
             "  1679949825  -> CS_LRAS_change_configuration_order_INS\n"
             "  1679949826  -> CS_LRAS_cueing_order_cancellation_INS\n"
+            "  1679949827  -> CS_LRAS_cueing_order_INS\n"
             "(default: 1679949825)"
         ),
     )
@@ -90,14 +133,34 @@ def main():
     parser.add_argument("--configuration", type=lambda x: int(x, 0), default=0,
                         help="Configuration (uint16, solo per 1679949825, default: 0)")
 
+    # Campi payload per 1679949827
+    parser.add_argument("--cueing-type", type=int, default=1, choices=[1, 2],
+                        help="Cueing Type (1=Position, 2=CST, solo per 1679949827)")
+    parser.add_argument("--cstn", type=lambda x: int(x, 0), default=1,
+                        help="Combat System Track Number (solo per 1679949827)")
+    parser.add_argument("--kinematics-type", type=int, default=2,
+                        choices=[1, 2, 3, 4],
+                        help="Kinematics type (1/2/3/4 cartesiani supportati nello script)")
+    parser.add_argument("--x", type=float, default=0.0, help="X (m) per 1679949827")
+    parser.add_argument("--y", type=float, default=0.0, help="Y (m) per 1679949827")
+    parser.add_argument("--z", type=float, default=0.0, help="Z (m) per 1679949827 (solo type 1/2)")
+    parser.add_argument("--vx", type=float, default=0.0, help="Vx (m/s) opzionale")
+    parser.add_argument("--vy", type=float, default=0.0, help="Vy (m/s) opzionale")
+    parser.add_argument("--vz", type=float, default=0.0, help="Vz (m/s) opzionale")
+
     args = parser.parse_args()
 
-    if args.message_id not in MESSAGES:
-        known = ', '.join(str(k) for k in MESSAGES)
+    supported_ids = sorted(set(MESSAGES.keys()) | {1679949827})
+    if args.message_id not in supported_ids:
+        known = ', '.join(str(k) for k in supported_ids)
         parser.error(f"message-id {args.message_id} non riconosciuto. ID supportati: {known}")
 
-    msg_info = MESSAGES[args.message_id]
-    payload  = msg_info["builder"](args.lrad_id, args.configuration)
+    if args.message_id == 1679949827:
+        msg_info = {"description": "CS_LRAS_cueing_order_INS"}
+        payload = build_cueing_order_payload(args)
+    else:
+        msg_info = MESSAGES[args.message_id]
+        payload = msg_info["builder"](args.lrad_id, args.configuration)
     header   = build_header(args.message_id, payload, sender=args.sender)
     packet   = header + payload
 
