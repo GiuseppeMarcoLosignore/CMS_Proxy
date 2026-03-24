@@ -37,7 +37,6 @@ private:
 
     void initializeDispatcher();
 
-    std::vector<ConvertedMessage> handle_ChangeConfiguration(const RawPacket& packet);
     std::vector<ConvertedMessage> handle_CS_LRAS_change_configuration_order_INS(const RawPacket& packet);
 
     std::string mapMasterMode(uint8_t modeCode);

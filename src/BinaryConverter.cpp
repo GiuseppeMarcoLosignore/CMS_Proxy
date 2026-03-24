@@ -3,9 +3,6 @@
 
 namespace {
     constexpr size_t HeaderSize = 16;
-    
-    // ID ipotetico per il messaggio MASTER (basato sulla tua immagine)
-    constexpr uint32_t MessageId_MASTER = 1001; 
 
     constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
     constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949827;
@@ -141,8 +138,7 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
 
         // Logica richiesta: 0 -> RELEASE, 1 -> ACCEPT
         j["param"] = {
-            {"mode", (rawConfig == 0) ? "RELEASE" : "REQ"},
-            {"action_id", actionId} // Aggiunto nei param per completezza
+            {"mode", (rawConfig == 0) ? "RELEASE" : "REQ"}
         };
 
         ConvertedMessage message;
@@ -155,30 +151,6 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
     }
 
     return results;
-}
-
-   /* // Costruiamo il JSON secondo la tua immagine
-        json j;
-        j["header"] = "MASTER";
-        j["type"]   = (rawType == 0) ? "CMD" : "INFO";
-        j["sender"] = (rawSender == 0) ? "CC" : "ACS";
-        j["param"]  = {
-            {"mode", mapMasterMode(static_cast<uint8_t>(rawMode))}
-        };
-
-        results.push_back(j);
-        offset += 4; // Avanza alla prossima struttura nel payload */
-
-// --- LOGICA PER CONFIGURAZIONE (1:1) ---
-std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_ChangeConfiguration(const RawPacket& packet) {
-    // Anche se è 1:1, restituiamo un vettore con un solo elemento
-    json j;
-    j["type"] = "cmd";
-    // ... logica di estrazione già vista ...
-    ConvertedMessage message;
-    message.payload = j;
-    message.destinationLradId = 0;
-    return { message };
 }
 
 std::string BinaryConverter::mapMasterMode(uint8_t modeCode) {

@@ -47,11 +47,56 @@ SendResult make_send_result_from_ec(const boost::system::error_code& ec) {
 }
 
 TcpSender::TcpSender(boost::asio::io_context& io_ctx, const std::string& host, int port)
-    : io_ctx_(io_ctx), socket_(io_ctx), host_(host), port_(port), unicast_host_("") 
+    : io_ctx_(io_ctx), socket_(io_ctx), host_(host), port_(port), unicast_host_("")
 {
+    boost::asio::ip::tcp::endpoint initial_endpoint;
+    const SendResult result = resolve_target_endpoint(host_, static_cast<uint16_t>(port_), initial_endpoint);
+    if (result.success) {
+        endpoint_ = initial_endpoint;
+        connect();
+    } else {
+        std::cerr << "[TCP Sender] Avvio senza connessione attiva (host non raggiungibile): "
+                  << host_ << ":" << port_ << std::endl;
+    }
+}
+
+SendResult TcpSender::resolve_target_endpoint(const std::string& target_host, uint16_t target_port,
+                                              boost::asio::ip::tcp::endpoint& target_endpoint) {
+    const std::string key = target_host + ":" + std::to_string(target_port);
+    const auto cache_it = endpoint_cache_.find(key);
+    if (cache_it != endpoint_cache_.end()) {
+        target_endpoint = cache_it->second;
+        SendResult success;
+        success.success = true;
+        return success;
+    }
+
+    boost::system::error_code ec;
     boost::asio::ip::tcp::resolver resolver(io_ctx_);
-    endpoint_ = *resolver.resolve(host_, std::to_string(port_)).begin();
-    connect();
+    boost::asio::ip::tcp::resolver::results_type results =
+        resolver.resolve(target_host, std::to_string(target_port), ec);
+    if (ec) {
+        std::cerr << "[TCP Sender] Errore risoluzione host " << target_host
+                  << " -> " << describe_transport_error(ec) << std::endl;
+        return make_send_result_from_ec(ec);
+    }
+    if (results.begin() == results.end()) {
+        std::cerr << "[TCP Sender] Risoluzione host senza endpoint validi per "
+                  << target_host << ":" << target_port << std::endl;
+        SendResult result;
+        result.success = false;
+        result.error_value = -1;
+        result.error_category = "resolver";
+        result.error_message = "Nessun endpoint valido trovato";
+        return result;
+    }
+
+    target_endpoint = *results.begin();
+    endpoint_cache_[key] = target_endpoint;
+
+    SendResult success;
+    success.success = true;
+    return success;
 }
 
 void TcpSender::set_unicast_target(const std::string& unicast_host) {
@@ -77,25 +122,10 @@ SendResult TcpSender::send(const RawPacket& packet, const std::string& target_ho
     
     // 1. Determina l'endpoint target usando i parametri passati
     boost::asio::ip::tcp::endpoint target_endpoint;
-    boost::asio::ip::tcp::resolver resolver(io_ctx_);
-    boost::asio::ip::tcp::resolver::results_type results =
-        resolver.resolve(target_host, std::to_string(target_port), ec);
-    if (ec) {
-        std::cerr << "[TCP Sender] Errore risoluzione host " << target_host
-                  << " -> " << describe_transport_error(ec) << std::endl;
-        return make_send_result_from_ec(ec);
+    const SendResult resolve_result = resolve_target_endpoint(target_host, target_port, target_endpoint);
+    if (!resolve_result.success) {
+        return resolve_result;
     }
-    if (results.begin() == results.end()) {
-        std::cerr << "[TCP Sender] Risoluzione host senza endpoint validi per "
-                  << target_host << ":" << target_port << std::endl;
-        SendResult result;
-        result.success = false;
-        result.error_value = -1;
-        result.error_category = "resolver";
-        result.error_message = "Nessun endpoint valido trovato";
-        return result;
-    }
-    target_endpoint = *results.begin();
     
     // 2. Controlla se dobbiamo riconnettere
     bool need_reconnect = false;

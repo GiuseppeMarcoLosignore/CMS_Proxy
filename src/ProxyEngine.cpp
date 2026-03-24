@@ -54,7 +54,8 @@ uint16_t map_nack_reason(const SendResult& send_result) {
     }
 
     const auto ec = boost::system::error_code(send_result.error_value, boost::system::system_category());
-    if (ec == error::invalid_argument || ec == error::bad_descriptor || send_result.error_category == "resolver") {
+    if (ec == error::invalid_argument || ec == error::bad_descriptor ||
+        send_result.error_category == "resolver" || send_result.error_category == "engine") {
         return 2; // Parametri errati
     }
     if (ec == error::already_started || ec == error::in_progress || ec == error::operation_aborted) {
@@ -126,13 +127,16 @@ void log_ack_packet(const RawPacket& packet, uint32_t action_id, uint32_t source
 
 ProxyEngine::ProxyEngine(std::shared_ptr<IReceiver> r, 
                          std::shared_ptr<IProtocolConverter> c, 
-                         std::shared_ptr<ISender> s)
+                 std::shared_ptr<ISender> s,
+                 boost::asio::io_context& delivery_io_ctx)
     : receiver_(r),
       converter_(c),
       sender_(s),
-      ack_socket_(ack_io_ctx_),
+    delivery_io_ctx_(delivery_io_ctx),
+    ack_socket_(delivery_io_ctx_),
       ack_multicast_ready_(false)
 {
+    lrad_config_ = getNetworkConfig();
     boost::system::error_code ec;
     auto ack_address = boost::asio::ip::make_address(AckMulticastIp, ec);
     if (ec) {
@@ -163,46 +167,52 @@ ProxyEngine::ProxyEngine(std::shared_ptr<IReceiver> r,
 
     // Colleghiamo la logica: quando arriva un pacchetto...
     receiver_->set_callback([this](const RawPacket& input) {
-        const uint32_t source_message_id = read_u32_be(input.data, 0);
-
-        // 1. Convertiamo il pacchetto (Big-Endian -> Logica interna)
-        std::vector<RawPacket> output = converter_->convert(input);
-        std::map<uint16_t, LradDestination> config = getNetworkConfig();
-        // 2. Se la conversione ha prodotto dati validi, inviamo tramite TCP
-        if (!output.empty()) {
-            for (const auto& packetToSend : output) {
-                auto destinationIt = config.find(packetToSend.destinationLradId);
-                if (destinationIt != config.end()) {
-                    const SendResult send_result = sender_->send(
-                        packetToSend,
-                        destinationIt->second.ip_address,
-                        destinationIt->second.port
-                    );
-
-                    const uint32_t action_id = extract_action_id_from_payload(packetToSend);
-                    const RawPacket ack_packet = build_ack_packet(action_id, source_message_id, send_result);
-                    log_ack_packet(ack_packet, action_id, source_message_id, send_result);
-                    sendAckToMulticast(ack_packet);
-                } else {
-                    std::cerr << "[Engine] LRAD ID non configurato: " << packetToSend.destinationLradId << std::endl;
-
-                    SendResult send_result;
-                    send_result.success = false;
-                    send_result.error_value = static_cast<int>(boost::asio::error::invalid_argument);
-                    send_result.error_category = "engine";
-                    send_result.error_message = "LRAD ID non configurato";
-
-                    const uint32_t action_id = extract_action_id_from_payload(packetToSend);
-                    const RawPacket ack_packet = build_ack_packet(action_id, source_message_id, send_result);
-                    log_ack_packet(ack_packet, action_id, source_message_id, send_result);
-                    sendAckToMulticast(ack_packet);
-                }
-            }
-        }
+        boost::asio::post(delivery_io_ctx_, [this, input]() {
+            processPacket(input);
+        });
     });
 
-    
+}
 
+void ProxyEngine::processPacket(const RawPacket& input) {
+    const uint32_t source_message_id = read_u32_be(input.data, 0);
+
+    // 1. Convertiamo il pacchetto (Big-Endian -> Logica interna)
+    std::vector<RawPacket> output = converter_->convert(input);
+    // 2. Se la conversione ha prodotto dati validi, inviamo tramite TCP
+    if (!output.empty()) {
+        for (const auto& packetToSend : output) {
+            auto destinationIt = lrad_config_.find(packetToSend.destinationLradId);
+            if (destinationIt != lrad_config_.end()) {
+                const SendResult send_result = sender_->send(
+                    packetToSend,
+                    destinationIt->second.ip_address,
+                    destinationIt->second.port
+                );
+
+                const uint32_t action_id = extract_action_id_from_payload(packetToSend);
+                const RawPacket ack_packet = build_ack_packet(action_id, source_message_id, send_result);
+                log_ack_packet(ack_packet, action_id, source_message_id, send_result);
+                sendAckToMulticast(ack_packet);
+            } else {
+                std::cerr << "[Engine] LRAD ID non configurato: " << packetToSend.destinationLradId << std::endl;
+
+                SendResult send_result;
+                send_result.success = false;
+                send_result.error_value = static_cast<int>(boost::asio::error::invalid_argument);
+                send_result.error_category = "engine";
+                send_result.error_message = "LRAD ID non configurato";
+
+                const uint32_t action_id = extract_action_id_from_payload(packetToSend);
+                const RawPacket ack_packet = build_ack_packet(action_id, source_message_id, send_result);
+                log_ack_packet(ack_packet, action_id, source_message_id, send_result);
+                sendAckToMulticast(ack_packet);
+            }
+        }
+    } else {
+        std::cerr << "[Engine] Messaggio ignorato (messageId non supportato o payload malformato): source_id="
+                  << source_message_id << std::endl;
+    }
 }
 
 void ProxyEngine::sendAckToMulticast(const RawPacket& ack_packet) {

@@ -1,6 +1,7 @@
 #pragma once
 #include "IInterfaces.hpp"
 #include <boost/asio.hpp>
+#include <unordered_map>
 #include <string>
 #include <iostream>
 
@@ -16,10 +17,13 @@ public:
 
 private:
     void connect();
+    SendResult resolve_target_endpoint(const std::string& target_host, uint16_t target_port,
+                                       boost::asio::ip::tcp::endpoint& target_endpoint);
 
     boost::asio::io_context& io_ctx_;
     boost::asio::ip::tcp::socket socket_;
     boost::asio::ip::tcp::endpoint endpoint_;
+    std::unordered_map<std::string, boost::asio::ip::tcp::endpoint> endpoint_cache_;
     std::string host_;
     int port_;
     std::string unicast_host_;
