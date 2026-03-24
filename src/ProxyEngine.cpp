@@ -15,6 +15,7 @@ namespace {
 constexpr std::size_t HeaderSize = 16;
 constexpr std::size_t AckMessageSize = 28;
 constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576879045;
+constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
 constexpr uint16_t AckAccepted = 1;
 constexpr uint16_t NackNotExecuted = 2;
 
@@ -26,6 +27,11 @@ uint32_t read_u32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     uint32_t net_value = 0;
     std::memcpy(&net_value, data.data() + offset, sizeof(uint32_t));
     return ntohl(net_value);
+}
+
+uint32_t extract_message_id_from_header(const RawPacket& packet) {
+    // message_id e il primo uint32 dell'header (offset 0)
+    return read_u32_be(packet.data, 0);
 }
 
 uint32_t extract_action_id_from_payload(const RawPacket& packet) {
@@ -176,10 +182,27 @@ ProxyEngine::ProxyEngine(std::shared_ptr<IReceiver> r,
 }
 
 void ProxyEngine::processPacket(const RawPacket& input) {
-    const uint32_t source_message_id = read_u32_be(input.data, 0);
+    const uint32_t source_message_id = extract_message_id_from_header(input);
 
     // 1. Convertiamo il pacchetto (Big-Endian -> Logica interna)
     std::vector<RawPacket> output = converter_->convert(input);
+
+    // Per il messaggio di cancellazione cueing: dopo parse inviamo solo ACK al mittente.
+    if (source_message_id == MessageId_CS_LRAS_cueing_order_cancellation_INS) {
+        if (!output.empty()) {
+            SendResult send_result;
+            send_result.success = true;
+
+            const RawPacket ack_packet = build_ack_packet(0, source_message_id, send_result);
+            log_ack_packet(ack_packet, 0, source_message_id, send_result);
+            sendAckToMulticast(ack_packet);
+        } else {
+            std::cerr << "[Engine] Messaggio cancellazione cueing malformato: source_id="
+                      << source_message_id << std::endl;
+        }
+        return;
+    }
+
     // 2. Se la conversione ha prodotto dati validi, inviamo tramite TCP
     if (!output.empty()) {
         for (const auto& packetToSend : output) {

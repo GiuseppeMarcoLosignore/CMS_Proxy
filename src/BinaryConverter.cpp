@@ -5,8 +5,8 @@ namespace {
     constexpr size_t HeaderSize = 16;
 
     constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
-    constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949827;
-    constexpr uint32_t MessageId_CS_LRAS_cueing_order_INS = 1679949828;
+    constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
+    constexpr uint32_t MessageId_CS_LRAS_cueing_order_INS = 1679949827;
     constexpr uint32_t MessageId_CS_LRAS_emission_control_INS = 1679949829;
     constexpr uint32_t MessageId_CS_LRAS_emission_mode_INS = 1679949830;
     constexpr uint32_t MessageId_CS_LRAS_inhibition_sectors_INS = 1679949831;
@@ -73,8 +73,8 @@ BinaryConverter::BinaryConverter() {
 void BinaryConverter::initializeDispatcher() {
     // Lista di inizializzazione usando la struct MessageMapping
     std::vector<MessageMapping> mappings = {
-        { MessageId_CS_LRAS_change_configuration_order_INS, &BinaryConverter::handle_CS_LRAS_change_configuration_order_INS },
-        
+        { MessageId_CS_LRAS_change_configuration_order_INS,      &BinaryConverter::handle_CS_LRAS_change_configuration_order_INS      },
+        { MessageId_CS_LRAS_cueing_order_cancellation_INS,        &BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS        },
     };
 
     for (const auto& m : mappings) {
@@ -149,6 +149,43 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
         // Avanzamento al prossimo blocco di 8 byte
         offset += BlockSize;
     }
+
+    return results;
+}
+
+std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS(const RawPacket& packet) {
+    std::vector<ConvertedMessage> results;
+
+    // Header: 16 bytes | ActionId: 4 bytes | LradId: 2 bytes
+    constexpr size_t offset   = 16;
+    constexpr size_t BlockSize = 6; // ActionId(4) + LradId(2)
+
+    if (offset + BlockSize > packet.data.size()) return results;
+
+    // 1. Action ID (Pos 16, 4 byte, UInt)
+    uint32_t actionId;
+    std::memcpy(&actionId, &packet.data[offset], 4);
+    actionId = ntohl(actionId);
+
+    // 2. LRAD ID (Pos 20, 2 byte, Enum: 1=LRAD1, 2=LRAD2)
+    uint16_t lradId;
+    std::memcpy(&lradId, &packet.data[offset + 4], 2);
+    lradId = ntohs(lradId);
+
+    // Costruzione JSON TRACKING - cancellazione ordine -> mode = READY, target vuoto
+    json j;
+    j["header"] = "TRCK";
+    j["type"]   = "CMD";
+    j["sender"] = "CMS";
+    j["param"]  = {
+        {"mode",   "READY"},
+        {"target", json::array()}
+    };
+
+    ConvertedMessage message;
+    message.payload          = j;
+    message.destinationLradId = lradId;
+    results.push_back(message);
 
     return results;
 }
