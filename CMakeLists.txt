@@ -15,6 +15,7 @@ find_package(nlohmann_json REQUIRED)
 
 # --- SORGENTI ---
 set(SOURCES
+    src/AppConfig.cpp
     src/main.cpp
     src/ProxyEngine.cpp
     src/UdpMulticastReceiver.cpp

@@ -17,8 +17,6 @@ constexpr std::size_t AckMessageSize = 28;
 constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576879045;
 constexpr uint16_t AckAccepted = 1;
 constexpr uint16_t NackNotExecuted = 2;
-constexpr const char* AckMulticastIp = "239.0.0.50";
-constexpr uint16_t AckMulticastPort = 12346;
 
 uint32_t read_u32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     if (data.size() < offset + sizeof(uint32_t)) {
@@ -127,23 +125,26 @@ void log_ack_packet(const RawPacket& packet, uint32_t action_id, uint32_t source
 
 ProxyEngine::ProxyEngine(std::shared_ptr<IReceiver> r, 
                          std::shared_ptr<IProtocolConverter> c, 
-                 std::shared_ptr<ISender> s,
-                 boost::asio::io_context& delivery_io_ctx)
+                                                 std::shared_ptr<ISender> s,
+                                                 boost::asio::io_context& delivery_io_ctx,
+                                                 std::map<uint16_t, LradDestination> lrad_config,
+                                                 std::string ack_multicast_ip,
+                                                 uint16_t ack_multicast_port)
     : receiver_(r),
       converter_(c),
       sender_(s),
-    delivery_io_ctx_(delivery_io_ctx),
-    ack_socket_(delivery_io_ctx_),
+            delivery_io_ctx_(delivery_io_ctx),
+            ack_socket_(delivery_io_ctx_),
       ack_multicast_ready_(false)
 {
-    lrad_config_ = getNetworkConfig();
+        lrad_config_ = std::move(lrad_config);
     boost::system::error_code ec;
-    auto ack_address = boost::asio::ip::make_address(AckMulticastIp, ec);
+        auto ack_address = boost::asio::ip::make_address(ack_multicast_ip, ec);
     if (ec) {
-        std::cerr << "[Engine][ACK] Indirizzo multicast non valido: " << AckMulticastIp
+                std::cerr << "[Engine][ACK] Indirizzo multicast non valido: " << ack_multicast_ip
                   << " -> " << ec.message() << std::endl;
     } else {
-        ack_multicast_endpoint_ = boost::asio::ip::udp::endpoint(ack_address, AckMulticastPort);
+                ack_multicast_endpoint_ = boost::asio::ip::udp::endpoint(ack_address, ack_multicast_port);
 
         ack_socket_.open(boost::asio::ip::udp::v4(), ec);
         if (ec) {
@@ -161,7 +162,7 @@ ProxyEngine::ProxyEngine(std::shared_ptr<IReceiver> r,
 
             ack_multicast_ready_ = true;
             std::cout << "[Engine][ACK] Invio ACK multicast attivo su "
-                      << AckMulticastIp << ":" << AckMulticastPort << std::endl;
+                      << ack_multicast_ip << ":" << ack_multicast_port << std::endl;
         }
     }
 
@@ -233,12 +234,4 @@ void ProxyEngine::run() {
         std::cout << "[Engine] Avvio del ciclo di ricezione..." << std::endl;
         receiver_->start();
     }
-}
-
-std::map<uint16_t, LradDestination> ProxyEngine::getNetworkConfig() {
-    // Configurazione statica per esempio
-    std::map<uint16_t, LradDestination> config;
-    config[1] = {1, "127.0.0.1", 9000}; // LRAD ID 1 -> Port/CC
-    config[2] = {2, "127.0.0.1", 9000}; // LRAD ID 2 -> Port/ACS
-    return config;
 }

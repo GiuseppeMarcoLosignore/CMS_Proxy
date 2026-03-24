@@ -1,0 +1,28 @@
+{
+  "udp": {
+    "listen_ip": "127.0.0.1",
+    "multicast_group": "239.0.0.1",
+    "multicast_port": 12345
+  },
+  "tcp": {
+    "default_target_ip": "127.0.0.1",
+    "default_target_port": 9000,
+    "unicast_target_ip": "127.0.0.1"
+  },
+  "ack_multicast": {
+    "ip": "239.0.0.50",
+    "port": 12346
+  },
+  "lrad_destinations": [
+    {
+      "id": 1,
+      "ip": "127.0.0.1",
+      "port": 9000
+    },
+    {
+      "id": 2,
+      "ip": "127.0.0.1",
+      "port": 9000
+    }
+  ]
+}

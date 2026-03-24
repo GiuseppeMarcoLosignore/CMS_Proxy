@@ -98,21 +98,24 @@ Endpoint multicast ACK predefinito:
 - IP: `239.0.0.50`
 - Porta: `12346`
 
-## Configurazione rete predefinita
+## Configurazione rete
 
-In `main.cpp`:
+Tutti i parametri di rete sono definiti in un file JSON esterno:
 
-- UDP listen: `127.0.0.1:12345`
-- gruppo multicast sorgente: `239.0.0.1`
-- target TCP di default: `127.0.0.1:9000`
-- unicast target configurato nel sender: `127.0.0.1`
+- `config/network_config.json`
 
-In `ProxyEngine::getNetworkConfig()`:
+Struttura principale:
 
-- LRAD `1` -> `127.0.0.1:9000`
-- LRAD `2` -> `127.0.0.1:9000`
+- `udp.listen_ip`, `udp.multicast_group`, `udp.multicast_port`
+- `tcp.default_target_ip`, `tcp.default_target_port`, `tcp.unicast_target_ip`
+- `ack_multicast.ip`, `ack_multicast.port`
+- `lrad_destinations` (lista di oggetti con `id`, `ip`, `port`)
 
-Nota: la tabella e attualmente statica nel codice.
+Il file viene letto all'avvio dell'eseguibile. E possibile passare un path custom come primo argomento:
+
+```powershell
+CMS_Proxy.exe config/network_config.json
+```
 
 ## Build
 
@@ -150,12 +153,10 @@ Se il flusso e corretto, il receiver TCP mostra il JSON convertito e il proxy lo
 
 Nota operativa:
 
-- nei default correnti il receiver UDP e bindato su `127.0.0.1:12345`; per test locale funziona con `scripts/send_test_packet.py --group 127.0.0.1 --port 12345`;
-- il codice effettua comunque la join del gruppo multicast configurato (`239.0.0.1`) nel receiver.
+- i valori di esempio nel file `config/network_config.json` sono adatti al test locale;
+- per ambienti reali, aggiornare il JSON senza ricompilare l'eseguibile.
 
 ## Limiti attuali
 
 - Dispatcher converter non completo: e implementato solo un tipo messaggio.
-- Configurazione destinazioni LRAD hardcoded.
-- Nessun file di configurazione esterno (JSON/YAML) per rete/routing.
 - Nessuna suite test automatizzata nel repository.
