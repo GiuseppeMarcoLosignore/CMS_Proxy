@@ -39,6 +39,12 @@ Questo rende i componenti sostituibili e testabili separatamente.
 
 Se l'ID LRAD non e configurato, non invia su TCP ma genera comunque NACK.
 
+Comportamento importante nel codice attuale:
+
+- se l'header e invalido o il `messageId` non e presente nel dispatcher, `BinaryConverter::convert()` restituisce output vuoto e il pacchetto viene ignorato (nessun inoltro TCP, nessun ACK);
+- un singolo datagramma UDP puo produrre piu messaggi JSON (uno per ogni blocco payload da 8 byte);
+- l'ACK viene emesso solo per i messaggi effettivamente prodotti dal converter.
+
 ## Messaggi supportati (stato attuale)
 
 Al momento il dispatcher del converter gestisce questo `messageId`:
@@ -78,6 +84,14 @@ Regola campo `mode`:
 	- `source_message_id` (uint32, big-endian)
 	- `ack_nack` (uint16): `1=ACK`, `2=NACK`
 	- `nack_reason` (uint16): valorizzato in base all'errore di trasporto
+
+Mappatura `nack_reason` nel codice:
+
+- `0`: no statement / non classificato
+- `2`: parametri errati (es. host/porta invalidi, LRAD non configurato)
+- `3`: stato sistema errato (operazione gia avviata/in corso/abortita)
+- `4`: sistema non pronto (timeout, try_again, would_block, not_connected)
+- `5`: sistema non utilizzabile (connection_refused/reset, host/network unreachable, broken_pipe, eof)
 
 Endpoint multicast ACK predefinito:
 
@@ -133,6 +147,11 @@ python scripts/send_test_packet.py --group 127.0.0.1 --port 12345
 ```
 
 Se il flusso e corretto, il receiver TCP mostra il JSON convertito e il proxy logga l'ACK/NACK inviato.
+
+Nota operativa:
+
+- nei default correnti il receiver UDP e bindato su `127.0.0.1:12345`; per test locale funziona con `scripts/send_test_packet.py --group 127.0.0.1 --port 12345`;
+- il codice effettua comunque la join del gruppo multicast configurato (`239.0.0.1`) nel receiver.
 
 ## Limiti attuali
 
