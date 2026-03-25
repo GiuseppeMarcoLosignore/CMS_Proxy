@@ -1,0 +1,112 @@
+CMS_Proxy - send_test_packet.py command list
+
+Script path:
+python scripts/send_test_packet.py
+
+General syntax:
+python scripts/send_test_packet.py -m <message_id> [options]
+
+Supported message IDs:
+- 1679949825 : CS_LRAS_change_configuration_order_INS
+- 1679949826 : CS_LRAS_cueing_order_cancellation_INS
+- 1679949827 : CS_LRAS_cueing_order_INS
+- 1679949828 : CS_LRAS_emission_control_INS
+
+Common network options:
+--group <ip>                     Destination IP (default: 127.0.0.1)
+--port <port>                    UDP port (default: 12345)
+--ttl <n>                        Multicast TTL (default: 1)
+--sender <id>                    Sender ID in header (default: 2)
+
+Shared options:
+--lrad-id <1|2>                  LRAD destination (default: 1)
+
+Message 1679949825 options:
+--configuration <uint16>         Configuration value (default: 0)
+
+Example:
+python scripts/send_test_packet.py -m 1679949825 --lrad-id 2 --configuration 1
+
+Message 1679949826 options:
+(no specific options beyond --lrad-id)
+
+Example:
+python scripts/send_test_packet.py -m 1679949826 --lrad-id 1
+
+Message 1679949827 options:
+--cueing-type <1|2>              Cueing Type (default: 1)
+--cstn <uint32>                  Combat System Track Number (default: 1)
+--kinematics-type <1|2|3|4>      Kinematics type (default: 2)
+--x <float>                      X in meters (default: 0.0)
+--y <float>                      Y in meters (default: 0.0)
+--z <float>                      Z in meters (default: 0.0)
+--vx <float>                     Vx in m/s (default: 0.0)
+--vy <float>                     Vy in m/s (default: 0.0)
+--vz <float>                     Vz in m/s (default: 0.0)
+
+Example:
+python scripts/send_test_packet.py -m 1679949827 --lrad-id 1 --cueing-type 2 --cstn 100 --kinematics-type 1 --x 10.5 --y 5.2 --z 1.0 --vx 0.5 --vy 0.1 --vz 0.0
+
+Message 1679949828 options:
+--action-id <uint32>                     Action ID (default: 0)
+--audio-mode-validity <uint16>           Audio mode validity (default: 1)
+--volume-level <uint16>                  Volume level enum (default: 0)
+--audio-volume-db <float>                Audio volume in dB (default: 0.0)
+--mute <uint16>                          Mute enum (default: 0)
+--audio-mode <uint16>                    Audio mode enum (default: 0)
+--recorded-message-id <uint32>           Recorded message ID (default: 0)
+--recorded-language <uint16>             Recorded language enum (default: 0)
+--recorded-loop <uint16>                 Recorded loop enum (default: 0)
+--free-text-language-in <uint16>         Free text language in (default: 0)
+--free-text-language-out <uint16>        Free text language out (default: 0)
+--free-text-message <text>               Free text message UTF-8, max 768 bytes
+--free-text-loop <uint16>                Free text loop enum (default: 0)
+--laser-mode-validity <uint16>           Laser mode validity (default: 1)
+--laser-mode <uint16>                    Laser mode enum (default: 0)
+--light-mode-validity <uint16>           Light mode validity (default: 1)
+--light-power <uint16>                   Light power enum (default: 0)
+--light-zoom <uint16>                    Light zoom value (default: 0)
+--lrf-mode-validity <uint16>             LRF mode validity (default: 1)
+--lrf-on-off <uint16>                    LRF on/off enum (default: 0)
+--camera-zoom-validity <uint16>          Camera zoom validity (default: 1)
+--camera-zoom <uint16>                   Camera zoom value (default: 0)
+--horizontal-reference-validity <uint16> Horizontal reference validity (default: 1)
+--horizontal-reference <uint16>          Horizontal reference enum (default: 0)
+
+Full example:
+python scripts/send_test_packet.py -m 1679949828 --lrad-id 1 --action-id 10 --audio-mode-validity 1 --volume-level 2 --audio-volume-db 12.5 --mute 0 --audio-mode 2 --recorded-message-id 123 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Test emission control" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 1 --light-mode-validity 1 --light-power 2 --light-zoom 15 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 20 --horizontal-reference-validity 1 --horizontal-reference 1
+
+Quick default tests:
+python scripts/send_test_packet.py -m 1679949825
+python scripts/send_test_packet.py -m 1679949826
+python scripts/send_test_packet.py -m 1679949827
+python scripts/send_test_packet.py -m 1679949828
+
+Ready-to-send commands (copy/paste):
+
+1) Change configuration to LRAD1 (REQ):
+python3 scripts/send_test_packet.py -m 1679949825 --group 127.0.0.1 --port 12345 --lrad-id 1 --configuration 1
+
+2) Change configuration to LRAD2 (RELEASE):
+python3 scripts/send_test_packet.py -m 1679949825 --group 127.0.0.1 --port 12345 --lrad-id 2 --configuration 0
+
+3) Cueing order cancellation LRAD1:
+python3 scripts/send_test_packet.py -m 1679949826 --group 127.0.0.1 --port 12345 --lrad-id 1
+
+4) Cueing order 3D (kinematics type 1) LRAD1:
+python3 scripts/send_test_packet.py -m 1679949827 --group 127.0.0.1 --port 12345 --lrad-id 1 --cueing-type 2 --cstn 101 --kinematics-type 1 --x 25.0 --y 12.0 --z 3.0 --vx 0.6 --vy 0.2 --vz 0.1
+
+5) Cueing order 2D (kinematics type 3) LRAD2:
+python3 scripts/send_test_packet.py -m 1679949827 --group 127.0.0.1 --port 12345 --lrad-id 2 --cueing-type 1 --cstn 202 --kinematics-type 3 --x 8.0 --y 4.0 --vx 0.3 --vy 0.1
+
+6) Emission control baseline LRAD1 (voice mode):
+python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345 --lrad-id 1 --action-id 100 --audio-mode-validity 1 --volume-level 1 --audio-volume-db 8.5 --mute 0 --audio-mode 2 --recorded-message-id 0 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 0 --light-mode-validity 1 --light-power 1 --light-zoom 10 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 15 --horizontal-reference-validity 1 --horizontal-reference 1
+
+7) Emission control recorded message LRAD1:
+python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345 --lrad-id 1 --action-id 101 --audio-mode-validity 1 --volume-level 2 --audio-volume-db 12.0 --mute 0 --audio-mode 3 --recorded-message-id 123 --recorded-language 1 --recorded-loop 1 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 1 --light-mode-validity 1 --light-power 2 --light-zoom 20 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 30 --horizontal-reference-validity 1 --horizontal-reference 1
+
+8) Emission control free text LRAD2:
+python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345 --lrad-id 2 --action-id 102 --audio-mode-validity 1 --volume-level 3 --audio-volume-db 18.0 --mute 0 --audio-mode 4 --recorded-message-id 0 --recorded-language 0 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Warning stay clear of vessel" --free-text-loop 1 --laser-mode-validity 1 --laser-mode 2 --light-mode-validity 1 --light-power 3 --light-zoom 25 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 40 --horizontal-reference-validity 1 --horizontal-reference 0
+
+9) Same emission control test, multicast destination example:
+python3 scripts/send_test_packet.py -m 1679949828 --group 239.0.0.1 --port 12345 --ttl 1 --lrad-id 1 --action-id 200 --audio-mode-validity 1 --volume-level 1 --audio-volume-db 6.0 --mute 0 --audio-mode 2 --recorded-message-id 0 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Multicast test" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 0 --light-mode-validity 1 --light-power 1 --light-zoom 8 --lrf-mode-validity 1 --lrf-on-off 0 --camera-zoom-validity 1 --camera-zoom 10 --horizontal-reference-validity 1 --horizontal-reference 1

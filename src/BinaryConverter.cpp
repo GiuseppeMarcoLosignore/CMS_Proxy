@@ -3,6 +3,8 @@
 #include <boost/system/error_code.hpp>
 #include <cmath>
 #include <cstring>
+#include <sstream>
+#include <iomanip>
 
 namespace {
     constexpr size_t HeaderSize = 16;
@@ -11,22 +13,22 @@ namespace {
     constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
     constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
     constexpr uint32_t MessageId_CS_LRAS_cueing_order_INS = 1679949827;
-    constexpr uint32_t MessageId_CS_LRAS_emission_control_INS = 1679949829;
-    constexpr uint32_t MessageId_CS_LRAS_emission_mode_INS = 1679949830;
-    constexpr uint32_t MessageId_CS_LRAS_inhibition_sectors_INS = 1679949831;
-    constexpr uint32_t MessageId_CS_LRAS_joystick_control_lrad_1_INS = 1679949832;
-    constexpr uint32_t MessageId_CS_LRAS_joystick_control_lrad_2_INS = 1679949833;
-    constexpr uint32_t MessageId_CS_LRAS_recording_command_INS = 1679949834;
-    constexpr uint32_t MessageId_CS_LRAS_request_emission_mode_INS = 1679949835;
-    constexpr uint32_t MessageId_CS_LRAS_request_engagement_capability_INS = 1679949836;
-    constexpr uint32_t MessageId_CS_LRAS_request_full_status_INS = 1679949837;
-    constexpr uint32_t MessageId_CS_LRAS_request_installation_data_INS = 1679949838;
-    constexpr uint32_t MessageId_CS_LRAS_request_message_table_INS = 1679949839;
-    constexpr uint32_t MessageId_CS_LRAS_request_software_version_INS = 1679949840;
-    constexpr uint32_t MessageId_CS_LRAS_request_thresholds_INS = 1679949841;
-    constexpr uint32_t MessageId_CS_LRAS_request_translation_INS = 1679949842;
-    constexpr uint32_t MessageId_CS_LRAS_request_translation_v2_INS = 1679949843; // se si trattava di un messaggio diverso
-    constexpr uint32_t MessageId_CS_LRAS_video_tracking_command_INS = 1679949844;
+    constexpr uint32_t MessageId_CS_LRAS_emission_control_INS = 1679949828;
+    constexpr uint32_t MessageId_CS_LRAS_emission_mode_INS = 1679949829;
+    constexpr uint32_t MessageId_CS_LRAS_inhibition_sectors_INS = 1679949830;
+    constexpr uint32_t MessageId_CS_LRAS_joystick_control_lrad_1_INS = 1679949831;
+    constexpr uint32_t MessageId_CS_LRAS_joystick_control_lrad_2_INS = 1679949832;
+    constexpr uint32_t MessageId_CS_LRAS_recording_command_INS = 1679949833;
+    constexpr uint32_t MessageId_CS_LRAS_request_emission_mode_INS = 1679949834;
+    constexpr uint32_t MessageId_CS_LRAS_request_engagement_capability_INS = 1679949835;
+    constexpr uint32_t MessageId_CS_LRAS_request_full_status_INS = 1679949836;
+    constexpr uint32_t MessageId_CS_LRAS_request_installation_data_INS = 1679949837;
+    constexpr uint32_t MessageId_CS_LRAS_request_message_table_INS = 1679949838;
+    constexpr uint32_t MessageId_CS_LRAS_request_software_version_INS = 1679949839;
+    constexpr uint32_t MessageId_CS_LRAS_request_thresholds_INS = 1679949840;
+    constexpr uint32_t MessageId_CS_LRAS_request_translation_INS = 1679949841;
+    constexpr uint32_t MessageId_CS_LRAS_request_translation_v2_INS = 1679949842; // se si trattava di un messaggio diverso
+    constexpr uint32_t MessageId_CS_LRAS_video_tracking_command_INS = 1679949843;
     constexpr uint32_t MessageId_CS_MULTI_health_status_INS = 1684229565;
     constexpr uint32_t MessageId_CS_MULTI_update_cst_kinematics_INS = 1684229566;
     constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576879045;
@@ -92,6 +94,23 @@ namespace {
         return radians * (180.0f / Pi);
     }
 
+    std::string payload_to_hex(const std::vector<uint8_t>& data, size_t offset, size_t maxBytes) {
+        if (offset >= data.size()) {
+            return "";
+        }
+        size_t end = data.size();
+        const size_t capped = offset + maxBytes;
+        if (end > capped) {
+            end = capped;
+        }
+        std::ostringstream oss;
+        oss << std::hex << std::setfill('0');
+        for (size_t i = offset; i < end; ++i) {
+            oss << std::setw(2) << static_cast<int>(data[i]);
+        }
+        return oss.str();
+    }
+
     // --- ACK build helpers ---
     constexpr std::size_t AckHeaderSize    = 16;
     constexpr std::size_t AckMessageSize   = 28;
@@ -155,6 +174,7 @@ void BinaryConverter::initializeDispatcher() {
         { MessageId_CS_LRAS_change_configuration_order_INS,   &BinaryConverter::handle_CS_LRAS_change_configuration_order_INS,   standard_ack, false },
         { MessageId_CS_LRAS_cueing_order_cancellation_INS,    &BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS,    standard_ack, true  },
         { MessageId_CS_LRAS_cueing_order_INS,                 &BinaryConverter::handle_CS_LRAS_cueing_order_INS,                 standard_ack, false },
+        { MessageId_CS_LRAS_emission_control_INS,             &BinaryConverter::handle_CS_LRAS_emission_control_INS,             standard_ack, false },
     };
 
     for (const auto& m : mappings) {
@@ -334,6 +354,111 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
         {"kinematics_type", kinematicsType},
         {"azimuth", azimuthDeg},
         {"elevation", elevationDeg}
+    };
+
+    ConvertedMessage message;
+    message.payload = j;
+    message.destinationLradId = lradId;
+    results.push_back(message);
+
+    return results;
+}
+
+std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_emission_control_INS(const RawPacket& packet) {
+    std::vector<ConvertedMessage> results;
+
+    // Ultimo campo: Horizontal Reference (pos 836, dim 2) -> size minima 838 byte.
+    if (packet.data.size() < 838) {
+        return results;
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint16_t lradId = read_u16_be(packet.data, 20);
+
+    const uint16_t audioModeValidity = read_u16_be(packet.data, 22);
+    const uint16_t volumeLevel = read_u16_be(packet.data, 24);
+    const float audioVolumeDb = read_f32_be(packet.data, 26);
+    const uint16_t mute = read_u16_be(packet.data, 30);
+    const uint16_t audioMode = read_u16_be(packet.data, 32);
+
+    const uint32_t recordedMessageId = read_u32_be(packet.data, 34);
+    const uint16_t recordedLanguage = read_u16_be(packet.data, 38);
+    const uint16_t recordedLoop = read_u16_be(packet.data, 40);
+
+    const uint16_t freeTextLanguageIn = read_u16_be(packet.data, 42);
+    const uint16_t freeTextLanguageOut = read_u16_be(packet.data, 44);
+
+    std::string freeTextMessage;
+    freeTextMessage.reserve(768);
+    for (size_t i = 46; i < 814; ++i) {
+        const char c = static_cast<char>(packet.data[i]);
+        if (c == '\0') {
+            break;
+        }
+        freeTextMessage.push_back(c);
+    }
+    const uint16_t freeTextLoop = read_u16_be(packet.data, 814);
+
+    const uint16_t laserModeValidity = read_u16_be(packet.data, 816);
+    const uint16_t laserMode = read_u16_be(packet.data, 818);
+
+    const uint16_t lightModeValidity = read_u16_be(packet.data, 820);
+    const uint16_t lightPower = read_u16_be(packet.data, 822);
+    const uint16_t lightZoom = read_u16_be(packet.data, 824);
+
+    const uint16_t lrfModeValidity = read_u16_be(packet.data, 826);
+    const uint16_t lrfOnOff = read_u16_be(packet.data, 828);
+
+    const uint16_t cameraZoomValidity = read_u16_be(packet.data, 830);
+    const uint16_t cameraZoom = read_u16_be(packet.data, 832);
+
+    const uint16_t horizontalReferenceValidity = read_u16_be(packet.data, 834);
+    const uint16_t horizontalReference = read_u16_be(packet.data, 836);
+
+    json j;
+    j["header"] = "EMISS";
+    j["type"] = "CMD";
+    j["sender"] = "CMS";
+    j["message_name"] = "CS_LRAS_emission_control_INS";
+    j["message_id"] = MessageId_CS_LRAS_emission_control_INS;
+    j["param"] = {
+        {"action_id", actionId},
+        {"lrad_id", lradId},
+        {"audio_mode_validity", audioModeValidity},
+        {"audio_mode", {
+            {"volume_mode", {
+                {"level", volumeLevel},
+                {"audio_volume_db", audioVolumeDb},
+                {"mute", mute},
+                {"audio_mode", audioMode}
+            }},
+            {"recorded_message_tone", {
+                {"message_id", recordedMessageId},
+                {"language", recordedLanguage},
+                {"loop", recordedLoop}
+            }},
+            {"free_text", {
+                {"text", {
+                    {"language_in", freeTextLanguageIn},
+                    {"language_out", freeTextLanguageOut},
+                    {"message_text", freeTextMessage}
+                }},
+                {"loop", freeTextLoop}
+            }}
+        }},
+        {"laser_mode_validity", laserModeValidity},
+        {"laser_mode", laserMode},
+        {"light_mode_validity", lightModeValidity},
+        {"light_mode", {
+            {"light_power", lightPower},
+            {"light_zoom", lightZoom}
+        }},
+        {"lrf_mode_validity", lrfModeValidity},
+        {"lrf_on_off", lrfOnOff},
+        {"camera_zoom_validity", cameraZoomValidity},
+        {"camera_zoom", cameraZoom},
+        {"horizontal_reference_validity", horizontalReferenceValidity},
+        {"horizontal_reference", horizontalReference}
     };
 
     ConvertedMessage message;

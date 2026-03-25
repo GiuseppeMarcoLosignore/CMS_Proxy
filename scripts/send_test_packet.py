@@ -14,6 +14,8 @@ Messaggi supportati (selezionabili con --message-id / -m):
                  payload: actionId(4)=0 + lradId(2)
     1679949827  -> CS_LRAS_cueing_order_INS
                                  payload: actionId(4)=0 + lradId(2) + cueingType(2) + cstn(4) + kinematics(36)
+    1679949828  -> CS_LRAS_emission_control_INS
+                                 payload: struttura completa (822 byte)
 
 Uso:
   python scripts/send_test_packet.py -m 1679949825 --lrad-id 2 --configuration 1
@@ -81,6 +83,52 @@ def build_cueing_order_payload(args) -> bytes:
 
     return bytes(payload)
 
+
+def build_emission_control_payload(args) -> bytes:
+    """Build payload for CS_LRAS_emission_control_INS (822 bytes)."""
+    payload = bytearray(822)
+
+    # Base fields
+    struct.pack_into(">I", payload, 0, int(args.action_id) & 0xFFFFFFFF)
+    struct.pack_into(">H", payload, 4, int(args.lrad_id) & 0xFFFF)
+    struct.pack_into(">H", payload, 6, int(args.audio_mode_validity) & 0xFFFF)
+
+    # Audio mode -> volume mode
+    struct.pack_into(">H", payload, 8, int(args.volume_level) & 0xFFFF)
+    struct.pack_into(">f", payload, 10, float(args.audio_volume_db))
+    struct.pack_into(">H", payload, 14, int(args.mute) & 0xFFFF)
+    struct.pack_into(">H", payload, 16, int(args.audio_mode) & 0xFFFF)
+
+    # Recorded message / tone
+    struct.pack_into(">I", payload, 18, int(args.recorded_message_id) & 0xFFFFFFFF)
+    struct.pack_into(">H", payload, 22, int(args.recorded_language) & 0xFFFF)
+    struct.pack_into(">H", payload, 24, int(args.recorded_loop) & 0xFFFF)
+
+    # Free text
+    struct.pack_into(">H", payload, 26, int(args.free_text_language_in) & 0xFFFF)
+    struct.pack_into(">H", payload, 28, int(args.free_text_language_out) & 0xFFFF)
+
+    text_bytes = args.free_text_message.encode("utf-8", errors="ignore")
+    text_bytes = text_bytes[:768]
+    payload[30:30 + len(text_bytes)] = text_bytes
+
+    struct.pack_into(">H", payload, 798, int(args.free_text_loop) & 0xFFFF)
+
+    # Laser / light / lrf / camera / reference
+    struct.pack_into(">H", payload, 800, int(args.laser_mode_validity) & 0xFFFF)
+    struct.pack_into(">H", payload, 802, int(args.laser_mode) & 0xFFFF)
+    struct.pack_into(">H", payload, 804, int(args.light_mode_validity) & 0xFFFF)
+    struct.pack_into(">H", payload, 806, int(args.light_power) & 0xFFFF)
+    struct.pack_into(">H", payload, 808, int(args.light_zoom) & 0xFFFF)
+    struct.pack_into(">H", payload, 810, int(args.lrf_mode_validity) & 0xFFFF)
+    struct.pack_into(">H", payload, 812, int(args.lrf_on_off) & 0xFFFF)
+    struct.pack_into(">H", payload, 814, int(args.camera_zoom_validity) & 0xFFFF)
+    struct.pack_into(">H", payload, 816, int(args.camera_zoom) & 0xFFFF)
+    struct.pack_into(">H", payload, 818, int(args.horizontal_reference_validity) & 0xFFFF)
+    struct.pack_into(">H", payload, 820, int(args.horizontal_reference) & 0xFFFF)
+
+    return bytes(payload)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -117,6 +165,7 @@ def main():
             "  1679949825  -> CS_LRAS_change_configuration_order_INS\n"
             "  1679949826  -> CS_LRAS_cueing_order_cancellation_INS\n"
             "  1679949827  -> CS_LRAS_cueing_order_INS\n"
+            "  1679949828  -> CS_LRAS_emission_control_INS\n"
             "(default: 1679949825)"
         ),
     )
@@ -148,9 +197,59 @@ def main():
     parser.add_argument("--vy", type=float, default=0.0, help="Vy (m/s) opzionale")
     parser.add_argument("--vz", type=float, default=0.0, help="Vz (m/s) opzionale")
 
+    # Campi payload per 1679949828
+    parser.add_argument("--action-id", type=lambda x: int(x, 0), default=0,
+                        help="Action ID (solo per 1679949828, default: 0)")
+    parser.add_argument("--audio-mode-validity", type=int, default=1,
+                        help="Audio Mode Validity (default: 1)")
+    parser.add_argument("--volume-level", type=int, default=0,
+                        help="Volume level enum (default: 0)")
+    parser.add_argument("--audio-volume-db", type=float, default=0.0,
+                        help="Audio volume dB (default: 0.0)")
+    parser.add_argument("--mute", type=int, default=0,
+                        help="Mute enum (default: 0)")
+    parser.add_argument("--audio-mode", type=int, default=0,
+                        help="Audio mode enum (default: 0)")
+    parser.add_argument("--recorded-message-id", type=lambda x: int(x, 0), default=0,
+                        help="Recorded message id (default: 0)")
+    parser.add_argument("--recorded-language", type=int, default=0,
+                        help="Recorded language enum (default: 0)")
+    parser.add_argument("--recorded-loop", type=int, default=0,
+                        help="Recorded loop enum (default: 0)")
+    parser.add_argument("--free-text-language-in", type=int, default=0,
+                        help="Free text language in enum (default: 0)")
+    parser.add_argument("--free-text-language-out", type=int, default=0,
+                        help="Free text language out enum (default: 0)")
+    parser.add_argument("--free-text-message", default="",
+                        help="Free text message UTF-8 (max 768 bytes)")
+    parser.add_argument("--free-text-loop", type=int, default=0,
+                        help="Free text loop enum (default: 0)")
+    parser.add_argument("--laser-mode-validity", type=int, default=1,
+                        help="Laser mode validity enum (default: 1)")
+    parser.add_argument("--laser-mode", type=int, default=0,
+                        help="Laser mode enum (default: 0)")
+    parser.add_argument("--light-mode-validity", type=int, default=1,
+                        help="Light mode validity enum (default: 1)")
+    parser.add_argument("--light-power", type=int, default=0,
+                        help="Light power enum (default: 0)")
+    parser.add_argument("--light-zoom", type=int, default=0,
+                        help="Light zoom int (default: 0)")
+    parser.add_argument("--lrf-mode-validity", type=int, default=1,
+                        help="LRF mode validity enum (default: 1)")
+    parser.add_argument("--lrf-on-off", type=int, default=0,
+                        help="LRF on/off enum (default: 0)")
+    parser.add_argument("--camera-zoom-validity", type=int, default=1,
+                        help="Camera zoom validity enum (default: 1)")
+    parser.add_argument("--camera-zoom", type=int, default=0,
+                        help="Camera zoom int (default: 0)")
+    parser.add_argument("--horizontal-reference-validity", type=int, default=1,
+                        help="Horizontal reference validity enum (default: 1)")
+    parser.add_argument("--horizontal-reference", type=int, default=0,
+                        help="Horizontal reference enum (default: 0)")
+
     args = parser.parse_args()
 
-    supported_ids = sorted(set(MESSAGES.keys()) | {1679949827})
+    supported_ids = sorted(set(MESSAGES.keys()) | {1679949827, 1679949828})
     if args.message_id not in supported_ids:
         known = ', '.join(str(k) for k in supported_ids)
         parser.error(f"message-id {args.message_id} non riconosciuto. ID supportati: {known}")
@@ -158,6 +257,9 @@ def main():
     if args.message_id == 1679949827:
         msg_info = {"description": "CS_LRAS_cueing_order_INS"}
         payload = build_cueing_order_payload(args)
+    elif args.message_id == 1679949828:
+        msg_info = {"description": "CS_LRAS_emission_control_INS"}
+        payload = build_emission_control_payload(args)
     else:
         msg_info = MESSAGES[args.message_id]
         payload = msg_info["builder"](args.lrad_id, args.configuration)
