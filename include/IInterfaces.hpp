@@ -3,12 +3,22 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <cstdint>
+#include <vector>
 
 struct SendResult {
     bool success = false;
     int error_value = 0;
     std::string error_category;
     std::string error_message;
+};
+
+using AckBuilderFunc = std::function<RawPacket(uint32_t action_id, uint32_t source_message_id, const SendResult&)>;
+
+struct ConversionResult {
+    std::vector<RawPacket> packets;
+    AckBuilderFunc ack_builder;
+    bool ack_only = false;
 };
 
 enum class TransportProtocol {
@@ -41,5 +51,11 @@ public:
 class IProtocolConverter {
 public:
     virtual ~IProtocolConverter() = default;
-    virtual std::vector<RawPacket> convert(const RawPacket& input) = 0;
+    virtual ConversionResult convert(const RawPacket& input) = 0;
+};
+
+class IAckSender {
+public:
+    virtual ~IAckSender() = default;
+    virtual void send_ack(const RawPacket& ack_packet) = 0;
 };

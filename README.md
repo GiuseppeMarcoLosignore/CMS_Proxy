@@ -1,121 +1,178 @@
 # CMS_Proxy
 
-Proxy C++ che riceve messaggi UDP (multicast), li converte in JSON e li inoltra via TCP verso i sistemi LRAD. Per ogni invio genera anche un ACK/NACK binario su multicast dedicato.
+Proxy C++ che riceve messaggi binari via UDP, li converte in JSON e li inoltra via TCP verso i sistemi LRAD. Per ogni messaggio processato genera un pacchetto ACK/NACK binario inviato via UDP a un endpoint dedicato.
 
 ## Obiettivo
 
 Il progetto implementa una pipeline di bridging protocollo:
 
-1. ricezione di pacchetti binari da rete UDP;
-2. parsing dell'header e conversione payload in formato applicativo JSON;
-3. routing verso destinazioni TCP in base a `destinationLradId`;
-4. pubblicazione di ACK/NACK su multicast di ritorno.
+1. ricezione di datagrammi binari (big-endian) da rete UDP;
+2. parsing e validazione dell'header (16 byte) e dispatch per `messageId`;
+3. conversione del payload in uno o piu messaggi JSON applicativi;
+4. routing TCP verso la destinazione corretta in base a `lradId`;
+5. invio di ACK/NACK binario all'endpoint UDP configurato.
 
 ## Architettura
 
-- `UdpMulticastReceiver`: ascolta su UDP e notifica i pacchetti ricevuti tramite callback asincrona.
-- `BinaryConverter`: valida header, dispatch per `messageId`, converte payload in uno o piu messaggi JSON.
-- `TcpSender`: risolve host/porta, gestisce reconnessione e invio TCP.
-- `ProxyEngine`: orchestra il flusso end-to-end, gestisce tabella LRAD e invio ACK multicast.
+| Componente | Interfaccia | Responsabilita |
+|---|---|---|
+| `UdpMulticastReceiver` | `IReceiver` | Ascolto UDP asincrono e notifica callback |
+| `BinaryConverter` | `IProtocolConverter` | Parsing header, dispatch per `messageId`, produzione JSON |
+| `TcpSender` | `ISender` | Risoluzione host, reconnessione automatica, invio TCP |
+| `UdpAckSender` | `IAckSender` | Invio pacchetto ACK/NACK binario via UDP |
+| `ProxyEngine` | — | Orchestrazione del flusso, routing LRAD, gestione thread delivery |
+| `AppConfig` / `loadAppConfig()` | — | Caricamento configurazione da file JSON esterno |
 
-Interfacce astratte usate:
-
-- `IReceiver`
-- `IProtocolConverter`
-- `ISender`
-
-Questo rende i componenti sostituibili e testabili separatamente.
+Le interfacce astratte (`IReceiver`, `IProtocolConverter`, `ISender`, `IAckSender`) rendono ogni componente sostituibile e testabile separatamente.
 
 ## Flusso di funzionamento
 
-1. `main.cpp` crea `io_context`, receiver, converter e sender.
-2. `ProxyEngine` registra una callback sul receiver.
-3. Alla ricezione di un `RawPacket`:
-	 - estrae `source_message_id` dai primi 4 byte (big-endian);
-	 - invoca `BinaryConverter::convert()`;
-	 - per ogni output convertito recupera la destinazione LRAD da `getNetworkConfig()`;
-	 - invia il JSON via `TcpSender::send()`;
-	 - costruisce un pacchetto ACK/NACK (`build_ack_packet`) e lo pubblica su multicast ACK.
+`main.cpp` crea due `io_context` separati:
 
-Se l'ID LRAD non e configurato, non invia su TCP ma genera comunque NACK.
+- `rx_io_ctx`: usato dal receiver UDP (thread principale);
+- `delivery_io_ctx`: eseguito in un `std::jthread` dedicato, gestisce l'invio TCP e ACK in modo asincrono.
 
-Comportamento importante nel codice attuale:
+Alla ricezione di un datagramma UDP:
 
-- se l'header e invalido o il `messageId` non e presente nel dispatcher, `BinaryConverter::convert()` restituisce output vuoto e il pacchetto viene ignorato (nessun inoltro TCP, nessun ACK);
-- un singolo datagramma UDP puo produrre piu messaggi JSON (uno per ogni blocco payload da 8 byte);
-- l'ACK viene emesso solo per i messaggi effettivamente prodotti dal converter.
+1. la callback del receiver posta il lavoro su `delivery_io_ctx` tramite `boost::asio::post`;
+2. `ProxyEngine::processPacket()` estrae il `source_message_id` (primi 4 byte, big-endian);
+3. invoca `BinaryConverter::convert()` che restituisce un `ConversionResult`;
+4. se `ConversionResult` e vuoto (messageId non supportato o payload malformato), il pacchetto viene scartato senza ACK;
+5. se il flag `ack_only` e true (es. cancellazione ordine), viene costruito solo l'ACK di successo senza tentare l'invio TCP;
+6. altrimenti, per ogni `RawPacket` nell'output: cerca la destinazione LRAD nella tabella di routing, esegue `TcpSender::send()`, costruisce l'ACK/NACK tramite `ack_builder` e lo invia via `UdpAckSender`.
 
-## Messaggi supportati (stato attuale)
+Se l'ID LRAD non e presente nella tabella, non avviene l'invio TCP ma viene comunque generato un NACK con `nack_reason=2`.
 
-Al momento il dispatcher del converter gestisce questo `messageId`:
+## Messaggi supportati
 
-- `1679949825` (`CS_LRAS_change_configuration_order_INS`)
+Il dispatcher del `BinaryConverter` gestisce attualmente tre `messageId`:
 
-Per ogni blocco payload da 8 byte (`actionId[4] + lradId[2] + configuration[2]`, big-endian) produce un JSON:
+### 1. `CS_LRAS_change_configuration_order_INS` — `1679949825`
+
+Payload: uno o piu blocchi da 8 byte (`actionId[4] + lradId[2] + configuration[2]`, big-endian). Ogni blocco produce un JSON separato inviato via TCP al LRAD corrispondente.
 
 ```json
 {
-	"header": "MASTER",
-	"type": "CMD",
-	"sender": "CMS",
-	"param": {
-		"mode": "RELEASE | REQ",
-		"action_id": 123
-	}
+  "header": "MASTER",
+  "type": "CMD",
+  "sender": "CMS",
+  "param": {
+    "mode": "RELEASE"
+  }
 }
 ```
 
-Regola campo `mode`:
+- `mode = "RELEASE"` se `configuration == 0`, altrimenti `"REQ"`
+- `ack_only = false`
 
-- `configuration == 0` -> `RELEASE`
-- altrimenti -> `REQ`
+### 2. `CS_LRAS_cueing_order_cancellation_INS` — `1679949826`
 
-`destinationLradId` viene valorizzato dal campo `lradId` del payload e usato per il routing TCP.
+Payload: `actionId[4] + lradId[2]` (6 byte). Produce un JSON di cancellazione tracking.
 
-## Formato ACK multicast
+```json
+{
+  "header": "TRCK",
+  "type": "CMD",
+  "sender": "CMS",
+  "param": {
+    "mode": "READY",
+    "target": []
+  }
+}
+```
 
-`ProxyEngine` genera un pacchetto binario da 28 byte:
+- `ack_only = true`: nessun invio TCP; viene emesso direttamente un ACK di successo.
 
-- Header 16 byte
-	- `messageId = 576879045` (`LRAS_CS_ack_INS`)
-	- `messageLength = 12`
-- Payload 12 byte
-	- `action_id` (uint32, big-endian)
-	- `source_message_id` (uint32, big-endian)
-	- `ack_nack` (uint16): `1=ACK`, `2=NACK`
-	- `nack_reason` (uint16): valorizzato in base all'errore di trasporto
+### 3. `CS_LRAS_cueing_order_INS` — `1679949827`
 
-Mappatura `nack_reason` nel codice:
+Payload con almeno 22 byte dopo l'header. Estrae `actionId`, `lradId`, `cueingType`, `cstn`, `kinematicsType` e coordinate cartesiane (se disponibili). Le coordinate (x, y, z in metri) vengono convertite in azimuth/elevazione in gradi.
 
-- `0`: no statement / non classificato
-- `2`: parametri errati (es. host/porta invalidi, LRAD non configurato)
+```json
+{
+  "header": "TRCK",
+  "type": "CMD",
+  "sender": "CMS",
+  "param": {
+    "action_id": 3,
+    "cueing_type": 1,
+    "cstn": 100,
+    "kinematics_type": 1,
+    "azimuth": 45.0,
+    "elevation": 10.0
+  }
+}
+```
+
+Tipi di cinematica con coordinate cartesiane supportati: `1` (3D Kinematics), `2` (3D Position), `3` (2D Kinematics), `4` (2D Position).
+
+- `ack_only = false`
+
+## Formato pacchetto ACK/NACK
+
+Il pacchetto binario e 28 byte, big-endian:
+
+**Header (16 byte)**
+
+| Offset | Dimensione | Valore |
+|---|---|---|
+| 0 | 4 | `messageId = 576879045` (`LRAS_CS_ack_INS`) |
+| 4 | 4 | `messageLength = 12` |
+| 8 | 8 | riservato (0x00) |
+
+**Payload (12 byte)**
+
+| Offset | Dimensione | Campo |
+|---|---|---|
+| 16 | 4 | `action_id` (uint32) |
+| 20 | 4 | `source_message_id` (uint32) |
+| 24 | 2 | `ack_nack`: `1=ACK`, `2=NACK` |
+| 26 | 2 | `nack_reason` |
+
+Mappatura `nack_reason`:
+
+- `0`: nessun errore classificato
+- `2`: parametri errati (indirizzo/porta invalidi, LRAD non configurato)
 - `3`: stato sistema errato (operazione gia avviata/in corso/abortita)
 - `4`: sistema non pronto (timeout, try_again, would_block, not_connected)
 - `5`: sistema non utilizzabile (connection_refused/reset, host/network unreachable, broken_pipe, eof)
 
-Endpoint ACK predefinito (UDP):
-
-- IP: `239.0.0.50`
-- Porta: `12346`
-
 ## Configurazione rete
 
-Tutti i parametri di rete sono definiti in un file JSON esterno:
-
-- `config/network_config.json`
-
-Struttura principale:
-
-- `udp.listen_ip`, `udp.multicast_group`, `udp.multicast_port`
-- `tcp.default_target_ip`, `tcp.default_target_port`, `tcp.unicast_target_ip`
-- `ack.ip`, `ack.port` (supportato anche `ack_multicast.*` per retrocompatibilita)
-- `lrad_destinations` (lista di oggetti con `id`, `ip`, `port`)
-
-Il file viene letto all'avvio dell'eseguibile. E possibile passare un path custom come primo argomento:
+La configurazione viene letta all'avvio dal file `config/network_config.json`. E possibile passare un path alternativo come primo argomento:
 
 ```powershell
-CMS_Proxy.exe config/network_config.json
+CMS_Proxy.exe percorso\alternativo\config.json
 ```
+
+Struttura del file:
+
+```json
+{
+  "udp": {
+    "listen_ip": "127.0.0.1",
+    "multicast_group": "239.0.0.1",
+    "multicast_port": 12345
+  },
+  "tcp": {
+    "default_target_ip": "127.0.0.1",
+    "default_target_port": 9000,
+    "unicast_target_ip": "127.0.0.1"
+  },
+  "ack": {
+    "ip": "127.0.0.1",
+    "port": 12346
+  },
+  "lrad_destinations": [
+    { "id": 1, "ip": "127.0.0.1", "port": 9000 },
+    { "id": 2, "ip": "127.0.0.1", "port": 9000 }
+  ]
+}
+```
+
+Note:
+- La sezione `ack` accetta anche `ack_multicast` (retrocompatibilita).
+- Tutti i campi sono obbligatori; porte fuori range `1-65535` causano errore all'avvio.
+- Per ambienti reali modificare solo il JSON senza ricompilare.
 
 ## Build
 
@@ -125,8 +182,6 @@ Prerequisiti:
 - compilatore C++20
 - Boost (`system`)
 - `nlohmann_json`
-
-Esempio build (Windows):
 
 ```powershell
 cmake -S . -B build
@@ -141,22 +196,21 @@ cmake --build build --config Debug
 python scripts/tcp_receiver.py --host 127.0.0.1 --port 9000
 ```
 
-2. Avvia il proxy (`CMS_Proxy.exe`).
+2. Avvia il proxy:
 
-3. Invia un pacchetto di test:
+```powershell
+.\build\Debug\CMS_Proxy.exe
+```
+
+3. Invia un pacchetto di test (`CS_LRAS_change_configuration_order_INS`):
 
 ```powershell
 python scripts/send_test_packet.py --group 127.0.0.1 --port 12345
 ```
 
-Se il flusso e corretto, il receiver TCP mostra il JSON convertito e il proxy logga l'ACK/NACK inviato.
-
-Nota operativa:
-
-- i valori di esempio nel file `config/network_config.json` sono adatti al test locale;
-- per ambienti reali, aggiornare il JSON senza ricompilare l'eseguibile.
+Se il flusso e corretto il receiver TCP mostra il JSON convertito e il proxy logga l'ACK/NACK inviato.
 
 ## Limiti attuali
 
-- Dispatcher converter non completo: e implementato solo un tipo messaggio.
+- Il dispatcher gestisce solo 3 dei circa 20 `messageId` definiti nel codice.
 - Nessuna suite test automatizzata nel repository.

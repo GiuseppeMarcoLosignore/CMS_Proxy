@@ -19,6 +19,7 @@ set(SOURCES
     src/main.cpp
     src/ProxyEngine.cpp
     src/UdpMulticastReceiver.cpp
+    src/UdpAckSender.cpp
     src/TcpSender.cpp
     src/BinaryConverter.cpp
 )

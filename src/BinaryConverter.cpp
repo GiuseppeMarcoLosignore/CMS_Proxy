@@ -1,4 +1,6 @@
 ﻿#include "BinaryConverter.hpp"
+#include <boost/asio/error.hpp>
+#include <boost/system/error_code.hpp>
 #include <cmath>
 #include <cstring>
 
@@ -89,6 +91,55 @@ namespace {
     float rad_to_deg(float radians) {
         return radians * (180.0f / Pi);
     }
+
+    // --- ACK build helpers ---
+    constexpr std::size_t AckHeaderSize    = 16;
+    constexpr std::size_t AckMessageSize   = 28;
+    constexpr uint32_t    MsgId_LRAS_CS_ack_INS = 576879045;
+    constexpr uint16_t    AckAccepted      = 1;
+    constexpr uint16_t    NackNotExecuted  = 2;
+
+    uint16_t map_nack_reason(const SendResult& sr) {
+        using namespace boost::asio;
+        if (sr.success) return 0;
+        const auto ec = boost::system::error_code(sr.error_value, boost::system::system_category());
+        if (ec == error::invalid_argument || ec == error::bad_descriptor ||
+            sr.error_category == "resolver" || sr.error_category == "engine") return 2;
+        if (ec == error::already_started || ec == error::in_progress || ec == error::operation_aborted) return 3;
+        if (ec == error::timed_out || ec == error::try_again || ec == error::would_block || ec == error::not_connected) return 4;
+        if (ec == error::connection_refused || ec == error::connection_reset || ec == error::host_unreachable ||
+            ec == error::network_unreachable || ec == error::network_down || ec == error::broken_pipe ||
+            ec == error::eof) return 5;
+        return 0;
+    }
+
+    RawPacket build_ack_packet(uint32_t action_id, uint32_t source_message_id, const SendResult& sr) {
+        std::vector<uint8_t> bytes(AckMessageSize, 0);
+        const uint16_t ack_nack    = sr.success ? AckAccepted : NackNotExecuted;
+        const uint16_t nack_reason = sr.success ? 0 : map_nack_reason(sr);
+
+        const uint32_t w0 = htonl(MsgId_LRAS_CS_ack_INS);
+        const uint32_t w1 = htonl(static_cast<uint32_t>(AckMessageSize - AckHeaderSize));
+        const uint32_t w2 = 0;
+        const uint32_t w3 = 0;
+        std::memcpy(bytes.data() +  0, &w0, 4);
+        std::memcpy(bytes.data() +  4, &w1, 4);
+        std::memcpy(bytes.data() +  8, &w2, 4);
+        std::memcpy(bytes.data() + 12, &w3, 4);
+
+        const uint32_t aid_net  = htonl(action_id);
+        const uint32_t smid_net = htonl(source_message_id);
+        const uint16_t an_net   = htons(ack_nack);
+        const uint16_t nr_net   = htons(nack_reason);
+        std::memcpy(bytes.data() + 16, &aid_net,  4);
+        std::memcpy(bytes.data() + 20, &smid_net, 4);
+        std::memcpy(bytes.data() + 24, &an_net,   2);
+        std::memcpy(bytes.data() + 26, &nr_net,   2);
+
+        RawPacket pkt;
+        pkt.data = std::move(bytes);
+        return pkt;
+    }
 }
 
 BinaryConverter::BinaryConverter() {
@@ -96,39 +147,44 @@ BinaryConverter::BinaryConverter() {
 }
 
 void BinaryConverter::initializeDispatcher() {
-    // Lista di inizializzazione usando la struct MessageMapping
+    AckBuilderFunc standard_ack = [](uint32_t action_id, uint32_t source_message_id, const SendResult& sr) {
+        return build_ack_packet(action_id, source_message_id, sr);
+    };
+
     std::vector<MessageMapping> mappings = {
-        { MessageId_CS_LRAS_change_configuration_order_INS,      &BinaryConverter::handle_CS_LRAS_change_configuration_order_INS      },
-        { MessageId_CS_LRAS_cueing_order_cancellation_INS,        &BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS        },
-        { MessageId_CS_LRAS_cueing_order_INS,                     &BinaryConverter::handle_CS_LRAS_cueing_order_INS                     },
+        { MessageId_CS_LRAS_change_configuration_order_INS,   &BinaryConverter::handle_CS_LRAS_change_configuration_order_INS,   standard_ack, false },
+        { MessageId_CS_LRAS_cueing_order_cancellation_INS,    &BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS,    standard_ack, true  },
+        { MessageId_CS_LRAS_cueing_order_INS,                 &BinaryConverter::handle_CS_LRAS_cueing_order_INS,                 standard_ack, false },
     };
 
     for (const auto& m : mappings) {
-        dispatchTable[m.messageId] = m.handler;
+        dispatchTable[m.messageId] = m;
     }
 }
 
-std::vector<RawPacket> BinaryConverter::convert(const RawPacket& input) {
+ConversionResult BinaryConverter::convert(const RawPacket& input) {
     ParsedHeader header;
     if (!parseHeader(input, header)) return {};
 
     auto it = dispatchTable.find(header.messageId);
     if (it == dispatchTable.end()) return {};
 
-    // Esegue l'handler che restituisce i messaggi convertiti
-    std::vector<ConvertedMessage> convertedMessages = it->second(this, input);
-    
-    // Converte ogni oggetto JSON in un RawPacket separato
-    std::vector<RawPacket> outputPackets;
+    const MessageMapping& mapping = it->second;
+    std::vector<ConvertedMessage> convertedMessages = mapping.handler(this, input);
+
+    ConversionResult result;
+    result.ack_only    = mapping.ack_only;
+    result.ack_builder = mapping.ack_builder;
+
     for (const auto& message : convertedMessages) {
         std::string s = message.payload.dump();
         RawPacket rp;
         rp.data.assign(s.begin(), s.end());
         rp.destinationLradId = message.destinationLradId;
-        outputPackets.push_back(rp);
+        result.packets.push_back(rp);
     }
 
-    return outputPackets;
+    return result;
 }
 
 std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_change_configuration_order_INS(const RawPacket& packet){

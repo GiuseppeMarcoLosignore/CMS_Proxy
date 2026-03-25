@@ -18,7 +18,7 @@ class BinaryConverter : public IProtocolConverter {
 public:
     BinaryConverter();
 
-    std::vector<RawPacket> convert(const RawPacket& input);
+    ConversionResult convert(const RawPacket& input);
 
 private:
     struct ConvertedMessage {
@@ -31,9 +31,11 @@ private:
     struct MessageMapping {
         uint32_t messageId;
         HandlerFunc handler;
+        AckBuilderFunc ack_builder;
+        bool ack_only;
     };
 
-    std::unordered_map<uint32_t, HandlerFunc> dispatchTable;
+    std::unordered_map<uint32_t, MessageMapping> dispatchTable;
 
     void initializeDispatcher();
 

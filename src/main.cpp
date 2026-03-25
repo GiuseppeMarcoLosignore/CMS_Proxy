@@ -7,6 +7,7 @@
 #include "AppConfig.hpp"
 #include "ProxyEngine.hpp"
 #include "UdpMulticastReceiver.hpp"
+#include "UdpAckSender.hpp"
 #include "TcpSender.hpp"
 #include "BinaryConverter.hpp"
 
@@ -38,6 +39,11 @@ int main(int argc, char* argv[]) {
             config.tcp_default_target_port
         );
         auto converter = std::make_shared<BinaryConverter>();
+        auto ack_sender = std::make_shared<UdpAckSender>(
+            delivery_io_ctx,
+            config.ack_target_ip,
+            config.ack_target_port
+        );
 
         // Configura il target unicast per il TcpSender
         sender->set_unicast_target(config.tcp_unicast_target_ip);
@@ -47,10 +53,9 @@ int main(int argc, char* argv[]) {
             receiver,
             converter,
             sender,
+            ack_sender,
             delivery_io_ctx,
-            config.lrad_destinations,
-            config.ack_target_ip,
-            config.ack_target_port
+            config.lrad_destinations
         );
         engine.run();
 
