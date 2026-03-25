@@ -1,5 +1,7 @@
 #include "ProxyEngine.hpp"
 #include <boost/asio/error.hpp>
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include <iostream>
 #include <iomanip>
@@ -16,8 +18,15 @@ constexpr std::size_t HeaderSize = 16;
 constexpr std::size_t AckMessageSize = 28;
 constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576879045;
 constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
+constexpr std::array<uint32_t, 1> AckOnlyMessageIds = {
+    MessageId_CS_LRAS_cueing_order_cancellation_INS
+};
 constexpr uint16_t AckAccepted = 1;
 constexpr uint16_t NackNotExecuted = 2;
+
+bool is_ack_only_message(uint32_t message_id) {
+    return std::find(AckOnlyMessageIds.begin(), AckOnlyMessageIds.end(), message_id) != AckOnlyMessageIds.end();
+}
 
 uint32_t read_u32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     if (data.size() < offset + sizeof(uint32_t)) {
@@ -134,68 +143,53 @@ ProxyEngine::ProxyEngine(std::shared_ptr<IReceiver> r,
                                                  std::shared_ptr<ISender> s,
                                                  boost::asio::io_context& delivery_io_ctx,
                                                  std::map<uint16_t, LradDestination> lrad_config,
-                                                 std::string ack_multicast_ip,
-                                                 uint16_t ack_multicast_port)
+                                                 std::string ack_target_ip,
+                                                 uint16_t ack_target_port)
     : receiver_(r),
       converter_(c),
       sender_(s),
             delivery_io_ctx_(delivery_io_ctx),
             ack_socket_(delivery_io_ctx_),
-      ack_multicast_ready_(false)
+      ack_target_ip_(std::move(ack_target_ip)),
+      ack_target_port_(ack_target_port),
+      ack_socket_ready_(false)
 {
-        lrad_config_ = std::move(lrad_config);
+    lrad_config_ = std::move(lrad_config);
+
     boost::system::error_code ec;
-        auto ack_address = boost::asio::ip::make_address(ack_multicast_ip, ec);
+    ack_socket_.open(boost::asio::ip::udp::v4(), ec);
     if (ec) {
-                std::cerr << "[Engine][ACK] Indirizzo multicast non valido: " << ack_multicast_ip
-                  << " -> " << ec.message() << std::endl;
+        std::cerr << "[Engine][ACK] Errore apertura socket UDP ACK: " << ec.message() << std::endl;
     } else {
-                ack_multicast_endpoint_ = boost::asio::ip::udp::endpoint(ack_address, ack_multicast_port);
-
-        ack_socket_.open(boost::asio::ip::udp::v4(), ec);
-        if (ec) {
-            std::cerr << "[Engine][ACK] Errore apertura socket UDP ACK: " << ec.message() << std::endl;
-        } else {
-            ack_socket_.set_option(boost::asio::ip::multicast::enable_loopback(true), ec);
-            if (ec) {
-                std::cerr << "[Engine][ACK] Errore configurazione loopback multicast: " << ec.message() << std::endl;
-            }
-
-            ack_socket_.set_option(boost::asio::ip::multicast::hops(1), ec);
-            if (ec) {
-                std::cerr << "[Engine][ACK] Errore configurazione TTL multicast: " << ec.message() << std::endl;
-            }
-
-            ack_multicast_ready_ = true;
-            std::cout << "[Engine][ACK] Invio ACK multicast attivo su "
-                      << ack_multicast_ip << ":" << ack_multicast_port << std::endl;
-        }
+        ack_socket_ready_ = true;
+        std::cout << "[Engine][ACK] Invio ACK UDP attivo su target "
+                  << ack_target_ip_ << ":" << ack_target_port_ << std::endl;
     }
 
     // Colleghiamo la logica: quando arriva un pacchetto...
-    receiver_->set_callback([this](const RawPacket& input) {
-        boost::asio::post(delivery_io_ctx_, [this, input]() {
-            processPacket(input);
+    receiver_->set_callback([this](const RawPacket& input, const PacketSourceInfo& source_info) {
+        boost::asio::post(delivery_io_ctx_, [this, input, source_info]() {
+            processPacket(input, source_info);
         });
     });
 
 }
 
-void ProxyEngine::processPacket(const RawPacket& input) {
+void ProxyEngine::processPacket(const RawPacket& input, const PacketSourceInfo& source_info) {
     const uint32_t source_message_id = extract_message_id_from_header(input);
 
     // 1. Convertiamo il pacchetto (Big-Endian -> Logica interna)
     std::vector<RawPacket> output = converter_->convert(input);
 
-    // Per il messaggio di cancellazione cueing: dopo parse inviamo solo ACK al mittente.
-    if (source_message_id == MessageId_CS_LRAS_cueing_order_cancellation_INS) {
+    // Se il messaggio è di tipo "ACK-only", inviamo subito un ACK basato sul risultato della conversione, senza passare per il TCP Sender
+    if (is_ack_only_message(source_message_id)) {
         if (!output.empty()) {
             SendResult send_result;
             send_result.success = true;
 
             const RawPacket ack_packet = build_ack_packet(0, source_message_id, send_result);
             log_ack_packet(ack_packet, 0, source_message_id, send_result);
-            sendAckToMulticast(ack_packet);
+            sendAck(ack_packet, source_info);
         } else {
             std::cerr << "[Engine] Messaggio cancellazione cueing malformato: source_id="
                       << source_message_id << std::endl;
@@ -217,7 +211,7 @@ void ProxyEngine::processPacket(const RawPacket& input) {
                 const uint32_t action_id = extract_action_id_from_payload(packetToSend);
                 const RawPacket ack_packet = build_ack_packet(action_id, source_message_id, send_result);
                 log_ack_packet(ack_packet, action_id, source_message_id, send_result);
-                sendAckToMulticast(ack_packet);
+                sendAck(ack_packet, source_info);
             } else {
                 std::cerr << "[Engine] LRAD ID non configurato: " << packetToSend.destinationLradId << std::endl;
 
@@ -230,7 +224,7 @@ void ProxyEngine::processPacket(const RawPacket& input) {
                 const uint32_t action_id = extract_action_id_from_payload(packetToSend);
                 const RawPacket ack_packet = build_ack_packet(action_id, source_message_id, send_result);
                 log_ack_packet(ack_packet, action_id, source_message_id, send_result);
-                sendAckToMulticast(ack_packet);
+                sendAck(ack_packet, source_info);
             }
         }
     } else {
@@ -239,16 +233,36 @@ void ProxyEngine::processPacket(const RawPacket& input) {
     }
 }
 
-void ProxyEngine::sendAckToMulticast(const RawPacket& ack_packet) {
-    if (!ack_multicast_ready_) {
-        std::cerr << "[Engine][ACK] Socket multicast non pronto, ACK non inviato." << std::endl;
+void ProxyEngine::sendAck(const RawPacket& ack_packet, const PacketSourceInfo& source_info) {
+    if (!ack_socket_ready_) {
+        std::cerr << "[Engine][ACK] Socket ACK non pronto, ACK non inviato." << std::endl;
+        return;
+    }
+
+    if (source_info.protocol != TransportProtocol::Udp) {
+        std::cerr << "[Engine][ACK] Protocollo sorgente non supportato per ACK: solo UDP." << std::endl;
+        return;
+    }
+
+    const std::string target_ip = ack_target_ip_.empty() ? source_info.source_ip : ack_target_ip_;
+    const uint16_t target_port = ack_target_port_ != 0 ? ack_target_port_ : source_info.source_port;
+    if (target_ip.empty() || target_port == 0) {
+        std::cerr << "[Engine][ACK] Target ACK non valido (ip/porta), ACK non inviato." << std::endl;
         return;
     }
 
     boost::system::error_code ec;
-    ack_socket_.send_to(boost::asio::buffer(ack_packet.data), ack_multicast_endpoint_, 0, ec);
+    const auto target_address = boost::asio::ip::make_address(target_ip, ec);
     if (ec) {
-        std::cerr << "[Engine][ACK] Errore invio multicast ACK: " << ec.message() << std::endl;
+        std::cerr << "[Engine][ACK] IP target ACK non valido: " << target_ip
+                  << " -> " << ec.message() << std::endl;
+        return;
+    }
+
+    boost::asio::ip::udp::endpoint target_endpoint(target_address, target_port);
+    ack_socket_.send_to(boost::asio::buffer(ack_packet.data), target_endpoint, 0, ec);
+    if (ec) {
+        std::cerr << "[Engine][ACK] Errore invio ACK UDP: " << ec.message() << std::endl;
     }
 }
 

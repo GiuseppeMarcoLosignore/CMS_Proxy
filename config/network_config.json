@@ -9,8 +9,8 @@
     "default_target_port": 9000,
     "unicast_target_ip": "127.0.0.1"
   },
-  "ack_multicast": {
-    "ip": "239.0.0.50",
+  "ack": {
+    "ip": "127.0.0.1",
     "port": 12346
   },
   "lrad_destinations": [

@@ -19,8 +19,8 @@ struct AppConfig {
     uint16_t tcp_default_target_port = 0;
     std::string tcp_unicast_target_ip;
 
-    std::string ack_multicast_ip;
-    uint16_t ack_multicast_port = 0;
+    std::string ack_target_ip;
+    uint16_t ack_target_port = 0;
 
     std::map<uint16_t, LradDestination> lrad_destinations;
 };

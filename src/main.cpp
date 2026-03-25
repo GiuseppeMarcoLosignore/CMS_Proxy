@@ -49,8 +49,8 @@ int main(int argc, char* argv[]) {
             sender,
             delivery_io_ctx,
             config.lrad_destinations,
-            config.ack_multicast_ip,
-            config.ack_multicast_port
+            config.ack_target_ip,
+            config.ack_target_port
         );
         engine.run();
 

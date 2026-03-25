@@ -93,7 +93,7 @@ Mappatura `nack_reason` nel codice:
 - `4`: sistema non pronto (timeout, try_again, would_block, not_connected)
 - `5`: sistema non utilizzabile (connection_refused/reset, host/network unreachable, broken_pipe, eof)
 
-Endpoint multicast ACK predefinito:
+Endpoint ACK predefinito (UDP):
 
 - IP: `239.0.0.50`
 - Porta: `12346`
@@ -108,7 +108,7 @@ Struttura principale:
 
 - `udp.listen_ip`, `udp.multicast_group`, `udp.multicast_port`
 - `tcp.default_target_ip`, `tcp.default_target_port`, `tcp.unicast_target_ip`
-- `ack_multicast.ip`, `ack_multicast.port`
+- `ack.ip`, `ack.port` (supportato anche `ack_multicast.*` per retrocompatibilita)
 - `lrad_destinations` (lista di oggetti con `id`, `ip`, `port`)
 
 Il file viene letto all'avvio dell'eseguibile. E possibile passare un path custom come primo argomento:

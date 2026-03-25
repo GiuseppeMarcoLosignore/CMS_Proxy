@@ -41,8 +41,10 @@ AppConfig loadAppConfig(const std::string& config_path) {
     if (!root.contains("tcp") || !root.at("tcp").is_object()) {
         throw std::runtime_error("Sezione 'tcp' mancante o non valida");
     }
-    if (!root.contains("ack_multicast") || !root.at("ack_multicast").is_object()) {
-        throw std::runtime_error("Sezione 'ack_multicast' mancante o non valida");
+    const bool has_ack_section = root.contains("ack") && root.at("ack").is_object();
+    const bool has_ack_multicast_section = root.contains("ack_multicast") && root.at("ack_multicast").is_object();
+    if (!has_ack_section && !has_ack_multicast_section) {
+        throw std::runtime_error("Sezione 'ack' o 'ack_multicast' mancante o non valida");
     }
     if (!root.contains("lrad_destinations") || !root.at("lrad_destinations").is_array()) {
         throw std::runtime_error("Sezione 'lrad_destinations' mancante o non valida");
@@ -50,7 +52,8 @@ AppConfig loadAppConfig(const std::string& config_path) {
 
     const auto& udp = root.at("udp");
     const auto& tcp = root.at("tcp");
-    const auto& ack = root.at("ack_multicast");
+    const auto& ack = has_ack_section ? root.at("ack") : root.at("ack_multicast");
+    const std::string ack_section_name = has_ack_section ? "ack" : "ack_multicast";
 
     AppConfig cfg;
     cfg.udp_listen_ip = read_required<std::string>(udp, "listen_ip", "udp");
@@ -61,8 +64,8 @@ AppConfig loadAppConfig(const std::string& config_path) {
     cfg.tcp_default_target_port = read_port(tcp, "default_target_port", "tcp");
     cfg.tcp_unicast_target_ip = read_required<std::string>(tcp, "unicast_target_ip", "tcp");
 
-    cfg.ack_multicast_ip = read_required<std::string>(ack, "ip", "ack_multicast");
-    cfg.ack_multicast_port = read_port(ack, "port", "ack_multicast");
+    cfg.ack_target_ip = read_required<std::string>(ack, "ip", ack_section_name);
+    cfg.ack_target_port = read_port(ack, "port", ack_section_name);
 
     for (const auto& destination : root.at("lrad_destinations")) {
         if (!destination.is_object()) {

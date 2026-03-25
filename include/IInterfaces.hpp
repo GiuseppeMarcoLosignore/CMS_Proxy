@@ -11,10 +11,21 @@ struct SendResult {
     std::string error_message;
 };
 
+enum class TransportProtocol {
+    Udp,
+    Tcp
+};
+
+struct PacketSourceInfo {
+    TransportProtocol protocol = TransportProtocol::Udp;
+    std::string source_ip;
+    uint16_t source_port = 0;
+};
+
 class IReceiver {
 public:
     virtual ~IReceiver() = default;
-    using MessageCallback = std::function<void(const RawPacket&)>;
+    using MessageCallback = std::function<void(const RawPacket&, const PacketSourceInfo&)>;
     
     virtual void set_callback(MessageCallback cb) = 0;
     virtual void start() = 0;

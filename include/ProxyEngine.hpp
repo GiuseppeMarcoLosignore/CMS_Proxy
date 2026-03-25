@@ -14,13 +14,13 @@ public:
                 std::shared_ptr<ISender> s,
                 boost::asio::io_context& delivery_io_ctx,
                 std::map<uint16_t, LradDestination> lrad_config,
-                std::string ack_multicast_ip,
-                uint16_t ack_multicast_port);
+                std::string ack_target_ip,
+                uint16_t ack_target_port);
     void run();
 
 private:
-    void sendAckToMulticast(const RawPacket& ack_packet);
-    void processPacket(const RawPacket& input);
+    void sendAck(const RawPacket& ack_packet, const PacketSourceInfo& source_info);
+    void processPacket(const RawPacket& input, const PacketSourceInfo& source_info);
 
     std::shared_ptr<IReceiver> receiver_;
     std::shared_ptr<IProtocolConverter> converter_;
@@ -28,7 +28,8 @@ private:
 
     boost::asio::io_context& delivery_io_ctx_;
     boost::asio::ip::udp::socket ack_socket_;
-    boost::asio::ip::udp::endpoint ack_multicast_endpoint_;
-    bool ack_multicast_ready_;
+    std::string ack_target_ip_;
+    uint16_t ack_target_port_;
+    bool ack_socket_ready_;
     std::map<uint16_t, LradDestination> lrad_config_;
 };

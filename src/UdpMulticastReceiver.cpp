@@ -39,7 +39,12 @@ void UdpMulticastReceiver::do_receive() {
             if (!ec) {
                 if (callback_) {
                     std::vector<uint8_t> data(buffer_.begin(), buffer_.begin() + bytes_recvd);
-                    callback_(RawPacket(std::move(data)));
+                    PacketSourceInfo source_info;
+                    source_info.protocol = TransportProtocol::Udp;
+                    source_info.source_ip = sender_endpoint_.address().to_string();
+                    source_info.source_port = sender_endpoint_.port();
+
+                    callback_(RawPacket(std::move(data)), source_info);
                 }
                 do_receive(); // Continua ad ascoltare
             } else if (ec != boost::asio::error::operation_aborted) {
