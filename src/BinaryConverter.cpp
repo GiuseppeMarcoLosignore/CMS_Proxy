@@ -1,4 +1,5 @@
 ﻿#include "BinaryConverter.hpp"
+#include "CueingMath.hpp"
 #include <boost/asio/error.hpp>
 #include <boost/system/error_code.hpp>
 #include <cmath>
@@ -8,7 +9,6 @@
 
 namespace {
     constexpr size_t HeaderSize = 16;
-    constexpr float Pi = 3.14159265358979323846f;
 
     constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
     constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
@@ -77,6 +77,16 @@ namespace {
         return ntohs(value);
     }
 
+    float normalize_0_360(float angleDeg) {
+        return cueing::mod360(angleDeg);
+    }
+
+    uint16_t encode_delta_u16(float angleDeg) {
+        const float normalized = normalize_0_360(angleDeg);
+        const int rounded = static_cast<int>(std::lround(normalized));
+        return static_cast<uint16_t>(rounded & 0xFFFF);
+    }
+
     uint32_t read_u32_be(const std::vector<uint8_t>& data, size_t offset) {
         uint32_t value = 0;
         std::memcpy(&value, data.data() + offset, sizeof(uint32_t));
@@ -88,10 +98,6 @@ namespace {
         float value = 0.0f;
         std::memcpy(&value, &raw, sizeof(float));
         return value;
-    }
-
-    float rad_to_deg(float radians) {
-        return radians * (180.0f / Pi);
     }
 
     std::string payload_to_hex(const std::vector<uint8_t>& data, size_t offset, size_t maxBytes) {
@@ -338,22 +344,55 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
     float azimuthDeg = 0.0f;
     float elevationDeg = 0.0f;
     if (hasCartesianCoordinates) {
-        azimuthDeg = rad_to_deg(std::atan2(y, x));
-        const float horizontalDistance = std::sqrt((x * x) + (y * y));
-        elevationDeg = rad_to_deg(std::atan2(z, horizontalDistance));
+        float range = 0.0f;
+        float azAbs = 0.0f;
+        cueing::cartesian2target(
+            x,
+            y,
+            z,
+            azimuthDeg,
+            elevationDeg,
+            range,
+            false,
+            azAbs,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f);
     }
 
+    const float azimuth360 = normalize_0_360(azimuthDeg);
+    const float elevation360 = normalize_0_360(elevationDeg);
+
     json j;
-    j["header"] = "TRCK";
-    j["type"] = "CMD";
-    j["sender"] = "CMS";
-    j["param"] = {
+    if (cueingType == 1) {
+        // 4.2.11 POSITION
+        j["header"] = "MOVE";
+        j["type"] = "CMD";
+        j["sender"] = "CC";
+        j["param"] = {
+            {"goTo", hasCartesianCoordinates ? "ABS" : "HOME"},
+            {"az", azimuth360},
+            {"el", elevation360}
+        };
+    } else {
+        // 4.2.12 DELTA
+        j["header"] = "DELTA";
+        j["type"] = "CMD";
+        j["sender"] = "CC";
+        j["param"] = {
+            {"az", encode_delta_u16(azimuthDeg)},
+            {"el", encode_delta_u16(elevationDeg)}
+        };
+    }
+
+    // Keep low-level metadata for diagnostics and traceability.
+    j["meta"] = {
         {"action_id", actionId},
+        {"lrad_id", lradId},
         {"cueing_type", cueingType},
         {"cstn", cstn},
-        {"kinematics_type", kinematicsType},
-        {"azimuth", azimuthDeg},
-        {"elevation", elevationDeg}
+        {"kinematics_type", kinematicsType}
     };
 
     ConvertedMessage message;
