@@ -18,7 +18,7 @@ class BinaryConverter : public IProtocolConverter {
 public:
     BinaryConverter();
 
-    ConversionResult convert(const RawPacket& input);
+    ConversionResult convert(const RawPacket& input, const SystemStateSnapshot& snapshot) override;
 
 private:
     struct ConvertedMessage {
@@ -26,7 +26,11 @@ private:
         uint16_t destinationLradId;
     };
 
-    using HandlerFunc = std::function<std::vector<ConvertedMessage>(BinaryConverter*, const RawPacket&)>;
+    using HandlerFunc = std::function<std::vector<ConvertedMessage>(
+        BinaryConverter*,
+        const RawPacket&,
+        const SystemStateSnapshot&,
+        std::vector<StateUpdate>&)>;
 
     struct MessageMapping {
         uint32_t messageId;
@@ -39,10 +43,22 @@ private:
 
     void initializeDispatcher();
 
-    std::vector<ConvertedMessage> handle_CS_LRAS_change_configuration_order_INS(const RawPacket& packet);
-    std::vector<ConvertedMessage> handle_CS_LRAS_cueing_order_cancellation_INS(const RawPacket& packet);
-    std::vector<ConvertedMessage> handle_CS_LRAS_cueing_order_INS(const RawPacket& packet);
-    std::vector<ConvertedMessage> handle_CS_LRAS_emission_control_INS(const RawPacket& packet);
+    std::vector<ConvertedMessage> handle_CS_LRAS_change_configuration_order_INS(
+        const RawPacket& packet,
+        const SystemStateSnapshot& snapshot,
+        std::vector<StateUpdate>& stateUpdates);
+    std::vector<ConvertedMessage> handle_CS_LRAS_cueing_order_cancellation_INS(
+        const RawPacket& packet,
+        const SystemStateSnapshot& snapshot,
+        std::vector<StateUpdate>& stateUpdates);
+    std::vector<ConvertedMessage> handle_CS_LRAS_cueing_order_INS(
+        const RawPacket& packet,
+        const SystemStateSnapshot& snapshot,
+        std::vector<StateUpdate>& stateUpdates);
+    std::vector<ConvertedMessage> handle_CS_LRAS_emission_control_INS(
+        const RawPacket& packet,
+        const SystemStateSnapshot& snapshot,
+        std::vector<StateUpdate>& stateUpdates);
 
     std::string mapMasterMode(uint8_t modeCode);
 };

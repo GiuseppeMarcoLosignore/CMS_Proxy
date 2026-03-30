@@ -1,10 +1,12 @@
 #pragma once
 #include "RawPacket.hpp"
+#include "SystemState.hpp"
 #include <functional>
 #include <memory>
 #include <string>
 #include <cstdint>
 #include <vector>
+#include <optional>
 
 struct SendResult {
     bool success = false;
@@ -19,6 +21,7 @@ struct ConversionResult {
     std::vector<RawPacket> packets;
     AckBuilderFunc ack_builder;
     bool ack_only = false;
+    std::vector<StateUpdate> state_updates;
 };
 
 enum class TransportProtocol {
@@ -51,7 +54,7 @@ public:
 class IProtocolConverter {
 public:
     virtual ~IProtocolConverter() = default;
-    virtual ConversionResult convert(const RawPacket& input) = 0;
+    virtual ConversionResult convert(const RawPacket& input, const SystemStateSnapshot& snapshot) = 0;
 };
 
 class IAckSender {

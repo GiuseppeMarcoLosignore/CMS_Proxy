@@ -1,6 +1,7 @@
 #pragma once
 #include "AppConfig.hpp"
 #include "IInterfaces.hpp"
+#include "SystemState.hpp"
 #include <boost/asio.hpp>
 #include <map>
 #include <memory>
@@ -13,6 +14,7 @@ public:
                 std::shared_ptr<IProtocolConverter> c, 
                 std::shared_ptr<ISender> s,
                 std::shared_ptr<IAckSender> ack_sender,
+                std::shared_ptr<SystemState> system_state,
                 boost::asio::io_context& delivery_io_ctx,
                 std::map<uint16_t, LradDestination> lrad_config);
     void run();
@@ -24,6 +26,7 @@ private:
     std::shared_ptr<IProtocolConverter> converter_;
     std::shared_ptr<ISender> sender_;
     std::shared_ptr<IAckSender> ack_sender_;
+    std::shared_ptr<SystemState> system_state_;
 
     boost::asio::io_context& delivery_io_ctx_;
     std::map<uint16_t, LradDestination> lrad_config_;

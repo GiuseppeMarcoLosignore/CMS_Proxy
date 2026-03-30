@@ -22,6 +22,7 @@ set(SOURCES
     src/UdpAckSender.cpp
     src/TcpSender.cpp
     src/BinaryConverter.cpp
+    src/SystemState.cpp
     CueingMathCpp.cpp
 )
 

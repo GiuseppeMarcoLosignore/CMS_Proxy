@@ -10,6 +10,7 @@
 #include "UdpAckSender.hpp"
 #include "TcpSender.hpp"
 #include "BinaryConverter.hpp"
+#include "SystemState.hpp"
 
 int main(int argc, char* argv[]) {
     // Inizializzazione socket per Windows
@@ -39,6 +40,7 @@ int main(int argc, char* argv[]) {
             config.tcp_default_target_port
         );
         auto converter = std::make_shared<BinaryConverter>();
+        auto system_state = std::make_shared<SystemState>();
         auto ack_sender = std::make_shared<UdpAckSender>(
             delivery_io_ctx,
             config.ack_target_ip,
@@ -54,6 +56,7 @@ int main(int argc, char* argv[]) {
             converter,
             sender,
             ack_sender,
+            system_state,
             delivery_io_ctx,
             config.lrad_destinations
         );

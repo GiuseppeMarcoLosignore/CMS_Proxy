@@ -188,7 +188,7 @@ void BinaryConverter::initializeDispatcher() {
     }
 }
 
-ConversionResult BinaryConverter::convert(const RawPacket& input) {
+ConversionResult BinaryConverter::convert(const RawPacket& input, const SystemStateSnapshot& snapshot) {
     ParsedHeader header;
     if (!parseHeader(input, header)) return {};
 
@@ -196,11 +196,13 @@ ConversionResult BinaryConverter::convert(const RawPacket& input) {
     if (it == dispatchTable.end()) return {};
 
     const MessageMapping& mapping = it->second;
-    std::vector<ConvertedMessage> convertedMessages = mapping.handler(this, input);
+    std::vector<StateUpdate> stateUpdates;
+    std::vector<ConvertedMessage> convertedMessages = mapping.handler(this, input, snapshot, stateUpdates);
 
     ConversionResult result;
     result.ack_only    = mapping.ack_only;
     result.ack_builder = mapping.ack_builder;
+    result.state_updates = std::move(stateUpdates);
 
     for (const auto& message : convertedMessages) {
         std::string s = message.payload.dump();
@@ -213,7 +215,10 @@ ConversionResult BinaryConverter::convert(const RawPacket& input) {
     return result;
 }
 
-std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_change_configuration_order_INS(const RawPacket& packet){
+std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_change_configuration_order_INS(
+    const RawPacket& packet,
+    const SystemStateSnapshot&,
+    std::vector<StateUpdate>& stateUpdates) {
     std::vector<ConvertedMessage> results;
     
     // Iniziamo dal byte 16 (saltiamo l'header gestito altrove)
@@ -254,6 +259,12 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
         message.destinationLradId = lradId;
         results.push_back(message);
 
+        // RELEASE/REQ cambia lo stato di engagement del LRAD.
+        StateUpdate delta;
+        delta.lradId = lradId;
+        delta.engaged = (rawConfig != 0);
+        stateUpdates.push_back(delta);
+
         // Avanzamento al prossimo blocco di 8 byte
         offset += BlockSize;
     }
@@ -261,7 +272,10 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
     return results;
 }
 
-std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS(const RawPacket& packet) {
+std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_cueing_order_cancellation_INS(
+    const RawPacket& packet,
+    const SystemStateSnapshot&,
+    std::vector<StateUpdate>&) {
     std::vector<ConvertedMessage> results;
 
     // Header: 16 bytes | ActionId: 4 bytes | LradId: 2 bytes
@@ -298,7 +312,10 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
     return results;
 }
 
-std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_cueing_order_INS(const RawPacket& packet) {
+std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_cueing_order_INS(
+    const RawPacket& packet,
+    const SystemStateSnapshot&,
+    std::vector<StateUpdate>&) {
     std::vector<ConvertedMessage> results;
 
     // Campo minimo letto fino a kinematics type (offset 36 + 2 byte).
@@ -403,8 +420,12 @@ std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_c
     return results;
 }
 
-std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_emission_control_INS(const RawPacket& packet) {
+std::vector<BinaryConverter::ConvertedMessage> BinaryConverter::handle_CS_LRAS_emission_control_INS(
+    const RawPacket& packet,
+    const SystemStateSnapshot&,
+    std::vector<StateUpdate>& stateUpdates) {
     std::vector<ConvertedMessage> results;
+    (void)stateUpdates;
 
     // Ultimo campo: Horizontal Reference (pos 836, dim 2) -> size minima 838 byte.
     if (packet.data.size() < 838) {
