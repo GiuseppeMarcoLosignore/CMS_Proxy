@@ -3,6 +3,28 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
+
+enum class PeriodicTransport {
+    UdpMulticast,
+    TcpUnicast
+};
+
+struct SourceProfileConfig {
+    std::string name;
+    std::string bind_ip;
+};
+
+struct PeriodicMulticastMessageConfig {
+    uint32_t message_id = 0;
+    std::string name;
+    PeriodicTransport protocol = PeriodicTransport::UdpMulticast;
+    std::string destination_ip;
+    uint16_t destination_port = 0;
+    std::string source_profile;
+    uint32_t interval_ms = 0;
+    bool enabled = true;
+};
 
 struct LradDestination {
     uint16_t id;             // L'ID che arriva dal pacchetto (es: 1 o 2)
@@ -23,6 +45,8 @@ struct AppConfig {
     uint16_t ack_target_port = 0;
 
     std::map<uint16_t, LradDestination> lrad_destinations;
+    std::vector<SourceProfileConfig> source_profiles;
+    std::vector<PeriodicMulticastMessageConfig> periodic_messages;
 };
 
 AppConfig loadAppConfig(const std::string& config_path);

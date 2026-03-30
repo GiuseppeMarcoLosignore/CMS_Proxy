@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
         sender->set_unicast_target(config.tcp_unicast_target_ip);
 
         // ASSEMBLAGGIO
-        ProxyEngine engine(
+        auto engine = std::make_shared<ProxyEngine>(
             receiver,
             converter,
             sender,
@@ -60,15 +60,19 @@ int main(int argc, char* argv[]) {
             delivery_io_ctx,
             config.lrad_destinations
         );
-        engine.run();
+        engine->configurePeriodicMessages(config.periodic_messages, config.source_profiles);
+        engine->startPeriodicMessages();
+        engine->run();
 
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "
                   << config_path << std::endl;
         std::cout << "[SYSTEM] JSON verranno inviati a: "
                   << config.tcp_unicast_target_ip << ":" << config.tcp_default_target_port << std::endl;
-
+        
         // AVVIO DEL CICLO EVENTI RX (Bloccante)
         rx_io_ctx.run();
+
+        engine->stopPeriodicMessages();
 
         // In caso di uscita ordinata, fermiamo il worker di delivery.
         delivery_work_guard.reset();

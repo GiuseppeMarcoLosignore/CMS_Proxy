@@ -1,4 +1,5 @@
 #pragma once
+#include "AppConfig.hpp"
 #include "RawPacket.hpp"
 #include "SystemState.hpp"
 #include <functional>
@@ -61,4 +62,11 @@ class IAckSender {
 public:
     virtual ~IAckSender() = default;
     virtual void send_ack(const RawPacket& ack_packet) = 0;
+};
+
+class IPeriodicReporter {
+public:
+    virtual ~IPeriodicReporter() = default;
+    virtual void start(const std::vector<PeriodicMulticastMessageConfig>& periodic_configs) = 0;
+    virtual void stop() = 0;
 };
