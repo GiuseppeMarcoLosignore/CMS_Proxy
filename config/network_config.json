@@ -3,6 +3,10 @@
     "listen_ip": "127.0.0.1",
     "multicast_group": "226.1.1.30",
     "multicast_port": 55000,
+    "periodic_health_status": {
+      "enabled": true,
+      "interval_ms": 1000
+    },
     "unicast_relays": [
     ],
     "handlers": {
@@ -19,6 +23,11 @@
             "port": 9000
           }
         ]
+      },
+      "udp_unicast_send": {
+        "enabled": true,
+        "target_ip": "127.0.0.1",
+        "target_port": 55020
       },
       "ack_send": {
         "target_ip": "226.1.1.43",

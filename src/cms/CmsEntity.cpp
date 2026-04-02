@@ -64,6 +64,11 @@ void CmsEntity::start() {
         subscribeToRelay(relay_pair.first, relay_pair.second);
     }
 
+    if (config_.periodic_health_status.enabled) {
+        periodicHealthTimer_.emplace(rxIoContext_);
+        schedulePeriodicHealthStatusTick();
+    }
+
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {
         rxIoContext_.run();
@@ -73,6 +78,10 @@ void CmsEntity::start() {
               << config_.multicast_group << ":" << config_.multicast_port << std::endl;
     if (!relay_config_.empty()) {
         std::cout << "[CMS Entity] Relay unicast attivi: " << relay_config_.size() << std::endl;
+    }
+    if (config_.periodic_health_status.enabled) {
+        std::cout << "[CMS Entity] Periodic CS_MULTI_health_status_INS attivo: interval_ms="
+                  << config_.periodic_health_status.interval_ms << std::endl;
     }
 }
 
@@ -85,7 +94,37 @@ void CmsEntity::stop() {
         rxWorkGuard_->reset();
     }
 
+    if (periodicHealthTimer_.has_value()) {
+        boost::system::error_code ec;
+        periodicHealthTimer_->cancel();
+    }
+
     rxIoContext_.stop();
+}
+
+void CmsEntity::schedulePeriodicHealthStatusTick() {
+    if (!periodicHealthTimer_.has_value()) {
+        return;
+    }
+
+    periodicHealthTimer_->expires_after(std::chrono::milliseconds(config_.periodic_health_status.interval_ms));
+    periodicHealthTimer_->async_wait([this](const boost::system::error_code& ec) {
+        if (ec) {
+            return;
+        }
+
+        publishPeriodicHealthStatusTick();
+        schedulePeriodicHealthStatusTick();
+    });
+}
+
+void CmsEntity::publishPeriodicHealthStatusTick() {
+    if (!eventBus_) {
+        return;
+    }
+
+    auto tickEvent = std::make_shared<CmsPeriodicMessageTickEvent>();
+    eventBus_->publish(tickEvent);
 }
 
 void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
@@ -116,6 +155,7 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         outgoingEvent->ackBuilder = result.ack_builder;
         outgoingEvent->sourceMessageId = sourceMessageId;
         eventBus_->publish(outgoingEvent);
+        
     }
 
     if (!result.state_updates.empty()) {

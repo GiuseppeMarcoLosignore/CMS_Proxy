@@ -20,9 +20,21 @@ struct CmsAckSendHandlerConfig {
     uint16_t target_port = 0;
 };
 
+struct CmsUdpUnicastSendHandlerConfig {
+    bool enabled = false;
+    std::string target_ip;
+    uint16_t target_port = 0;
+};
+
 struct CmsHandlersConfig {
     CmsTcpSendHandlerConfig tcp_send;
     CmsAckSendHandlerConfig ack_send;
+    CmsUdpUnicastSendHandlerConfig udp_unicast_send;
+};
+
+struct CmsPeriodicHealthStatusConfig {
+    bool enabled = false;
+    uint32_t interval_ms = 1000;
 };
 
 struct CmsUnicastRelayConfig {
@@ -48,6 +60,7 @@ struct CmsConfig {
     std::string multicast_group;
     uint16_t multicast_port = 0;
     CmsHandlersConfig handlers;
+    CmsPeriodicHealthStatusConfig periodic_health_status;
     std::vector<CmsUnicastRelayConfig> unicast_relays;  // relay verso altre entità
 };
 

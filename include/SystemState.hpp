@@ -29,13 +29,19 @@ struct SystemStateSnapshot {
     uint64_t timestampMs = 0;
 };
 
+class IStateProvider {
+public:
+    virtual ~IStateProvider() = default;
+    virtual SystemStateSnapshot getSnapshot() const = 0;
+};
+
 // Classe thread-safe che gestisce lo stato del sistema
-class SystemState {
+class SystemState : public IStateProvider {
 public:
     SystemState() = default;
 
     // --- Snapshot ---
-    SystemStateSnapshot getSnapshot() const;
+    SystemStateSnapshot getSnapshot() const override;
 
     // --- Delta apply ---
     void apply(const StateUpdate& update);

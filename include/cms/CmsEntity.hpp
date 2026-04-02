@@ -6,6 +6,7 @@
 #include "IInterfaces.hpp"
 
 #include <boost/asio.hpp>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -26,6 +27,8 @@ private:
                               const std::shared_ptr<IEvent>& event);
     void subscribeToRelay(const std::string& relay_name, const CmsUnicastRelayConfig& relay_cfg);
     void relayCallback(const std::shared_ptr<IEvent>& event);
+    void schedulePeriodicHealthStatusTick();
+    void publishPeriodicHealthStatusTick();
 
     CmsConfig config_;
     std::shared_ptr<IProtocolConverter> converter_;
@@ -36,5 +39,6 @@ private:
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;
     std::shared_ptr<IReceiver> receiver_;
+    std::optional<boost::asio::steady_timer> periodicHealthTimer_;
     std::jthread rxThread_;
 };

@@ -5,19 +5,16 @@
 #include <chrono>
 #include <boost/asio.hpp>
 
-#include "AckSendEventHandler.hpp"
 #include "AcsEntity.hpp"
-#include "AcsJsonSendEventHandler.hpp"
-#include "AcsStateUpdateEventHandler.hpp"
+#include "AcsEvents.hpp"
 #include "AppConfig.hpp"
 #include "CmsEntity.hpp"
+#include "CmsEvents.hpp"
 #include "EventBus.hpp"
 #include "ProxyEngine.hpp"
 #include "TcpSender.hpp"
-#include "TcpSendEventHandler.hpp"
 #include "BinaryConverter.hpp"
 #include "SystemState.hpp"
-#include "StateUpdateEventHandler.hpp"
 #include "UdpAckSender.hpp"
 #include "UdpJsonSender.hpp"
 
@@ -64,6 +61,20 @@ int main(int argc, char* argv[]) {
         auto system_state = std::make_shared<SystemState>();
         auto state_handler = std::make_shared<StateUpdateEventHandler>(system_state, event_bus);
 
+        auto periodic_health_builder_handler = std::make_shared<PeriodicHealthStatusBuildEventHandler>(
+            system_state,
+            event_bus
+        );
+
+        auto cms_udp_unicast_sender = std::make_shared<UdpJsonSender>(delivery_io_ctx);
+        auto cms_udp_unicast_handler = std::make_shared<CmsUdpUnicastSendEventHandler>(
+            cms_udp_unicast_sender,
+            event_bus,
+            config.cms.handlers.udp_unicast_send.target_ip,
+            config.cms.handlers.udp_unicast_send.target_port,
+            config.cms.handlers.udp_unicast_send.enabled
+        );
+
         auto acs_sender = std::make_shared<UdpJsonSender>(delivery_io_ctx);
         auto acs_send_handler = std::make_shared<AcsJsonSendEventHandler>(
             acs_sender,
@@ -74,7 +85,15 @@ int main(int argc, char* argv[]) {
 
         ProxyEngine engine(
             { cms_entity, acs_entity },
-            { tcp_handler, ack_handler, state_handler, acs_send_handler, acs_state_handler }
+            {
+                tcp_handler,
+                ack_handler,
+                state_handler,
+                periodic_health_builder_handler,
+                cms_udp_unicast_handler,
+                acs_send_handler,
+                acs_state_handler
+            }
         );
         engine.run();
 

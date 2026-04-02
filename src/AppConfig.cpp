@@ -63,6 +63,40 @@ AppConfig loadAppConfig(const std::string& config_path) {
     cfg.cms.handlers.ack_send.target_ip = read_required<std::string>(ack_send, "target_ip", "cms.handlers.ack_send");
     cfg.cms.handlers.ack_send.target_port = read_port(ack_send, "target_port", "cms.handlers.ack_send");
 
+    if (handlers.contains("udp_unicast_send") && handlers.at("udp_unicast_send").is_object()) {
+        const auto& udp_unicast_send = handlers.at("udp_unicast_send");
+        if (udp_unicast_send.contains("enabled")) {
+            cfg.cms.handlers.udp_unicast_send.enabled = udp_unicast_send.at("enabled").get<bool>();
+        }
+
+        if (cfg.cms.handlers.udp_unicast_send.enabled) {
+            cfg.cms.handlers.udp_unicast_send.target_ip = read_required<std::string>(
+                udp_unicast_send,
+                "target_ip",
+                "cms.handlers.udp_unicast_send"
+            );
+            cfg.cms.handlers.udp_unicast_send.target_port = read_port(
+                udp_unicast_send,
+                "target_port",
+                "cms.handlers.udp_unicast_send"
+            );
+        }
+    }
+
+    if (cms.contains("periodic_health_status") && cms.at("periodic_health_status").is_object()) {
+        const auto& periodic_health_status = cms.at("periodic_health_status");
+        if (periodic_health_status.contains("enabled")) {
+            cfg.cms.periodic_health_status.enabled = periodic_health_status.at("enabled").get<bool>();
+        }
+        if (periodic_health_status.contains("interval_ms")) {
+            const int interval_ms = periodic_health_status.at("interval_ms").get<int>();
+            if (interval_ms < 1) {
+                throw std::runtime_error("Campo non valido in sezione 'cms.periodic_health_status': interval_ms");
+            }
+            cfg.cms.periodic_health_status.interval_ms = static_cast<uint32_t>(interval_ms);
+        }
+    }
+
     for (const auto& destination : tcp_send.at("lrad_destinations")) {
         if (!destination.is_object()) {
             throw std::runtime_error("Elemento non valido in 'cms.handlers.tcp_send.lrad_destinations'");
