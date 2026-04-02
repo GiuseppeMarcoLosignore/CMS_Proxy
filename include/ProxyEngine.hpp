@@ -1,33 +1,17 @@
 #pragma once
-#include "AppConfig.hpp"
-#include "IInterfaces.hpp"
-#include "SystemState.hpp"
-#include <boost/asio.hpp>
-#include <map>
+#include "IEntity.hpp"
 #include <memory>
-#include <string>
 #include <vector>
 
 class ProxyEngine {
 public:
-    ProxyEngine(std::shared_ptr<IReceiver> r, 
-                std::shared_ptr<IProtocolConverter> c, 
-                std::shared_ptr<ISender> s,
-                std::shared_ptr<IAckSender> ack_sender,
-                std::shared_ptr<SystemState> system_state,
-                boost::asio::io_context& delivery_io_ctx,
-                std::map<uint16_t, LradDestination> lrad_config);
+    ProxyEngine(std::vector<std::shared_ptr<IEntity>> entities,
+                std::vector<std::shared_ptr<IEventHandler>> handlers);
+
     void run();
+    void stop();
 
 private:
-    void processPacket(const RawPacket& input);
-
-    std::shared_ptr<IReceiver> receiver_;
-    std::shared_ptr<IProtocolConverter> converter_;
-    std::shared_ptr<ISender> sender_;
-    std::shared_ptr<IAckSender> ack_sender_;
-    std::shared_ptr<SystemState> system_state_;
-
-    boost::asio::io_context& delivery_io_ctx_;
-    std::map<uint16_t, LradDestination> lrad_config_;
+    std::vector<std::shared_ptr<IEntity>> entities_;
+    std::vector<std::shared_ptr<IEventHandler>> handlers_;
 };

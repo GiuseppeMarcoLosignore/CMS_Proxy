@@ -16,8 +16,13 @@ find_package(nlohmann_json REQUIRED)
 # --- SORGENTI ---
 set(SOURCES
     src/AppConfig.cpp
+    src/AckSendEventHandler.cpp
+    src/CmsEntity.cpp
+    src/CmsEvents.cpp
     src/main.cpp
     src/ProxyEngine.cpp
+    src/StateUpdateEventHandler.cpp
+    src/TcpSendEventHandler.cpp
     src/UdpMulticastReceiver.cpp
     src/UdpAckSender.cpp
     src/TcpSender.cpp

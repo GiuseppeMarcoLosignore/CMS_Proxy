@@ -10,19 +10,29 @@ struct LradDestination {
     uint16_t port;           // La porta del server TCP
 };
 
-struct AppConfig {
-    std::string udp_listen_ip;
-    std::string udp_multicast_group;
-    uint16_t udp_multicast_port = 0;
-
-    std::string tcp_default_target_ip;
-    uint16_t tcp_default_target_port = 0;
-    std::string tcp_unicast_target_ip;
-
-    std::string ack_target_ip;
-    uint16_t ack_target_port = 0;
-
+struct CmsTcpSendHandlerConfig {
     std::map<uint16_t, LradDestination> lrad_destinations;
+};
+
+struct CmsAckSendHandlerConfig {
+    std::string target_ip;
+    uint16_t target_port = 0;
+};
+
+struct CmsHandlersConfig {
+    CmsTcpSendHandlerConfig tcp_send;
+    CmsAckSendHandlerConfig ack_send;
+};
+
+struct CmsConfig {
+    std::string listen_ip;
+    std::string multicast_group;
+    uint16_t multicast_port = 0;
+    CmsHandlersConfig handlers;
+};
+
+struct AppConfig {
+    CmsConfig cms;
 };
 
 AppConfig loadAppConfig(const std::string& config_path);

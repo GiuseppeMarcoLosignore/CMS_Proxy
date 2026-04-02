@@ -1,28 +1,27 @@
 {
-  "udp": {
+  "cms": {
     "listen_ip": "127.0.0.1",
     "multicast_group": "226.1.1.30",
-    "multicast_port": 55000
-  },
-  "tcp": {
-    "default_target_ip": "127.0.0.1",
-    "default_target_port": 9000,
-    "unicast_target_ip": "127.0.0.1"
-  },
-  "ack": {
-    "ip": "226.1.1.43",
-    "port": 55010
-  },
-  "lrad_destinations": [
-    {
-      "id": 1,
-      "ip": "127.0.0.1",
-      "port": 9000
-    },
-    {
-      "id": 2,
-      "ip": "127.0.0.1",
-      "port": 9000
+    "multicast_port": 55000,
+    "handlers": {
+      "tcp_send": {
+        "lrad_destinations": [
+          {
+            "id": 1,
+            "ip": "127.0.0.1",
+            "port": 9000
+          },
+          {
+            "id": 2,
+            "ip": "127.0.0.1",
+            "port": 9000
+          }
+        ]
+      },
+      "ack_send": {
+        "target_ip": "226.1.1.43",
+        "target_port": 55010
+      }
     }
-  ]
+  }
 }

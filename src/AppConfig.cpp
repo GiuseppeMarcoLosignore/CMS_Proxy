@@ -35,44 +35,40 @@ AppConfig loadAppConfig(const std::string& config_path) {
     nlohmann::json root;
     input >> root;
 
-    if (!root.contains("udp") || !root.at("udp").is_object()) {
-        throw std::runtime_error("Sezione 'udp' mancante o non valida");
+    if (!root.contains("cms") || !root.at("cms").is_object()) {
+        throw std::runtime_error("Sezione 'cms' mancante o non valida");
     }
-    if (!root.contains("tcp") || !root.at("tcp").is_object()) {
-        throw std::runtime_error("Sezione 'tcp' mancante o non valida");
+    const auto& cms = root.at("cms");
+    if (!cms.contains("handlers") || !cms.at("handlers").is_object()) {
+        throw std::runtime_error("Sezione 'cms.handlers' mancante o non valida");
     }
-    const bool has_ack_section = root.contains("ack") && root.at("ack").is_object();
-    const bool has_ack_multicast_section = root.contains("ack_multicast") && root.at("ack_multicast").is_object();
-    if (!has_ack_section && !has_ack_multicast_section) {
-        throw std::runtime_error("Sezione 'ack' o 'ack_multicast' mancante o non valida");
+    const auto& handlers = cms.at("handlers");
+    if (!handlers.contains("tcp_send") || !handlers.at("tcp_send").is_object()) {
+        throw std::runtime_error("Sezione 'cms.handlers.tcp_send' mancante o non valida");
     }
-    if (!root.contains("lrad_destinations") || !root.at("lrad_destinations").is_array()) {
-        throw std::runtime_error("Sezione 'lrad_destinations' mancante o non valida");
+    if (!handlers.contains("ack_send") || !handlers.at("ack_send").is_object()) {
+        throw std::runtime_error("Sezione 'cms.handlers.ack_send' mancante o non valida");
     }
-
-    const auto& udp = root.at("udp");
-    const auto& tcp = root.at("tcp");
-    const auto& ack = has_ack_section ? root.at("ack") : root.at("ack_multicast");
-    const std::string ack_section_name = has_ack_section ? "ack" : "ack_multicast";
+    const auto& tcp_send = handlers.at("tcp_send");
+    if (!tcp_send.contains("lrad_destinations") || !tcp_send.at("lrad_destinations").is_array()) {
+        throw std::runtime_error("Sezione 'cms.handlers.tcp_send.lrad_destinations' mancante o non valida");
+    }
+    const auto& ack_send = handlers.at("ack_send");
 
     AppConfig cfg;
-    cfg.udp_listen_ip = read_required<std::string>(udp, "listen_ip", "udp");
-    cfg.udp_multicast_group = read_required<std::string>(udp, "multicast_group", "udp");
-    cfg.udp_multicast_port = read_port(udp, "multicast_port", "udp");
+    cfg.cms.listen_ip = read_required<std::string>(cms, "listen_ip", "cms");
+    cfg.cms.multicast_group = read_required<std::string>(cms, "multicast_group", "cms");
+    cfg.cms.multicast_port = read_port(cms, "multicast_port", "cms");
 
-    cfg.tcp_default_target_ip = read_required<std::string>(tcp, "default_target_ip", "tcp");
-    cfg.tcp_default_target_port = read_port(tcp, "default_target_port", "tcp");
-    cfg.tcp_unicast_target_ip = read_required<std::string>(tcp, "unicast_target_ip", "tcp");
+    cfg.cms.handlers.ack_send.target_ip = read_required<std::string>(ack_send, "target_ip", "cms.handlers.ack_send");
+    cfg.cms.handlers.ack_send.target_port = read_port(ack_send, "target_port", "cms.handlers.ack_send");
 
-    cfg.ack_target_ip = read_required<std::string>(ack, "ip", ack_section_name);
-    cfg.ack_target_port = read_port(ack, "port", ack_section_name);
-
-    for (const auto& destination : root.at("lrad_destinations")) {
+    for (const auto& destination : tcp_send.at("lrad_destinations")) {
         if (!destination.is_object()) {
-            throw std::runtime_error("Elemento non valido in 'lrad_destinations'");
+            throw std::runtime_error("Elemento non valido in 'cms.handlers.tcp_send.lrad_destinations'");
         }
 
-        const int id_value = read_required<int>(destination, "id", "lrad_destinations");
+        const int id_value = read_required<int>(destination, "id", "cms.handlers.tcp_send.lrad_destinations");
         if (id_value < 0 || id_value > 65535) {
             throw std::runtime_error("ID LRAD non valido: " + std::to_string(id_value));
         }
@@ -80,14 +76,14 @@ AppConfig loadAppConfig(const std::string& config_path) {
         const uint16_t id = static_cast<uint16_t>(id_value);
         LradDestination lrad;
         lrad.id = id;
-        lrad.ip_address = read_required<std::string>(destination, "ip", "lrad_destinations");
-        lrad.port = read_port(destination, "port", "lrad_destinations");
+        lrad.ip_address = read_required<std::string>(destination, "ip", "cms.handlers.tcp_send.lrad_destinations");
+        lrad.port = read_port(destination, "port", "cms.handlers.tcp_send.lrad_destinations");
 
-        cfg.lrad_destinations[id] = lrad;
+        cfg.cms.handlers.tcp_send.lrad_destinations[id] = lrad;
     }
 
-    if (cfg.lrad_destinations.empty()) {
-        throw std::runtime_error("La lista 'lrad_destinations' e' vuota");
+    if (cfg.cms.handlers.tcp_send.lrad_destinations.empty()) {
+        throw std::runtime_error("La lista 'cms.handlers.tcp_send.lrad_destinations' e' vuota");
     }
 
     return cfg;
