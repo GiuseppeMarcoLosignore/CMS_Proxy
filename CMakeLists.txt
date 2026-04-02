@@ -15,20 +15,29 @@ find_package(nlohmann_json REQUIRED)
 
 # --- SORGENTI ---
 set(SOURCES
+    # Shared
     src/AppConfig.cpp
-    src/AckSendEventHandler.cpp
-    src/CmsEntity.cpp
-    src/CmsEvents.cpp
     src/main.cpp
     src/ProxyEngine.cpp
-    src/StateUpdateEventHandler.cpp
-    src/TcpSendEventHandler.cpp
-    src/UdpMulticastReceiver.cpp
-    src/UdpAckSender.cpp
-    src/TcpSender.cpp
-    src/BinaryConverter.cpp
     src/SystemState.cpp
     CueingMathCpp.cpp
+    # CMS
+    src/cms/AckSendEventHandler.cpp
+    src/cms/BinaryConverter.cpp
+    src/cms/CmsEntity.cpp
+    src/cms/CmsEvents.cpp
+    src/cms/StateUpdateEventHandler.cpp
+    src/cms/TcpSendEventHandler.cpp
+    src/cms/TcpSender.cpp
+    src/cms/UdpAckSender.cpp
+    src/cms/UdpMulticastReceiver.cpp
+    # ACS
+    src/acs/AcsEntity.cpp
+    src/acs/AcsEvents.cpp
+    src/acs/AcsJsonSendEventHandler.cpp
+    src/acs/AcsStateUpdateEventHandler.cpp
+    src/acs/UdpJsonSender.cpp
+    src/acs/UdpUnicastReceiver.cpp
 )
 
 
@@ -37,7 +46,11 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 # --- TARGET CONFIGURATION (La via moderna) ---
 
 # Invece di include_directories globale, usa target_include_directories
-target_include_directories(${PROJECT_NAME} PRIVATE include)
+target_include_directories(${PROJECT_NAME} PRIVATE
+    include
+    include/cms
+    include/acs
+)
 
 # Definizioni specifiche
 target_compile_definitions(${PROJECT_NAME} PRIVATE _WIN32_WINNT=0x0A00)

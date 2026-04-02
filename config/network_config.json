@@ -3,6 +3,8 @@
     "listen_ip": "127.0.0.1",
     "multicast_group": "226.1.1.30",
     "multicast_port": 55000,
+    "unicast_relays": [
+    ],
     "handlers": {
       "tcp_send": {
         "lrad_destinations": [
@@ -23,5 +25,21 @@
         "target_port": 55010
       }
     }
+  },
+  "acs": {
+    "listen_ip": "127.0.0.1",
+    "listen_port": 56100,
+    "destinations": [
+      {
+        "id": 1,
+        "ip": "127.0.0.1",
+        "port": 56110
+      },
+      {
+        "id": 2,
+        "ip": "127.0.0.1",
+        "port": 56111
+      }
+    ]
   }
 }

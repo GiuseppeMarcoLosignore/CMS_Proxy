@@ -86,5 +86,50 @@ AppConfig loadAppConfig(const std::string& config_path) {
         throw std::runtime_error("La lista 'cms.handlers.tcp_send.lrad_destinations' e' vuota");
     }
 
+    // Parsing unicast_relays (opzionale)
+    if (cms.contains("unicast_relays") && cms.at("unicast_relays").is_array()) {
+        for (const auto& relay : cms.at("unicast_relays")) {
+            if (!relay.is_object()) {
+                throw std::runtime_error("Elemento non valido in 'cms.unicast_relays'");
+            }
+
+            CmsUnicastRelayConfig relay_cfg;
+            relay_cfg.name = read_required<std::string>(relay, "name", "cms.unicast_relays");
+            relay_cfg.destination_ip = read_required<std::string>(relay, "destination_ip", "cms.unicast_relays");
+            relay_cfg.destination_port = read_port(relay, "destination_port", "cms.unicast_relays");
+
+            cfg.cms.unicast_relays.push_back(relay_cfg);
+        }
+    }
+
+    cfg.acs.listen_ip = "127.0.0.1";
+    cfg.acs.listen_port = 56100;
+
+    if (root.contains("acs") && root.at("acs").is_object()) {
+        const auto& acs = root.at("acs");
+        cfg.acs.listen_ip = read_required<std::string>(acs, "listen_ip", "acs");
+        cfg.acs.listen_port = read_port(acs, "listen_port", "acs");
+
+        if (acs.contains("destinations") && acs.at("destinations").is_array()) {
+            for (const auto& destination : acs.at("destinations")) {
+                if (!destination.is_object()) {
+                    throw std::runtime_error("Elemento non valido in 'acs.destinations'");
+                }
+
+                const int id_value = read_required<int>(destination, "id", "acs.destinations");
+                if (id_value < 0 || id_value > 65535) {
+                    throw std::runtime_error("ID ACS non valido: " + std::to_string(id_value));
+                }
+
+                const uint16_t id = static_cast<uint16_t>(id_value);
+                AcsDestination acs_destination;
+                acs_destination.id = id;
+                acs_destination.ip_address = read_required<std::string>(destination, "ip", "acs.destinations");
+                acs_destination.port = read_port(destination, "port", "acs.destinations");
+                cfg.acs.destinations[id] = acs_destination;
+            }
+        }
+    }
+
     return cfg;
 }

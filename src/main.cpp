@@ -6,6 +6,9 @@
 #include <boost/asio.hpp>
 
 #include "AckSendEventHandler.hpp"
+#include "AcsEntity.hpp"
+#include "AcsJsonSendEventHandler.hpp"
+#include "AcsStateUpdateEventHandler.hpp"
 #include "AppConfig.hpp"
 #include "CmsEntity.hpp"
 #include "EventBus.hpp"
@@ -16,6 +19,7 @@
 #include "SystemState.hpp"
 #include "StateUpdateEventHandler.hpp"
 #include "UdpAckSender.hpp"
+#include "UdpJsonSender.hpp"
 
 int main(int argc, char* argv[]) {
     try {
@@ -26,7 +30,17 @@ int main(int argc, char* argv[]) {
         auto event_bus = std::make_shared<EventBus>();
 
         auto converter = std::make_shared<BinaryConverter>();
-        auto cms_entity = std::make_shared<CmsEntity>(config.cms, converter, event_bus);
+        
+        // Creare un sender per il relay unicast (oppure nullptr se non ci sono relay)
+        std::shared_ptr<ISender> unicast_relay_sender = nullptr;
+        if (!config.cms.unicast_relays.empty()) {
+            // TODO: Implementare un sender specifico per relay unicast
+            // Per ora usiamo nullptr (il relay non sarà funzionante fino a implementazione)
+            unicast_relay_sender = nullptr;
+        }
+        
+        auto cms_entity = std::make_shared<CmsEntity>(config.cms, converter, event_bus, unicast_relay_sender);
+        auto acs_entity = std::make_shared<AcsEntity>(config.acs, event_bus);
 
         const auto first_lrad_destination = config.cms.handlers.tcp_send.lrad_destinations.begin()->second;
         auto sender = std::make_shared<TcpSender>(
@@ -50,9 +64,17 @@ int main(int argc, char* argv[]) {
         auto system_state = std::make_shared<SystemState>();
         auto state_handler = std::make_shared<StateUpdateEventHandler>(system_state, event_bus);
 
+        auto acs_sender = std::make_shared<UdpJsonSender>(delivery_io_ctx);
+        auto acs_send_handler = std::make_shared<AcsJsonSendEventHandler>(
+            acs_sender,
+            event_bus,
+            config.acs.destinations
+        );
+        auto acs_state_handler = std::make_shared<AcsStateUpdateEventHandler>(system_state, event_bus);
+
         ProxyEngine engine(
-            { cms_entity },
-            { tcp_handler, ack_handler, state_handler }
+            { cms_entity, acs_entity },
+            { tcp_handler, ack_handler, state_handler, acs_send_handler, acs_state_handler }
         );
         engine.run();
 
@@ -60,6 +82,8 @@ int main(int argc, char* argv[]) {
                   << config_path << std::endl;
         std::cout << "[SYSTEM] CMS multicast in ascolto su: "
                   << config.cms.multicast_group << ":" << config.cms.multicast_port << std::endl;
+        std::cout << "[SYSTEM] ACS unicast in ascolto su: "
+              << config.acs.listen_ip << ":" << config.acs.listen_port << std::endl;
 
         for (;;) {
             std::this_thread::sleep_for(std::chrono::seconds(1));

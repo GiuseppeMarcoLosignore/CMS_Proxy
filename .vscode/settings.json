@@ -1,3 +1,12 @@
 {
-    "cmake.sourceDirectory": "C:/Users/HP840G8/Repo/CMS_Proxy"
+    "cmake.sourceDirectory": "C:/Users/HP840G8/Repo/CMS_Proxy",
+    "cmake.configureOnOpen": true,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/include/cms",
+        "${workspaceFolder}/include/acs",
+        "C:/Users/HP840G8/vcpkg/installed/x64-windows/include"
+    ]
 }

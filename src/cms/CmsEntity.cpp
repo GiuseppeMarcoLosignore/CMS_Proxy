@@ -31,12 +31,18 @@ uint32_t extract_message_id_from_header(const RawPacket& packet) {
 
 CmsEntity::CmsEntity(const CmsConfig& config,
                      std::shared_ptr<IProtocolConverter> converter,
-                     std::shared_ptr<EventBus> eventBus)
+                     std::shared_ptr<EventBus> eventBus,
+                     std::shared_ptr<ISender> unicast_relay_sender)
     : config_(config),
       converter_(std::move(converter)),
       eventBus_(std::move(eventBus)),
+      unicast_relay_sender_(std::move(unicast_relay_sender)),
       rxIoContext_(),
       rxWorkGuard_(std::nullopt) {
+    // Popolare mappa relay_config da config.unicast_relays
+    for (const auto& relay : config_.unicast_relays) {
+        relay_config_[relay.name] = relay;
+    }
 }
 
 void CmsEntity::start() {
@@ -53,6 +59,11 @@ void CmsEntity::start() {
 
     receiver_->start();
 
+    // Sottoscrivere agli eventi remoti da relayare
+    for (const auto& relay_pair : relay_config_) {
+        subscribeToRelay(relay_pair.first, relay_pair.second);
+    }
+
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {
         rxIoContext_.run();
@@ -60,6 +71,9 @@ void CmsEntity::start() {
 
     std::cout << "[CMS Entity] Avviata su "
               << config_.multicast_group << ":" << config_.multicast_port << std::endl;
+    if (!relay_config_.empty()) {
+        std::cout << "[CMS Entity] Relay unicast attivi: " << relay_config_.size() << std::endl;
+    }
 }
 
 void CmsEntity::stop() {
@@ -108,5 +122,52 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         auto stateEvent = std::make_shared<CmsStateUpdateEvent>();
         stateEvent->updates = result.state_updates;
         eventBus_->publish(stateEvent);
+    }
+}
+
+void CmsEntity::subscribeToRelay(const std::string& /*relay_name*/, const CmsUnicastRelayConfig& /*relay_cfg*/) {
+    if (!eventBus_) {
+        return;
+    }
+
+    // TODO: Implementare il relay unicast per topic remoti
+    // Per adesso questa funzionalità è disabilitata in attesa di una soluzione
+    // ai vincoli di type conversion di MSVC con std::function e lambda/bind
+    
+    // Quando implementato, questo dovrebbe registrar un callback che:
+    // 1. Ascolta su relay_name (topic remoto)
+    // 2. Converte l'evento a RawPacket
+    // 3. Invia tramite unicast_relay_sender_ a relay_cfg.destination_ip:destination_port
+}
+
+void CmsEntity::relayCallback(const std::shared_ptr<IEvent>& /*event*/) {
+    // Placeholder - da implementare
+}
+
+void CmsEntity::onRemoteEventReceived(const std::string& relay_name,
+                                     const CmsUnicastRelayConfig& relay_cfg,
+                                     const std::shared_ptr<IEvent>& event) {
+    if (!unicast_relay_sender_) {
+        return;
+    }
+
+    // Converti l'evento a RawPacket per il relay
+    // Questo è un template generico che può essere esteso per gestire diversi tipi di event
+    RawPacket relay_packet{};
+    
+    // TODO: Implementare la serializzazione dell'evento a RawPacket
+    // in base al tipo specifico di evento (AcsOutgoingPacketEvent, NavOutgoingPacketEvent, etc.)
+    
+    try {
+        unicast_relay_sender_->send(
+            relay_packet,
+            relay_cfg.destination_ip,
+            relay_cfg.destination_port
+        );
+        std::cout << "[CMS Entity] Relay unicast inviato a " 
+                  << relay_cfg.destination_ip << ":" << relay_cfg.destination_port
+                  << " (topic: " << relay_name << ")" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[CMS Entity] Errore relay unicast: " << e.what() << std::endl;
     }
 }
