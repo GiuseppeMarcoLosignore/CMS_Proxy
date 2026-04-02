@@ -13,34 +13,6 @@
     "ip": "226.1.1.43",
     "port": 55010
   },
-  "source_profiles": [
-    {
-      "name": "SRC_LOCALHOST",
-      "bind_ip": "127.0.0.1"
-    }
-  ],
-  "periodic_messages": [
-    {
-      "message_id": 1,
-      "name": "HEARTBEAT_V1",
-      "protocol": "udp_multicast",
-      "destination_ip": "239.10.1.1",
-      "destination_port": 56001,
-      "source_profile": "SRC_LOCALHOST",
-      "interval_ms": 1000,
-      "enabled": true
-    },
-    {
-      "message_id": 2,
-      "name": "SYSTEM_SUMMARY_V1",
-      "protocol": "tcp_unicast",
-      "destination_ip": "127.0.0.1",
-      "destination_port": 9000,
-      "source_profile": "SRC_LOCALHOST",
-      "interval_ms": 5000,
-      "enabled": true
-    }
-  ],
   "lrad_destinations": [
     {
       "id": 1,
