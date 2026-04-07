@@ -20,6 +20,28 @@ struct StateUpdate {
     std::optional<double_t> inibithionSector1;
     std::optional<double_t> inibithionSector2;
     std::optional<std::string> swVersion;
+
+    // LRAS_CS_lrad_x_status_INS
+    // 1=Operative, 2=Degraded, 3=Failure
+    std::optional<uint16_t> lradStatus;
+    // 1=Stand-by, 2=Manual Search, 3=Cueing, 4=Cueing in blind arc, 5=Video Tracking
+    std::optional<uint16_t> lradMode;
+    // 0=No Tracking, 1=Tracking, 2=Tracking prediction, 3=Target lost
+    std::optional<uint16_t> videoTrackingStatus;
+    std::optional<float> azimuth;           // deg [0..360]
+    std::optional<float> elevation;         // deg [-90..90]
+    std::optional<int16_t> lrfDistance;     // m [-1..4000], -1 = out of range/not valid
+    std::optional<bool> withinInhibitionSector;
+    // 0=Off, 1=35W, 2=45W, 3=85W
+    std::optional<uint16_t> searchlightPower;
+    std::optional<uint16_t> searchlightZoom; // [0..99]
+    // 0=Off, 1=On, 2=Strobo
+    std::optional<uint16_t> laserDazzlerMode;
+    std::optional<uint16_t> videoZoom;       // [0..99]
+    // 0=Force Internal IMU, 1=Force Ship Gyro, 2=Automatic
+    std::optional<uint16_t> gyroSelection;
+    // 0=Force Internal IMU, 1=Force Ship Gyro
+    std::optional<uint16_t> gyroUsed;
 };
 
 // Snapshot immutabile dello stato di sistema (copia point-in-time)

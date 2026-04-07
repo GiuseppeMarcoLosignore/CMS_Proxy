@@ -45,6 +45,7 @@ private:
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void subscribeTopics();
     void handleStateUpdateEvent(const EventBus::EventPtr& event);
+    void periodicMessages();
 
     ConversionResult convertIncomingPacket(const RawPacket& packet, const SystemStateSnapshot& snapshot) const;
     bool parseHeader(const RawPacket& packet, ParsedHeader& out) const;
@@ -71,12 +72,15 @@ private:
     std::vector<RawPacket> parse_CS_MULTI_update_cst_kinematics_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
 
     void sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const;
     CmsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
     std::shared_ptr<SystemState> systemState_;
 
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;
+    std::optional<boost::asio::steady_timer> periodicTimer_;
     std::shared_ptr<IReceiver> receiver_;
     std::jthread rxThread_;
 };

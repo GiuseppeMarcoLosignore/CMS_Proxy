@@ -6,10 +6,12 @@
 #include "UdpMulticastReceiver.hpp"
 #include "UdpMulticastSender.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
@@ -26,6 +28,8 @@ using json = nlohmann::json;
 
 constexpr std::size_t HeaderSize = 16;
 constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576879045;
+constexpr uint32_t MessageId_LRAS_CS_lrad_1_status_INS = 576978949;
+constexpr uint32_t MessageId_LRAS_CS_lrad_2_status_INS = 576978950;
 constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
 constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
 constexpr uint32_t MessageId_CS_LRAS_cueing_order_INS = 1679949827;
@@ -46,6 +50,9 @@ constexpr uint32_t MessageId_CS_LRAS_request_emission_mode_INS = 1679949841;
 constexpr uint32_t MessageId_CS_LRAS_request_installation_data_INS = 1679949842;
 constexpr uint32_t MessageId_CS_MULTI_health_status_INS = 1684229565;
 constexpr uint32_t MessageId_CS_MULTI_update_cst_kinematics_INS = 1684229569;
+constexpr uint32_t MessageLength_LRAS_CS_lrad_status_INS = 32;
+constexpr const char* LrasStatusMulticastGroup = "226.1.1.43";
+constexpr uint16_t LrasStatusMulticastPort = 55010;
 
 float normalize_0_360(float angleDeg) {
     return cueing::mod360(angleDeg);
@@ -67,6 +74,174 @@ void append_u16_be(std::vector<uint8_t>& buffer, uint16_t value) {
     const uint16_t netValue = htons(value);
     const auto* bytes = reinterpret_cast<const uint8_t*>(&netValue);
     buffer.insert(buffer.end(), bytes, bytes + sizeof(netValue));
+}
+
+void append_i16_be(std::vector<uint8_t>& buffer, int16_t value) {
+    const uint16_t netValue = htons(static_cast<uint16_t>(value));
+    const auto* bytes = reinterpret_cast<const uint8_t*>(&netValue);
+    buffer.insert(buffer.end(), bytes, bytes + sizeof(netValue));
+}
+
+void append_f32_be(std::vector<uint8_t>& buffer, float value) {
+    uint32_t rawValue = 0;
+    std::memcpy(&rawValue, &value, sizeof(rawValue));
+    append_u32_be(buffer, rawValue);
+}
+
+std::string to_lower_ascii(std::string value) {
+    for (char& character : value) {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    return value;
+}
+
+uint16_t derive_lrad_status(const StateUpdate& state) {
+    if (state.lradStatus.has_value()) {
+        return *state.lradStatus;
+    }
+
+    if (state.online.has_value()) {
+        return *state.online ? 1 : 3;
+    }
+
+    return 1;
+}
+
+uint16_t derive_lrad_mode(const StateUpdate& state) {
+    if (state.lradMode.has_value()) {
+        return *state.lradMode;
+    }
+
+    if (state.cueingStatus.has_value()) {
+        const std::string cueingStatus = to_lower_ascii(*state.cueingStatus);
+        if (cueingStatus == "2" || cueingStatus == "blind arc" || cueingStatus == "cueing in blind arc") {
+            return 4;
+        }
+
+        if (cueingStatus == "1" || cueingStatus == "cueing" || cueingStatus == "cueing in progress") {
+            return 3;
+        }
+
+        if (cueingStatus == "manual search") {
+            return 2;
+        }
+
+        if (cueingStatus == "video tracking") {
+            return 5;
+        }
+    }
+
+    if (state.engaged.has_value() && *state.engaged) {
+        return 3;
+    }
+
+    return 1;
+}
+
+uint16_t derive_cueing_status(const StateUpdate& state) {
+    if (state.cueingStatus.has_value()) {
+        const std::string cueingStatus = to_lower_ascii(*state.cueingStatus);
+        if (cueingStatus == "0" || cueingStatus == "no cueing") {
+            return 0;
+        }
+
+        if (cueingStatus == "1" || cueingStatus == "cueing" || cueingStatus == "cueing in progress") {
+            return 1;
+        }
+
+        if (cueingStatus == "2" || cueingStatus == "blind arc" || cueingStatus == "cueing in blind arc") {
+            return 2;
+        }
+
+        if (cueingStatus == "3" || cueingStatus == "cueing in pause") {
+            return 3;
+        }
+    }
+
+    if (state.engaged.has_value() && *state.engaged) {
+        return 1;
+    }
+
+    return 0;
+}
+
+uint16_t derive_video_tracking_status(const StateUpdate& state) {
+    if (state.videoTrackingStatus.has_value()) {
+        return *state.videoTrackingStatus;
+    }
+
+    if (state.lradMode.has_value() && *state.lradMode == 5) {
+        return 1;
+    }
+
+    return 0;
+}
+
+int16_t derive_lrf_distance(const StateUpdate& state) {
+    return state.lrfDistance.value_or(static_cast<int16_t>(-1));
+}
+
+uint16_t derive_inhibition_sector_flag(const StateUpdate& state) {
+    if (state.withinInhibitionSector.has_value()) {
+        return *state.withinInhibitionSector ? 1 : 0;
+    }
+
+    return 0;
+}
+
+uint16_t derive_laser_dazzler_mode(const StateUpdate& state) {
+    if (state.laserDazzlerMode.has_value()) {
+        return *state.laserDazzlerMode;
+    }
+
+    if (state.ladEnabled.has_value()) {
+        return *state.ladEnabled ? 1 : 0;
+    }
+
+    return 0;
+}
+
+RawPacket build_lrad_status_packet(const StateUpdate& state, uint32_t messageId) {
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_lrad_status_INS);
+
+    append_u32_be(packet.data, messageId);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_lrad_status_INS);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    append_u16_be(packet.data, derive_lrad_status(state));
+    append_u16_be(packet.data, derive_lrad_mode(state));
+    append_u16_be(packet.data, derive_cueing_status(state));
+    append_u16_be(packet.data, derive_video_tracking_status(state));
+    append_f32_be(packet.data, state.azimuth.value_or(0.0f));
+    append_f32_be(packet.data, state.elevation.value_or(0.0f));
+    append_i16_be(packet.data, derive_lrf_distance(state));
+    append_u16_be(packet.data, derive_inhibition_sector_flag(state));
+    append_u16_be(packet.data, state.searchlightPower.value_or(0));
+    append_u16_be(packet.data, state.searchlightZoom.value_or(0));
+    append_u16_be(packet.data, derive_laser_dazzler_mode(state));
+    append_u16_be(packet.data, state.videoZoom.value_or(0));
+    append_u16_be(packet.data, state.gyroSelection.value_or(0));
+    append_u16_be(packet.data, state.gyroUsed.value_or(0));
+
+    return packet;
+}
+
+void send_multicast_packet(const RawPacket& packet, const char* messageName) {
+    try {
+        boost::asio::io_context txIoContext;
+        UdpMulticastSender sender(txIoContext);
+        const SendResult result = sender.send(packet, LrasStatusMulticastGroup, LrasStatusMulticastPort);
+        if (!result.success) {
+            std::cerr << "[CMS Entity] Errore invio " << messageName << " verso "
+                      << LrasStatusMulticastGroup << ":" << LrasStatusMulticastPort
+                      << " -> " << result.error_message << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[CMS Entity] Eccezione durante invio " << messageName << ": "
+                  << e.what() << std::endl;
+    }
 }
 
 uint32_t source_message_id_from_topic(const std::string& topic) {
@@ -245,7 +420,8 @@ CmsEntity::CmsEntity(const CmsConfig& config,
       eventBus_(std::move(eventBus)),
       systemState_(std::move(systemState)),
       rxIoContext_(),
-    rxWorkGuard_(std::nullopt) {
+            rxWorkGuard_(std::nullopt),
+            periodicTimer_(std::nullopt) {
 }
 
 void CmsEntity::start() {
@@ -269,6 +445,11 @@ void CmsEntity::start() {
         rxIoContext_.run();
     });
 
+    boost::asio::post(rxIoContext_, [this]() {
+        periodicMessages();
+    });
+     
+
     std::cout << "[CMS Entity] Avviata su "
               << config_.multicast_group << ":" << config_.multicast_port << std::endl;
 }
@@ -276,6 +457,10 @@ void CmsEntity::start() {
 void CmsEntity::stop() {
     if (receiver_) {
         receiver_->stop();
+    }
+
+    if (periodicTimer_.has_value()) {
+        periodicTimer_->cancel();
     }
 
     if (rxWorkGuard_.has_value()) {
@@ -296,6 +481,14 @@ void CmsEntity::subscribeTopics() {
 
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
         sendLRAS_CS_ack_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_CS_lrad_1_status_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::LRAS_CS_lrad_2_status_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_CS_lrad_2_status_INS(event);
     });
 
 
@@ -822,10 +1015,10 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
     try {
         boost::asio::io_context txIoContext;
         UdpMulticastSender sender(txIoContext);
-        const SendResult result = sender.send(ackPacket, "226.1.1.43", 55010);
+        const SendResult result = sender.send(ackPacket, LrasStatusMulticastGroup, LrasStatusMulticastPort);
         if (!result.success) {
             std::cerr << "[CMS Entity] Errore invio ACK multicast verso "
-                      << "226.1.1.43" << ":" << 55010
+                      << LrasStatusMulticastGroup << ":" << LrasStatusMulticastPort
                       << " -> " << result.error_message << std::endl;
         }
     } catch (const std::exception& e) {
@@ -834,4 +1027,57 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
     }
 }
 
+void CmsEntity::periodicMessages() {
+    if (!eventBus_) {
+        return;
+    }
 
+    if (!periodicTimer_.has_value()) {
+        periodicTimer_.emplace(rxIoContext_);
+    }
+
+    periodicTimer_->expires_after(std::chrono::milliseconds(100));
+    periodicTimer_->async_wait([this](const boost::system::error_code& ec) {
+        if (!ec) {
+            auto eventLrad1 = std::make_shared<CmsDispatchTopicPacketEvent>();
+            eventLrad1->dispatchTopic = Topics::LRAS_CS_lrad_1_status_INS;
+            eventLrad1->packet = make_empty_packet();
+            eventBus_->publish(eventLrad1);
+
+            auto eventLrad2 = std::make_shared<CmsDispatchTopicPacketEvent>();
+            eventLrad2->dispatchTopic = Topics::LRAS_CS_lrad_2_status_INS;
+            eventLrad2->packet = make_empty_packet();
+            eventBus_->publish(eventLrad2);
+
+            periodicMessages();
+        }
+    });
+}
+
+void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    if (!systemState_) {
+        return;
+    }
+
+    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
+    const auto stateIt = snapshot.lradStates.find(1);
+    const StateUpdate state = (stateIt != snapshot.lradStates.end()) ? stateIt->second : StateUpdate{};
+    const RawPacket packet = build_lrad_status_packet(state, MessageId_LRAS_CS_lrad_1_status_INS);
+    send_multicast_packet(packet, "LRAS_CS_lrad_1_status_INS");
+}  
+
+void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    if (!systemState_) {
+        return;
+    }
+
+    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
+    const auto stateIt = snapshot.lradStates.find(2);
+    const StateUpdate state = (stateIt != snapshot.lradStates.end()) ? stateIt->second : StateUpdate{};
+    const RawPacket packet = build_lrad_status_packet(state, MessageId_LRAS_CS_lrad_2_status_INS);
+    send_multicast_packet(packet, "LRAS_CS_lrad_2_status_INS");
+}

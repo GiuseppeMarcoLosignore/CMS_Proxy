@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Riceve e decodifica i pacchetti LRAS_CS_ack_INS dal gruppo multicast del proxy.
+"""Riceve e decodifica pacchetti multicast dal proxy.
 
-Formato pacchetto (28 byte, big-endian):
-  Header (16 byte):
-    [0-3]   messageId      uint32  -- atteso: 576879045
-    [4-7]   payloadLength  uint32  -- atteso: 12
-    [8-11]  riservato      uint32
-    [12-15] riservato      uint32
-  Payload (12 byte):
-    [16-19] action_id         uint32
-    [20-23] source_message_id uint32
-    [24-25] ack_nack          uint16  (1=Ack accettato, 2=Nack non eseguito)
-    [26-27] nack_reason       uint16  (0=No statement, 2=Parametri errati,
-                                       3=Stato sistema errato, 4=Sistema non pronto,
-                                       5=Sistema non utilizzabile, 6=Cueing in blind arc)
+Header comune (16 byte, big-endian):
+  [0-3]   messageId      uint32
+  [4-7]   payloadLength  uint32
+  [8-11]  riservato      uint32
+  [12-15] riservato      uint32
+
+Payload decodificato per LRAS_CS_ack_INS (messageId=576879045, 12 byte):
+  [16-19] action_id         uint32
+  [20-23] source_message_id uint32
+  [24-25] ack_nack          uint16  (1=Ack accettato, 2=Nack non eseguito)
+  [26-27] nack_reason       uint16  (0=No statement, 2=Parametri errati,
+                                     3=Stato sistema errato, 4=Sistema non pronto,
+                                     5=Sistema non utilizzabile, 6=Cueing in blind arc)
+
+Per tutti gli altri msgId viene stampato solo l'header e il payload grezzo.
 
 Uso:
   python scripts/ack_receiver.py
@@ -68,29 +70,25 @@ SOURCE_MESSAGE_LABELS = {
 }
 
 
-def decode_packet(data: bytes, src_addr: tuple):
-    ts = time.strftime("%H:%M:%S")
-    print(f"\n{'='*56}")
-    print(f"[{ts}] Pacchetto da {src_addr[0]}:{src_addr[1]}  ({len(data)} byte)")
-    print(f"  RAW: {data.hex()}")
+# Registry dei nomi noti per messageId
+MESSAGE_ID_LABELS = {
+    MSG_ID_LRAS_CS_ACK_INS: "LRAS_CS_ack_INS",
+}
 
+
+def decode_header(data: bytes) -> tuple | None:
+    """Decodifica l'header comune (16 byte). Ritorna (msg_id, payload_len, res1, res2) o None."""
     if len(data) < 16:
         print("  [!] Pacchetto troppo corto per l'header (attesi >= 16 byte)")
-        return
+        return None
+    return struct.unpack_from(">IIII", data, 0)
 
-    msg_id, payload_len, _res1, _res2 = struct.unpack_from(">IIII", data, 0)
-    print(f"  Header:")
-    print(f"    messageId      = {msg_id}")
-    if msg_id == MSG_ID_LRAS_CS_ACK_INS:
-        print(f"    messageId      -> LRAS_CS_ack_INS  [OK]")
-    else:
-        print(f"    messageId      -> SCONOSCIUTO (atteso {MSG_ID_LRAS_CS_ACK_INS})")
-    print(f"    payloadLength  = {payload_len}")
 
+def decode_ack_payload(data: bytes, payload_len: int):
+    """Decodifica il payload specifico di LRAS_CS_ack_INS."""
     if len(data) < 16 + payload_len:
         print(f"  [!] Dati insufficienti per il payload (attesi {16 + payload_len}, ricevuti {len(data)})")
         return
-
     if payload_len < 12:
         print(f"  [!] Payload troppo corto (attesi >= 12, presenti {payload_len})")
         return
@@ -108,6 +106,33 @@ def decode_packet(data: bytes, src_addr: tuple):
         print(f"    nack_reason       = {nack_reason}  -> {reason_label}")
 
 
+def decode_packet(data: bytes, src_addr: tuple):
+    ts = time.strftime("%H:%M:%S")
+    print(f"\n{'='*56}")
+    print(f"[{ts}] Pacchetto da {src_addr[0]}:{src_addr[1]}  ({len(data)} byte)")
+    print(f"  RAW: {data.hex()}")
+
+    header = decode_header(data)
+    if header is None:
+        return
+    msg_id, payload_len, _res1, _res2 = header
+
+    msg_label = MESSAGE_ID_LABELS.get(msg_id, f"SCONOSCIUTO ({msg_id})")
+    print(f"  Header:")
+    print(f"    messageId      = {msg_id}  -> {msg_label}")
+    print(f"    payloadLength  = {payload_len}")
+
+    if msg_id == MSG_ID_LRAS_CS_ACK_INS:
+        decode_ack_payload(data, payload_len)
+    else:
+        # Payload grezzo per messaggi non ancora decodificati
+        payload = data[16:16 + payload_len] if len(data) >= 16 + payload_len else data[16:]
+        if payload:
+            print(f"  Payload (raw): {payload.hex()}")
+        else:
+            print(f"  Payload: vuoto")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Listener multicast per pacchetti LRAS_CS_ack_INS"
@@ -120,6 +145,7 @@ def main():
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(1.0)
     sock.bind(("", args.port))
 
     mreq = struct.pack("4s4s",
@@ -130,19 +156,25 @@ def main():
     print(f"[*] In ascolto su {args.group}:{args.port} (iface={args.iface})")
     print("Premere CTRL-C per uscire...\n")
 
+    running = True
+
     def _shutdown(sig, frame):
-        print("\n[*] Arresto.")
-        sock.close()
-        sys.exit(0)
+        nonlocal running
+        running = False
 
     signal.signal(signal.SIGINT, _shutdown)
 
-    while True:
+    while running:
         try:
             data, addr = sock.recvfrom(args.bufsize)
             decode_packet(data, addr)
+        except socket.timeout:
+            continue
         except OSError:
             break
+
+    print("\n[*] Arresto.")
+    sock.close()
 
 
 if __name__ == "__main__":
