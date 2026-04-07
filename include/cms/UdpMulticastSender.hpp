@@ -4,11 +4,14 @@
 
 #include <boost/asio.hpp>
 
-class UdpJsonSender : public ISender {
+class UdpMulticastSender : public ISender {
 public:
-    explicit UdpJsonSender(boost::asio::io_context& io_ctx);
+    explicit UdpMulticastSender(boost::asio::io_context& io_ctx);
 
     SendResult send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) override;
+
+    void set_ttl(unsigned char ttl);
+    void set_loopback(bool enabled);
 
 private:
     boost::asio::ip::udp::socket socket_;

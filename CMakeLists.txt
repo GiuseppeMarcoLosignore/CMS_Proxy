@@ -22,16 +22,12 @@ set(SOURCES
     src/SystemState.cpp
     CueingMathCpp.cpp
     # CMS
-    src/cms/BinaryConverter.cpp
     src/cms/CmsEntity.cpp
-    src/cms/CmsEvents.cpp
-    src/cms/TcpSender.cpp
-    src/cms/UdpAckSender.cpp
+    src/cms/UdpMulticastSender.cpp
     src/cms/UdpMulticastReceiver.cpp
     # ACS
     src/acs/AcsEntity.cpp
-    src/acs/AcsEvents.cpp
-    src/acs/UdpJsonSender.cpp
+    src/acs/TcpJsonSender.cpp
     src/acs/UdpUnicastReceiver.cpp
 )
 

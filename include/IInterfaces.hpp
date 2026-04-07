@@ -19,6 +19,7 @@ using AckBuilderFunc = std::function<RawPacket(uint32_t action_id, uint32_t sour
 
 struct ConversionResult {
     std::vector<RawPacket> packets;
+    std::vector<std::string> packet_topics;
     AckBuilderFunc ack_builder;
     bool ack_only = false;
     std::vector<StateUpdate> state_updates;
@@ -49,16 +50,4 @@ class ISender {
 public:
     virtual ~ISender() = default;
     virtual SendResult send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) = 0;
-};
-
-class IProtocolConverter {
-public:
-    virtual ~IProtocolConverter() = default;
-    virtual ConversionResult convert(const RawPacket& input, const SystemStateSnapshot& snapshot) = 0;
-};
-
-class IAckSender {
-public:
-    virtual ~IAckSender() = default;
-    virtual void send_ack(const RawPacket& ack_packet) = 0;
 };

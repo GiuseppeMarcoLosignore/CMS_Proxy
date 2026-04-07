@@ -2,19 +2,17 @@
 
 Proxy C++ per bridge protocollo CMS/LRAD con architettura entity/event-driven.
 
-Riceve datagrammi binari multicast, fa dispatch per header, converte i payload e pubblica eventi interni; handler separati gestiscono invio TCP, ACK UDP e aggiornamento stato.
+Riceve datagrammi binari multicast, li converte in payload applicativi e coordina i flussi CMS e ACS tramite topic interni.
 
 ## Architettura (stato attuale)
 
-Il progetto e stato rifattorizzato da pipeline monolitica a orchestrazione per entita.
+Il progetto e organizzato attorno a entita attive. In particolare la logica CMS non e piu distribuita tra converter, sender e handler separati: vive dentro `CmsEntity`.
 
-- `ProxyEngine`: orchestratore lifecycle (start/stop) di entita e handler.
-- `CmsEntity`: entita CMS in ascolto multicast su thread dedicato.
+- `ProxyEngine`: orchestratore lifecycle di entita e handler ancora presenti.
+- `CmsEntity`: ricezione multicast CMS, parsing header, conversione messaggi, publish sui topic, subscribe ai topic CMS, invio TCP verso LRAD, invio ACK UDP, periodic health status.
+- `AcsEntity`: ricezione unicast ACS, publish eventi ACS, invio JSON verso destinazioni ACS e applicazione update di stato.
 - `EventBus`: pub/sub thread-safe; ogni subscriber viene eseguito su thread separato.
-- `TcpSendEventHandler`: invio TCP verso LRAD in base a `destinationLradId`.
-- `AckSendEventHandler`: invio ACK/NACK binario via UDP.
-- `StateUpdateEventHandler`: applicazione `StateUpdate` su `SystemState`.
-- `BinaryConverter`: parsing header, dispatch `messageId`, generazione messaggi applicativi e delta di stato.
+- `SystemState`: stato condiviso thread-safe.
 
 Schema logico:
 
@@ -22,13 +20,12 @@ Schema logico:
 UdpMulticastReceiver (CmsEntity)
         |
         v
-  BinaryConverter::convert()
+ CmsEntity::convertIncomingPacket()
         |
         v
       EventBus
    /      |      \
- TCP    ACK     STATE
-handler handler  handler
+ ACS   STATE   CMS internal topics
 ```
 
 ## Configurazione (nuovo formato)
@@ -67,16 +64,17 @@ Note:
 
 1. `CmsEntity` riceve un pacchetto UDP multicast.
 2. Estrae `source_message_id` dall'header.
-3. Invoca `BinaryConverter::convert()`.
+3. Converte il messaggio in base al `messageId` direttamente dentro `CmsEntity`.
 4. Pubblica su `EventBus`:
-   - eventi di outgoing packet per TCP,
-   - eventi ACK (ack-only o post-send),
-   - eventi state update.
-5. Gli handler consumano in modo indipendente i rispettivi topic.
+  - payload JSON verso ACS,
+  - eventi di state update,
+  - eventi CMS interni per dispatch e periodic processing.
+5. `CmsEntity` si sottoscrive ai topic CMS che le servono e completa da sola invio TCP, ACK UDP e periodic unicast.
+6. `AcsEntity` consuma i topic ACS in modo autonomo.
 
 ## Messaggi attualmente gestiti
 
-Il dispatch del `BinaryConverter` include al momento:
+Il dispatch interno di `CmsEntity` include al momento:
 
 - `1679949825` (`CS_LRAS_change_configuration_order_INS`)
 - `1679949826` (`CS_LRAS_cueing_order_cancellation_INS`, ack-only)
@@ -135,10 +133,10 @@ python scripts/tcp_receiver.py --host 127.0.0.1 --port 9000
 python scripts/send_test_packet.py --group 226.1.1.30 --port 55000
 ```
 
-Se il server TCP non e attivo, il proxy resta operativo ma logga `connection refused` sul ramo `TcpSendEventHandler`.
+Se il server TCP non e attivo, il proxy resta operativo ma logga `connection refused` dal ramo TCP interno di `CmsEntity`.
 
 ## Roadmap breve
 
-- aggiunta entita ACS e NAV sullo stesso pattern;
-- migrazione del `BinaryConverter` da output JSON a payload tipizzati (event payload structs);
-- test automatici su parser/dispatch/handler.
+- completare la migrazione entity-centric anche per ACS, riducendo ulteriormente i handler esterni;
+- valutare un envelope eventi piu snello per ridurre il numero di tipi CMS;
+- test automatici su parser, dispatch e integrazione runtime.

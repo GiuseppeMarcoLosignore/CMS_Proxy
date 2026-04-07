@@ -1,6 +1,8 @@
 #include "AcsEntity.hpp"
 
+#include "Topics.hpp"
 #include "UdpUnicastReceiver.hpp"
+#include "cms/CmsEvents.hpp"
 
 #include <iostream>
 
@@ -88,14 +90,21 @@ std::optional<StateUpdate> parse_state_update(const nlohmann::json& payload) {
 } // namespace
 
 AcsEntity::AcsEntity(const AcsConfig& config,
-                     std::shared_ptr<EventBus> eventBus)
+                                         std::shared_ptr<EventBus> eventBus,
+                                         std::shared_ptr<ISender> sender,
+                                         std::shared_ptr<SystemState> systemState)
     : config_(config),
       eventBus_(std::move(eventBus)),
+            sender_(std::move(sender)),
+            systemState_(std::move(systemState)),
+            destinations_(config_.destinations),
       rxIoContext_(),
       rxWorkGuard_(std::nullopt) {
 }
 
 void AcsEntity::start() {
+        subscribeTopics();
+
     receiver_ = std::make_shared<UdpUnicastReceiver>(
         rxIoContext_,
         config_.listen_ip,
@@ -129,7 +138,61 @@ void AcsEntity::stop() {
     rxIoContext_.stop();
 }
 
-void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+void AcsEntity::subscribeTopics() {
+    if (!eventBus_) {
+        return;
+    }
+
+    //eventBus_->subscribe(AcsOutgoingJsonEvent::Topic, [this](const EventBus::EventPtr& event) {
+    //    handleOutgoingJsonEvent(event);
+    //});
+
+    //eventBus_->subscribe(AcsStateUpdateEvent::Topic, [this](const EventBus::EventPtr& event) {
+    //    handleStateUpdateEvent(event);
+    //});
+
+    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
+        createMASTER(event);
+    });
+}
+
+void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
+    const auto outgoing = std::dynamic_pointer_cast<const AcsOutgoingJsonEvent>(event);
+    if (!outgoing || !sender_) {
+        return;
+    }
+
+    const auto destinationIt = destinations_.find(outgoing->destinationId);
+    if (destinationIt == destinations_.end()) {
+        std::cerr << "[ACS Entity] Destinazione ACS non configurata: "
+                  << outgoing->destinationId << std::endl;
+        return;
+    }
+
+    const auto& destination = destinationIt->second;
+    const SendResult result = sender_->send(
+        outgoing->packet,
+        destination.ip_address,
+        destination.port
+    );
+
+    if (!result.success) {
+        std::cerr << "[ACS Entity] Errore invio TCP JSON verso "
+                  << destination.ip_address << ":" << destination.port
+                  << " -> " << result.error_message << std::endl;
+    }
+}
+
+void AcsEntity::handleStateUpdateEvent(const EventBus::EventPtr& event) {
+    const auto stateEvent = std::dynamic_pointer_cast<const AcsStateUpdateEvent>(event);
+    if (!stateEvent || !systemState_) {
+        return;
+    }
+
+    systemState_->applyBatch(stateEvent->updates);
+}
+
+void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
     if (!eventBus_) {
         return;
     }
@@ -141,13 +204,6 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         std::cerr << "[ACS Entity] JSON non valido: " << e.what() << std::endl;
         return;
     }
-
-    auto incomingEvent = std::make_shared<AcsIncomingJsonEvent>();
-    incomingEvent->packet = packet;
-    incomingEvent->sourceInfo = sourceInfo;
-    incomingEvent->payload = payload;
-    incomingEvent->messageType = extract_message_type(payload);
-    eventBus_->publish(incomingEvent);
 
     const auto destinationId = extract_destination_id(payload);
     if (destinationId.has_value()) {
@@ -163,5 +219,389 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         auto stateEvent = std::make_shared<AcsStateUpdateEvent>();
         stateEvent->updates.push_back(*stateUpdate);
         eventBus_->publish(stateEvent);
+    }
+}
+
+void AcsEntity::createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload) {
+    outPayload["header"] = header;
+    outPayload["type"] = type;
+    outPayload["sender"] = sender;
+    outPayload["param"] = param;
+}
+
+void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
+    if (!eventBus_ || !sender_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json inputPayload;
+    nlohmann::json param;
+    nlohmann::json payload;
+    try {
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+
+        std::string mode = "REQ";
+        if (inputPayload.contains("param") && inputPayload.at("param").is_object()) {
+            const auto& inputParam = inputPayload.at("param");
+            if (inputParam.contains("mode")) {
+                if (inputParam.at("mode").is_number_integer()) {
+                    mode = (inputParam.at("mode").get<int>() == 0) ? "RELEASE" : "REQ";
+                } else if (inputParam.at("mode").is_string()) {
+                    const std::string inputMode = inputParam.at("mode").get<std::string>();
+                    mode = (inputMode == "0") ? "RELEASE" : inputMode;
+                }
+            }
+        }
+
+        param["mode"] = mode;
+        createHeader("MASTER", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        const SendResult sendResult = sender_->send(
+            outPacket,
+            destinationIt->second.ip_address,
+            destinationIt->second.port
+        );
+        if (!sendResult.success) {
+            std::cerr << "[ACS Entity] Errore invio MASTER verso "
+                      << destinationIt->second.ip_address << ":" << destinationIt->second.port
+                      << " -> " << sendResult.error_message << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createERROR(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createAUDIO(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createLAD(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createSEARCHLIGHT(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createLRF(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createSTABIL(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createSHADOW(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createZOOM(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createCONTEXT(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createPOSITION(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createDELTA(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createTRACKING(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createCONFIG(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createIMU(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
+    }
+}
+
+void AcsEntity::createHOURS(const EventBus::EventPtr& event) {
+    if (!eventBus_) {
+        return;
+    }
+
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
+
+    const RawPacket& packet = dispatchEvent->packet;
+
+    nlohmann::json payload;
+    try {
+        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        return;
     }
 }
