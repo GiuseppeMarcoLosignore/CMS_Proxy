@@ -39,86 +39,11 @@ AppConfig loadAppConfig(const std::string& config_path) {
         throw std::runtime_error("Sezione 'cms' mancante o non valida");
     }
     const auto& cms = root.at("cms");
-    if (!cms.contains("handlers") || !cms.at("handlers").is_object()) {
-        throw std::runtime_error("Sezione 'cms.handlers' mancante o non valida");
-    }
-    const auto& handlers = cms.at("handlers");
-    if (!handlers.contains("tcp_send") || !handlers.at("tcp_send").is_object()) {
-        throw std::runtime_error("Sezione 'cms.handlers.tcp_send' mancante o non valida");
-    }
-    if (!handlers.contains("ack_send") || !handlers.at("ack_send").is_object()) {
-        throw std::runtime_error("Sezione 'cms.handlers.ack_send' mancante o non valida");
-    }
-    const auto& tcp_send = handlers.at("tcp_send");
-    if (!tcp_send.contains("lrad_destinations") || !tcp_send.at("lrad_destinations").is_array()) {
-        throw std::runtime_error("Sezione 'cms.handlers.tcp_send.lrad_destinations' mancante o non valida");
-    }
-    const auto& ack_send = handlers.at("ack_send");
 
     AppConfig cfg;
     cfg.cms.listen_ip = read_required<std::string>(cms, "listen_ip", "cms");
     cfg.cms.multicast_group = read_required<std::string>(cms, "multicast_group", "cms");
     cfg.cms.multicast_port = read_port(cms, "multicast_port", "cms");
-
-    cfg.cms.handlers.ack_send.target_ip = read_required<std::string>(ack_send, "target_ip", "cms.handlers.ack_send");
-    cfg.cms.handlers.ack_send.target_port = read_port(ack_send, "target_port", "cms.handlers.ack_send");
-
-    if (handlers.contains("udp_unicast_send") && handlers.at("udp_unicast_send").is_object()) {
-        const auto& udp_unicast_send = handlers.at("udp_unicast_send");
-        if (udp_unicast_send.contains("enabled")) {
-            cfg.cms.handlers.udp_unicast_send.enabled = udp_unicast_send.at("enabled").get<bool>();
-        }
-
-        if (cfg.cms.handlers.udp_unicast_send.enabled) {
-            cfg.cms.handlers.udp_unicast_send.target_ip = read_required<std::string>(
-                udp_unicast_send,
-                "target_ip",
-                "cms.handlers.udp_unicast_send"
-            );
-            cfg.cms.handlers.udp_unicast_send.target_port = read_port(
-                udp_unicast_send,
-                "target_port",
-                "cms.handlers.udp_unicast_send"
-            );
-        }
-    }
-
-    if (cms.contains("periodic_health_status") && cms.at("periodic_health_status").is_object()) {
-        const auto& periodic_health_status = cms.at("periodic_health_status");
-        if (periodic_health_status.contains("enabled")) {
-            cfg.cms.periodic_health_status.enabled = periodic_health_status.at("enabled").get<bool>();
-        }
-        if (periodic_health_status.contains("interval_ms")) {
-            const int interval_ms = periodic_health_status.at("interval_ms").get<int>();
-            if (interval_ms < 1) {
-                throw std::runtime_error("Campo non valido in sezione 'cms.periodic_health_status': interval_ms");
-            }
-            cfg.cms.periodic_health_status.interval_ms = static_cast<uint32_t>(interval_ms);
-        }
-    }
-
-    for (const auto& destination : tcp_send.at("lrad_destinations")) {
-        if (!destination.is_object()) {
-            throw std::runtime_error("Elemento non valido in 'cms.handlers.tcp_send.lrad_destinations'");
-        }
-
-        const int id_value = read_required<int>(destination, "id", "cms.handlers.tcp_send.lrad_destinations");
-        if (id_value < 0 || id_value > 65535) {
-            throw std::runtime_error("ID LRAD non valido: " + std::to_string(id_value));
-        }
-
-        const uint16_t id = static_cast<uint16_t>(id_value);
-        LradDestination lrad;
-        lrad.id = id;
-        lrad.ip_address = read_required<std::string>(destination, "ip", "cms.handlers.tcp_send.lrad_destinations");
-        lrad.port = read_port(destination, "port", "cms.handlers.tcp_send.lrad_destinations");
-
-        cfg.cms.handlers.tcp_send.lrad_destinations[id] = lrad;
-    }
-
-    if (cfg.cms.handlers.tcp_send.lrad_destinations.empty()) {
-        throw std::runtime_error("La lista 'cms.handlers.tcp_send.lrad_destinations' e' vuota");
-    }
 
     // Parsing unicast_relays (opzionale)
     if (cms.contains("unicast_relays") && cms.at("unicast_relays").is_array()) {

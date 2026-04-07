@@ -8,7 +8,6 @@ inline constexpr const char* AcsStateUpdate = "acs.state_update";
 
 // CMS
 inline constexpr const char* CmsStateUpdate = "cms.state_update";
-inline constexpr const char* CmsPeriodicMessageTick = "cms.periodic_message_tick";
 
 // Protocol message topics
 inline constexpr const char* COS_LRAS_audio_live_1_PtP = "COS_LRAS_audio_live_1_PtP";

@@ -6,10 +6,8 @@
 #include <boost/asio.hpp>
 
 #include "AcsEntity.hpp"
-#include "AcsEvents.hpp"
 #include "AppConfig.hpp"
 #include "CmsEntity.hpp"
-#include "CmsEvents.hpp"
 #include "EventBus.hpp"
 #include "ProxyEngine.hpp"
 #include "SystemState.hpp"

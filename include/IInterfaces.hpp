@@ -15,13 +15,9 @@ struct SendResult {
     std::string error_message;
 };
 
-using AckBuilderFunc = std::function<RawPacket(uint32_t action_id, uint32_t source_message_id, const SendResult&)>;
-
 struct ConversionResult {
     std::vector<RawPacket> packets;
     std::vector<std::string> packet_topics;
-    AckBuilderFunc ack_builder;
-    bool ack_only = false;
     std::vector<StateUpdate> state_updates;
 };
 

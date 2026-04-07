@@ -1,8 +1,7 @@
 #include "AcsEntity.hpp"
 
-#include "Topics.hpp"
 #include "UdpUnicastReceiver.hpp"
-#include "cms/CmsEvents.hpp"
+#include "cms/CmsEntity.hpp"
 
 #include <iostream>
 
@@ -143,13 +142,6 @@ void AcsEntity::subscribeTopics() {
         return;
     }
 
-    //eventBus_->subscribe(AcsOutgoingJsonEvent::Topic, [this](const EventBus::EventPtr& event) {
-    //    handleOutgoingJsonEvent(event);
-    //});
-
-    //eventBus_->subscribe(AcsStateUpdateEvent::Topic, [this](const EventBus::EventPtr& event) {
-    //    handleStateUpdateEvent(event);
-    //});
 
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
         createMASTER(event);

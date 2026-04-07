@@ -1,18 +1,36 @@
 #pragma once
 
-#include "AcsEvents.hpp"
 #include "AppConfig.hpp"
 #include "EventBus.hpp"
 #include "IEntity.hpp"
 #include "IInterfaces.hpp"
+#include "IEvent.hpp"
 #include "SystemState.hpp"
+#include "Topics.hpp"
 
+#include <nlohmann/json.hpp>
 #include <boost/asio.hpp>
 
 #include <map>
+#include <string>
+#include <vector>
 #include <memory>
 #include <optional>
 #include <thread>
+
+struct AcsOutgoingJsonEvent : public IEvent {
+    inline static const std::string Topic = Topics::AcsOutgoingJson;
+    RawPacket packet;
+    nlohmann::json payload;
+    uint16_t destinationId = 0;
+    const std::string& topic() const override { return Topic; }
+};
+
+struct AcsStateUpdateEvent : public IEvent {
+    inline static const std::string Topic = Topics::AcsStateUpdate;
+    std::vector<StateUpdate> updates;
+    const std::string& topic() const override { return Topic; }
+};
 
 class AcsEntity : public IEntity {
 public:

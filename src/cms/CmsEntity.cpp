@@ -1,12 +1,11 @@
 #include "CmsEntity.hpp"
 
-#include "AcsEvents.hpp"
-#include "CmsEvents.hpp"
+#include "acs/AcsEntity.hpp"
 #include "CueingMath.hpp"
 #include "Topics.hpp"
 #include "UdpMulticastReceiver.hpp"
+#include "UdpMulticastSender.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -26,6 +25,7 @@ namespace {
 using json = nlohmann::json;
 
 constexpr std::size_t HeaderSize = 16;
+constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576879045;
 constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
 constexpr uint32_t MessageId_CS_LRAS_cueing_order_cancellation_INS = 1679949826;
 constexpr uint32_t MessageId_CS_LRAS_cueing_order_INS = 1679949827;
@@ -47,36 +47,6 @@ constexpr uint32_t MessageId_CS_LRAS_request_installation_data_INS = 1679949842;
 constexpr uint32_t MessageId_CS_MULTI_health_status_INS = 1684229565;
 constexpr uint32_t MessageId_CS_MULTI_update_cst_kinematics_INS = 1684229569;
 
-constexpr std::size_t AckHeaderSize = 16;
-constexpr std::size_t AckMessageSize = 28;
-constexpr uint32_t MsgId_LRAS_CS_ack_INS = 576879045;
-constexpr uint16_t AckAccepted = 1;
-constexpr uint16_t NackNotExecuted = 2;
-
-uint16_t map_nack_reason(const SendResult& sr) {
-    using namespace boost::asio;
-    if (sr.success) {
-        return 0;
-    }
-
-    const auto ec = boost::system::error_code(sr.error_value, boost::system::system_category());
-    if (ec == error::invalid_argument || ec == error::bad_descriptor || sr.error_category == "resolver") {
-        return 2;
-    }
-    if (ec == error::already_started || ec == error::in_progress || ec == error::operation_aborted) {
-        return 3;
-    }
-    if (ec == error::timed_out || ec == error::try_again || ec == error::would_block || ec == error::not_connected) {
-        return 4;
-    }
-    if (ec == error::connection_refused || ec == error::connection_reset || ec == error::host_unreachable ||
-        ec == error::network_unreachable || ec == error::network_down || ec == error::broken_pipe ||
-        ec == error::eof) {
-        return 5;
-    }
-    return 0;
-}
-
 float normalize_0_360(float angleDeg) {
     return cueing::mod360(angleDeg);
 }
@@ -87,49 +57,154 @@ uint16_t encode_delta_u16(float angleDeg) {
     return static_cast<uint16_t>(rounded & 0xFFFF);
 }
 
-std::string describe_transport_error(const boost::system::error_code& ec) {
-    using namespace boost::asio;
-
-    if (ec == error::connection_refused) {
-        return "Connessione rifiutata dal peer (porta chiusa o servizio non in ascolto).";
-    }
-    if (ec == error::timed_out) {
-        return "Timeout di rete (nessuna risposta entro il tempo previsto).";
-    }
-    if (ec == error::host_unreachable) {
-        return "Host non raggiungibile (routing/host target non disponibile).";
-    }
-    if (ec == error::network_unreachable) {
-        return "Rete non raggiungibile (problema di routing/interfaccia).";
-    }
-    if (ec == error::not_connected) {
-        return "Socket non connesso.";
-    }
-    if (ec == error::connection_reset) {
-        return "Connessione resettata dal peer (RST).";
-    }
-    if (ec == error::eof) {
-        return "Connessione chiusa ordinatamente dal peer (EOF).";
-    }
-    if (ec == error::broken_pipe) {
-        return "Scrittura su connessione non piu valida (broken pipe).";
-    }
-    if (ec == error::operation_aborted) {
-        return "Operazione annullata (socket chiuso o stop richiesto).";
-    }
-
-    return std::string("Errore non classificato: [") + ec.category().name() + ":"
-        + std::to_string(ec.value()) + "] " + ec.message();
+void append_u32_be(std::vector<uint8_t>& buffer, uint32_t value) {
+    const uint32_t netValue = htonl(value);
+    const auto* bytes = reinterpret_cast<const uint8_t*>(&netValue);
+    buffer.insert(buffer.end(), bytes, bytes + sizeof(netValue));
 }
 
-SendResult make_send_result_from_ec(const boost::system::error_code& ec) {
-    SendResult result;
-    result.success = !ec;
-    result.error_value = ec.value();
-    result.error_category = ec.category().name();
-    result.error_message = ec.message();
-    return result;
+void append_u16_be(std::vector<uint8_t>& buffer, uint16_t value) {
+    const uint16_t netValue = htons(value);
+    const auto* bytes = reinterpret_cast<const uint8_t*>(&netValue);
+    buffer.insert(buffer.end(), bytes, bytes + sizeof(netValue));
 }
+
+uint32_t source_message_id_from_topic(const std::string& topic) {
+    if (topic == Topics::CS_LRAS_change_configuration_order_INS) {
+        return MessageId_CS_LRAS_change_configuration_order_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_cueing_order_cancellation_INS) {
+        return MessageId_CS_LRAS_cueing_order_cancellation_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_cueing_order_INS) {
+        return MessageId_CS_LRAS_cueing_order_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_emission_control_INS) {
+        return MessageId_CS_LRAS_emission_control_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_emission_mode_INS) {
+        return MessageId_CS_LRAS_emission_mode_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_inhibition_sectors_INS) {
+        return MessageId_CS_LRAS_inhibition_sectors_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_joystick_control_lrad_1_INS) {
+        return MessageId_CS_LRAS_joystick_control_lrad_1_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_joystick_control_lrad_2_INS) {
+        return MessageId_CS_LRAS_joystick_control_lrad_2_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_recording_command_INS) {
+        return MessageId_CS_LRAS_recording_command_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_engagement_capability_INS) {
+        return MessageId_CS_LRAS_request_engagement_capability_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_full_status_INS) {
+        return MessageId_CS_LRAS_request_full_status_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_message_table_INS) {
+        return MessageId_CS_LRAS_request_message_table_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_software_version_INS) {
+        return MessageId_CS_LRAS_request_software_version_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_thresholds_INS) {
+        return MessageId_CS_LRAS_request_thresholds_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_translation_INS) {
+        return MessageId_CS_LRAS_request_translation_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_video_tracking_command_INS) {
+        return MessageId_CS_LRAS_video_tracking_command_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_emission_mode_INS) {
+        return MessageId_CS_LRAS_request_emission_mode_INS;
+    }
+
+    if (topic == Topics::CS_LRAS_request_installation_data_INS) {
+        return MessageId_CS_LRAS_request_installation_data_INS;
+    }
+
+    if (topic == Topics::CS_MULTI_health_status_INS) {
+        return MessageId_CS_MULTI_health_status_INS;
+    }
+
+    if (topic == Topics::CS_MULTI_update_cst_kinematics_INS) {
+        return MessageId_CS_MULTI_update_cst_kinematics_INS;
+    }
+
+    return 0;
+}
+
+std::optional<uint32_t> json_u32_value(const json& value) {
+    if (value.is_number_unsigned()) {
+        return value.get<uint32_t>();
+    }
+
+    if (value.is_number_integer()) {
+        const auto signedValue = value.get<int64_t>();
+        if (signedValue >= 0 && signedValue <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+            return static_cast<uint32_t>(signedValue);
+        }
+        return std::nullopt;
+    }
+
+    if (value.is_string()) {
+        try {
+            return static_cast<uint32_t>(std::stoul(value.get<std::string>()));
+        } catch (const std::exception&) {
+            return std::nullopt;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<uint32_t> extract_action_id(const json& payload) {
+    if (payload.contains("Action Id")) {
+        if (const auto actionId = json_u32_value(payload.at("Action Id")); actionId.has_value()) {
+            return actionId;
+        }
+    }
+
+    if (payload.contains("action_id")) {
+        if (const auto actionId = json_u32_value(payload.at("action_id")); actionId.has_value()) {
+            return actionId;
+        }
+    }
+
+    if (payload.contains("meta") && payload.at("meta").is_object() && payload.at("meta").contains("action_id")) {
+        if (const auto actionId = json_u32_value(payload.at("meta").at("action_id")); actionId.has_value()) {
+            return actionId;
+        }
+    }
+
+    if (payload.contains("param") && payload.at("param").is_object() && payload.at("param").contains("action_id")) {
+        if (const auto actionId = json_u32_value(payload.at("param").at("action_id")); actionId.has_value()) {
+            return actionId;
+        }
+    }
+
+    return std::nullopt;
+}
+
 
 uint32_t read_u32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     if (data.size() < offset + sizeof(uint32_t)) {
@@ -153,21 +228,6 @@ float read_f32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     return value;
 }
 
-uint16_t map_cs_status_from_snapshot(const SystemStateSnapshot& snapshot) {
-    std::string mode = snapshot.systemMode;
-    std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-
-    if (mode.find("TRAIN") != std::string::npos) {
-        return 3;
-    }
-    if (mode.find("OPER") != std::string::npos) {
-        return 2;
-    }
-    return 1;
-}
-
 uint32_t extract_message_id_from_header(const RawPacket& packet) {
     return read_u32_be(packet.data, 0);
 }
@@ -185,15 +245,11 @@ CmsEntity::CmsEntity(const CmsConfig& config,
       eventBus_(std::move(eventBus)),
       systemState_(std::move(systemState)),
       rxIoContext_(),
-      rxWorkGuard_(std::nullopt),
-      tcpSocket_(rxIoContext_),
-            ackSocket_(rxIoContext_) {
+    rxWorkGuard_(std::nullopt) {
 }
 
 void CmsEntity::start() {
     subscribeTopics();
-    initializeAckSocket();
-        initializePeriodicMulticastSender();
 
     receiver_ = std::make_shared<UdpMulticastReceiver>(
         rxIoContext_,
@@ -208,11 +264,6 @@ void CmsEntity::start() {
 
     receiver_->start();
 
-    if (config_.periodic_health_status.enabled) {
-        periodicHealthTimer_.emplace(rxIoContext_);
-        schedulePeriodicHealthStatusTick();
-    }
-
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {
         rxIoContext_.run();
@@ -220,10 +271,6 @@ void CmsEntity::start() {
 
     std::cout << "[CMS Entity] Avviata su "
               << config_.multicast_group << ":" << config_.multicast_port << std::endl;
-    if (config_.periodic_health_status.enabled) {
-        std::cout << "[CMS Entity] Periodic CS_MULTI_health_status_INS attivo: interval_ms="
-                  << config_.periodic_health_status.interval_ms << std::endl;
-    }
 }
 
 void CmsEntity::stop() {
@@ -235,18 +282,6 @@ void CmsEntity::stop() {
         rxWorkGuard_->reset();
     }
 
-    if (periodicHealthTimer_.has_value()) {
-        periodicHealthTimer_->cancel();
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(transportMutex_);
-        boost::system::error_code ec;
-        tcpSocket_.close(ec);
-        ackSocket_.close(ec);
-        periodicMulticastSender_.reset();
-    }
-
     rxIoContext_.stop();
 }
 
@@ -255,92 +290,16 @@ void CmsEntity::subscribeTopics() {
         return;
     }
 
-    const char* dispatchTopics[] = {
-        Topics::CS_LRAS_change_configuration_order_INS,
-        Topics::CS_LRAS_cueing_order_cancellation_INS,
-        Topics::CS_LRAS_cueing_order_INS,
-        Topics::CS_LRAS_emission_control_INS
-    };
-
-    for (const char* topic : dispatchTopics) {
-        eventBus_->subscribe(topic, [this](const EventBus::EventPtr& event) {
-            handleDispatchTopicEvent(event);
-        });
-    }
-
     eventBus_->subscribe(Topics::CmsStateUpdate, [this](const EventBus::EventPtr& event) {
         handleStateUpdateEvent(event);
     });
 
-    eventBus_->subscribe(Topics::CmsPeriodicMessageTick, [this](const EventBus::EventPtr& event) {
-        handlePeriodicTickEvent(event);
+    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_CS_ack_INS(event);
     });
-}
 
-void CmsEntity::initializeAckSocket() {
-    ackSocketReady_ = false;
-    if (config_.handlers.ack_send.target_ip.empty() || config_.handlers.ack_send.target_port == 0) {
-        std::cerr << "[CMS Entity] Endpoint ACK non configurato." << std::endl;
-        return;
-    }
 
-    boost::system::error_code ec;
-    const auto address = boost::asio::ip::make_address(config_.handlers.ack_send.target_ip, ec);
-    if (ec) {
-        std::cerr << "[CMS Entity] IP ACK non valido: " << ec.message() << std::endl;
-        return;
-    }
 
-    ackTargetEndpoint_ = boost::asio::ip::udp::endpoint(address, config_.handlers.ack_send.target_port);
-    ackSocket_.open(boost::asio::ip::udp::v4(), ec);
-    if (ec) {
-        std::cerr << "[CMS Entity] Errore apertura socket ACK: " << ec.message() << std::endl;
-        return;
-    }
-
-    ackSocketReady_ = true;
-}
-
-void CmsEntity::initializePeriodicMulticastSender() {
-    periodicUnicastSocketReady_ = false;
-    if (!config_.handlers.udp_unicast_send.enabled) {
-        return;
-    }
-
-    try {
-        periodicMulticastSender_ = std::make_unique<UdpMulticastSender>(rxIoContext_);
-    } catch (const std::exception& e) {
-        std::cerr << "[CMS Entity] Errore init sender multicast periodico: " << e.what() << std::endl;
-        periodicMulticastSender_.reset();
-        return;
-    }
-
-    periodicUnicastSocketReady_ = true;
-}
-
-void CmsEntity::schedulePeriodicHealthStatusTick() {
-    if (!periodicHealthTimer_.has_value()) {
-        return;
-    }
-
-    periodicHealthTimer_->expires_after(std::chrono::milliseconds(config_.periodic_health_status.interval_ms));
-    periodicHealthTimer_->async_wait([this](const boost::system::error_code& ec) {
-        if (ec) {
-            return;
-        }
-
-        publishPeriodicHealthStatusTick();
-        schedulePeriodicHealthStatusTick();
-    });
-}
-
-void CmsEntity::publishPeriodicHealthStatusTick() {
-    if (!eventBus_) {
-        return;
-    }
-
-    auto tickEvent = std::make_shared<CmsPeriodicMessageTickEvent>();
-    eventBus_->publish(tickEvent);
 }
 
 void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
@@ -352,15 +311,9 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     const SystemStateSnapshot snapshot = systemState_ ? systemState_->getSnapshot() : SystemStateSnapshot{};
     const ConversionResult result = convertIncomingPacket(packet, snapshot);
 
-    if (result.packets.empty() && !result.ack_only) {
+    if (result.packets.empty()) {
         std::cerr << "[CMS Entity] Messaggio ignorato: source_id=" << sourceMessageId << std::endl;
         return;
-    }
-
-    if (result.ack_only) {
-        SendResult sendResult;
-        sendResult.success = true;
-        sendAck(result.ack_builder(0, sourceMessageId, sendResult));
     }
 
     for (std::size_t i = 0; i < result.packets.size(); ++i) {
@@ -375,8 +328,6 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
             auto dispatchTopicEvent = std::make_shared<CmsDispatchTopicPacketEvent>();
             dispatchTopicEvent->dispatchTopic = result.packet_topics[i];
             dispatchTopicEvent->packet = packetToSend;
-            dispatchTopicEvent->ackBuilder = result.ack_builder;
-            dispatchTopicEvent->sourceMessageId = sourceMessageId;
             eventBus_->publish(dispatchTopicEvent);
         }
     }
@@ -388,17 +339,6 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     }
 }
 
-void CmsEntity::handleDispatchTopicEvent(const EventBus::EventPtr& event) {
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const SendResult sendResult = sendTcpToLrad(dispatchEvent->packet);
-    const uint32_t actionId = extractActionIdFromPayload(dispatchEvent->packet);
-    sendAck(dispatchEvent->ackBuilder(actionId, dispatchEvent->sourceMessageId, sendResult));
-}
-
 void CmsEntity::handleStateUpdateEvent(const EventBus::EventPtr& event) {
     const auto stateEvent = std::dynamic_pointer_cast<const CmsStateUpdateEvent>(event);
     if (!stateEvent || !systemState_) {
@@ -406,15 +346,6 @@ void CmsEntity::handleStateUpdateEvent(const EventBus::EventPtr& event) {
     }
 
     systemState_->applyBatch(stateEvent->updates);
-}
-
-void CmsEntity::handlePeriodicTickEvent(const EventBus::EventPtr& event) {
-    const auto tickEvent = std::dynamic_pointer_cast<const CmsPeriodicMessageTickEvent>(event);
-    if (!tickEvent) {
-        return;
-    }
-
-    sendPeriodicUnicast(buildHealthStatusPacket());
 }
 
 bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
@@ -462,9 +393,6 @@ ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet, const
     }
 
     ConversionResult result;
-    result.ack_builder = [this](uint32_t actionId, uint32_t sourceMessageId, const SendResult& sendResult) {
-        return buildAckPacket(actionId, sourceMessageId, sendResult);
-    };
 
     switch (header.messageId) {
         case MessageId_CS_LRAS_change_configuration_order_INS:
@@ -472,7 +400,6 @@ ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet, const
             result.packet_topics.assign(result.packets.size(), Topics::CS_LRAS_change_configuration_order_INS);
             break;
         case MessageId_CS_LRAS_cueing_order_cancellation_INS:
-            result.ack_only = true;
             result.packets = parse_CS_LRAS_cueing_order_cancellation_INS(packet, result.state_updates);
             result.packet_topics.assign(result.packets.size(), Topics::CS_LRAS_cueing_order_cancellation_INS);
             break;
@@ -848,176 +775,63 @@ std::vector<RawPacket> CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
     return { make_empty_packet() };
 }
 
-RawPacket CmsEntity::buildHealthStatusPacket() const {
-    constexpr std::size_t commonHeaderSize = 16;
-    constexpr std::size_t messageSize = 24;
-    std::vector<uint8_t> bytes(messageSize, 0);
+void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
+    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+    if (!dispatchEvent) {
+        return;
+    }
 
-    const uint32_t word0 = htonl(MessageId_CS_MULTI_health_status_INS);
-    const uint32_t word1 = htonl(static_cast<uint32_t>(messageSize - commonHeaderSize));
-    const uint32_t word2 = 0;
-    const uint32_t word3 = 0;
-    std::memcpy(bytes.data() + 0, &word0, sizeof(uint32_t));
-    std::memcpy(bytes.data() + 4, &word1, sizeof(uint32_t));
-    std::memcpy(bytes.data() + 8, &word2, sizeof(uint32_t));
-    std::memcpy(bytes.data() + 12, &word3, sizeof(uint32_t));
+    const uint32_t sourceMessageId = source_message_id_from_topic(dispatchEvent->dispatchTopic);
+    if (sourceMessageId == 0) {
+        std::cerr << "[CMS Entity] Impossibile determinare source_message_id per ACK: topic="
+                  << dispatchEvent->dispatchTopic << std::endl;
+        return;
+    }
 
-    const SystemStateSnapshot snapshot = systemState_ ? systemState_->getSnapshot() : SystemStateSnapshot{};
-    const uint16_t csStatus = htons(map_cs_status_from_snapshot(snapshot));
-    const uint16_t drmuStatus = htons(static_cast<uint16_t>(1));
-    const uint16_t spare = htons(static_cast<uint16_t>(0));
-    const uint16_t cssStatus = htons(static_cast<uint16_t>(1));
-    std::memcpy(bytes.data() + 16, &csStatus, sizeof(uint16_t));
-    std::memcpy(bytes.data() + 18, &drmuStatus, sizeof(uint16_t));
-    std::memcpy(bytes.data() + 20, &spare, sizeof(uint16_t));
-    std::memcpy(bytes.data() + 22, &cssStatus, sizeof(uint16_t));
-
-    return RawPacket{std::move(bytes)};
-}
-
-RawPacket CmsEntity::buildAckPacket(uint32_t actionId, uint32_t sourceMessageId, const SendResult& result) const {
-    std::vector<uint8_t> bytes(AckMessageSize, 0);
-    const uint16_t ackNack = result.success ? AckAccepted : NackNotExecuted;
-    const uint16_t nackReason = result.success ? 0 : map_nack_reason(result);
-    const uint32_t word0 = htonl(MsgId_LRAS_CS_ack_INS);
-    const uint32_t word1 = htonl(static_cast<uint32_t>(AckMessageSize - AckHeaderSize));
-    const uint32_t word2 = 0;
-    const uint32_t word3 = 0;
-    std::memcpy(bytes.data() + 0, &word0, 4);
-    std::memcpy(bytes.data() + 4, &word1, 4);
-    std::memcpy(bytes.data() + 8, &word2, 4);
-    std::memcpy(bytes.data() + 12, &word3, 4);
-
-    const uint32_t actionIdNet = htonl(actionId);
-    const uint32_t sourceIdNet = htonl(sourceMessageId);
-    const uint16_t ackNackNet = htons(ackNack);
-    const uint16_t nackReasonNet = htons(nackReason);
-    std::memcpy(bytes.data() + 16, &actionIdNet, 4);
-    std::memcpy(bytes.data() + 20, &sourceIdNet, 4);
-    std::memcpy(bytes.data() + 24, &ackNackNet, 2);
-    std::memcpy(bytes.data() + 26, &nackReasonNet, 2);
-    return RawPacket{std::move(bytes)};
-}
-
-uint32_t CmsEntity::extractActionIdFromPayload(const RawPacket& packet) const {
+    json payload;
     try {
-        const auto payload = json::parse(packet.data.begin(), packet.data.end());
-        if (!payload.contains("param") || !payload.at("param").is_object()) {
-            return 0;
-        }
-        const auto& param = payload.at("param");
-        if (!param.contains("action_id")) {
-            return 0;
-        }
-        return param.at("action_id").get<uint32_t>();
-    } catch (...) {
-        return 0;
-    }
-}
-
-SendResult CmsEntity::sendTcpToLrad(const RawPacket& packet) {
-    std::lock_guard<std::mutex> lock(transportMutex_);
-
-    auto destinationIt = config_.handlers.tcp_send.lrad_destinations.find(packet.destinationLradId);
-    if (destinationIt == config_.handlers.tcp_send.lrad_destinations.end()) {
-        SendResult result;
-        result.success = false;
-        result.error_value = -1;
-        result.error_category = "handler";
-        result.error_message = "LRAD ID non configurato";
-        std::cerr << "[CMS Entity] LRAD ID non configurato: " << packet.destinationLradId << std::endl;
-        return result;
-    }
-
-    const auto& destination = destinationIt->second;
-    const std::string cacheKey = destination.ip_address + ":" + std::to_string(destination.port);
-    boost::asio::ip::tcp::endpoint targetEndpoint;
-
-    const auto cacheIt = tcpEndpointCache_.find(cacheKey);
-    if (cacheIt != tcpEndpointCache_.end()) {
-        targetEndpoint = cacheIt->second;
-    } else {
-        boost::system::error_code ec;
-        boost::asio::ip::tcp::resolver resolver(rxIoContext_);
-        auto results = resolver.resolve(destination.ip_address, std::to_string(destination.port), ec);
-        if (ec || results.begin() == results.end()) {
-            std::cerr << "[CMS Entity] Errore risoluzione host " << destination.ip_address
-                      << " -> " << (ec ? describe_transport_error(ec) : std::string("nessun endpoint valido"))
-                      << std::endl;
-            return ec ? make_send_result_from_ec(ec) : SendResult{false, -1, "resolver", "Nessun endpoint valido trovato"};
-        }
-        targetEndpoint = *results.begin();
-        tcpEndpointCache_[cacheKey] = targetEndpoint;
-    }
-
-    boost::system::error_code ec;
-    bool needReconnect = !tcpSocket_.is_open();
-    if (!needReconnect) {
-        try {
-            if (tcpSocket_.remote_endpoint() != targetEndpoint) {
-                tcpSocket_.close(ec);
-                needReconnect = true;
-            }
-        } catch (const boost::system::system_error&) {
-            tcpSocket_.close(ec);
-            needReconnect = true;
-        }
-    }
-
-    if (needReconnect) {
-        tcpSocket_.connect(targetEndpoint, ec);
-        if (ec) {
-            std::cerr << "[CMS Entity] Errore connessione a " << destination.ip_address
-                      << ":" << destination.port << " -> " << describe_transport_error(ec) << std::endl;
-            return make_send_result_from_ec(ec);
-        }
-    }
-
-    boost::asio::write(tcpSocket_, boost::asio::buffer(packet.data), ec);
-    if (ec) {
-        std::cerr << "[CMS Entity] Errore invio TCP -> " << describe_transport_error(ec) << std::endl;
-        tcpSocket_.close(ec);
-        return make_send_result_from_ec(ec);
-    }
-
-    SendResult result;
-    result.success = true;
-    return result;
-}
-
-void CmsEntity::sendAck(const RawPacket& packet) {
-    std::lock_guard<std::mutex> lock(transportMutex_);
-    if (!ackSocketReady_) {
-        std::cerr << "[CMS Entity] Socket ACK non pronto." << std::endl;
+        payload = json::parse(dispatchEvent->packet.data.begin(), dispatchEvent->packet.data.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[CMS Entity] Payload non valido per ACK LRAS_CS_ack_INS: "
+                  << e.what() << std::endl;
         return;
     }
 
-    boost::system::error_code ec;
-    ackSocket_.send_to(boost::asio::buffer(packet.data), ackTargetEndpoint_, 0, ec);
-    if (ec) {
-        std::cerr << "[CMS Entity] Errore invio ACK UDP: " << ec.message() << std::endl;
-    }
-}
-
-void CmsEntity::sendPeriodicUnicast(const RawPacket& packet) {
-    if (!config_.handlers.udp_unicast_send.enabled) {
+    const auto actionId = extract_action_id(payload);
+    if (!actionId.has_value()) {
+        std::cerr << "[CMS Entity] Action Id mancante nel payload per ACK LRAS_CS_ack_INS"
+                  << std::endl;
         return;
     }
 
-    std::lock_guard<std::mutex> lock(transportMutex_);
-    if (!periodicUnicastSocketReady_ || !periodicMulticastSender_) {
-        std::cerr << "[CMS Entity] Sender multicast periodico non pronto." << std::endl;
-        return;
-    }
+    constexpr uint16_t ackNackAccepted = 1;
+    constexpr uint16_t nackReasonNone = 0;
+    constexpr uint32_t payloadLength = 12;
 
-    const SendResult result = periodicMulticastSender_->send(
-        packet,
-        config_.handlers.udp_unicast_send.target_ip,
-        config_.handlers.udp_unicast_send.target_port
-    );
-    if (!result.success) {
-        std::cerr << "[CMS Entity] Errore invio periodic multicast: "
-                  << result.error_category << " (" << result.error_value << ") "
-                  << result.error_message << std::endl;
+    RawPacket ackPacket;
+    ackPacket.data.reserve(HeaderSize + payloadLength);
+    append_u32_be(ackPacket.data, MessageId_LRAS_CS_ack_INS);
+    append_u32_be(ackPacket.data, payloadLength);
+    append_u32_be(ackPacket.data, 0);
+    append_u32_be(ackPacket.data, 0);
+    append_u32_be(ackPacket.data, *actionId);
+    append_u32_be(ackPacket.data, sourceMessageId);
+    append_u16_be(ackPacket.data, ackNackAccepted);
+    append_u16_be(ackPacket.data, nackReasonNone);
+
+    try {
+        boost::asio::io_context txIoContext;
+        UdpMulticastSender sender(txIoContext);
+        const SendResult result = sender.send(ackPacket, "226.1.1.43", 55010);
+        if (!result.success) {
+            std::cerr << "[CMS Entity] Errore invio ACK multicast verso "
+                      << "226.1.1.43" << ":" << 55010
+                      << " -> " << result.error_message << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[CMS Entity] Eccezione durante invio ACK multicast: "
+                  << e.what() << std::endl;
     }
 }
+
+
