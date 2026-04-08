@@ -24,11 +24,11 @@ set(SOURCES
     # CMS
     src/cms/CmsEntity.cpp
     src/cms/UdpMulticastSender.cpp
-    src/cms/UdpMulticastReceiver.cpp
+    src/UdpMulticastReceiver.cpp
     # ACS
     src/acs/AcsEntity.cpp
     src/acs/TcpJsonSender.cpp
-    src/acs/UdpUnicastReceiver.cpp
+    src/TcpUnicastReceiver.cpp
     # NAVS
     src/navs/NavsEntity.cpp
 )

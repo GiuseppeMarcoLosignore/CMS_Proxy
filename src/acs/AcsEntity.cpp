@@ -1,6 +1,7 @@
 #include "AcsEntity.hpp"
 
-#include "UdpUnicastReceiver.hpp"
+#include "TcpUnicastReceiver.hpp"
+#include "UdpMulticastReceiver.hpp"
 #include "cms/CmsEntity.hpp"
 
 #include <iostream>
@@ -90,31 +91,49 @@ std::optional<StateUpdate> parse_state_update(const nlohmann::json& payload) {
 
 AcsEntity::AcsEntity(const AcsConfig& config,
                                          std::shared_ptr<EventBus> eventBus,
-                                         std::shared_ptr<ISender> sender,
+                             std::shared_ptr<ISender> tcpSender,
+                             std::shared_ptr<ISender> multicastSender,
                                          std::shared_ptr<SystemState> systemState)
     : config_(config),
       eventBus_(std::move(eventBus)),
-            sender_(std::move(sender)),
-            systemState_(std::move(systemState)),
-            destinations_(config_.destinations),
+    tcpSender_(std::move(tcpSender)),
+    multicastSender_(std::move(multicastSender)),
+    systemState_(std::move(systemState)),
+    destinations_(config_.destinations),
       rxIoContext_(),
       rxWorkGuard_(std::nullopt) {
 }
 
 void AcsEntity::start() {
-        subscribeTopics();
+    subscribeTopics();
 
-    receiver_ = std::make_shared<UdpUnicastReceiver>(
+    auto multicast_receiver = std::make_shared<UdpMulticastReceiver>(
         rxIoContext_,
         config_.listen_ip,
-        config_.listen_port
+        config_.multicast_group,
+        config_.multicast_port
     );
 
-    receiver_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+    auto tcp_receiver = std::make_shared<TcpUnicastReceiver>(
+        rxIoContext_,
+        config_.tcp_listen_ip,
+        config_.tcp_listen_port
+    );
+
+    multicast_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
         onPacketReceived(packet, sourceInfo);
     });
 
-    receiver_->start();
+    tcp_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+        onPacketReceived(packet, sourceInfo);
+    });
+
+    receivers_.clear();
+    receivers_.push_back(multicast_receiver);
+    receivers_.push_back(tcp_receiver);
+    for (const auto& receiver : receivers_) {
+        receiver->start();
+    }
 
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {
@@ -122,13 +141,17 @@ void AcsEntity::start() {
     });
 
     std::cout << "[ACS Entity] Avviata su "
-              << config_.listen_ip << ":" << config_.listen_port << std::endl;
+              << config_.multicast_group << ":" << config_.multicast_port
+              << " (iface " << config_.listen_ip << ")" << std::endl;
+    std::cout << "[ACS Entity] TCP unicast in ascolto su "
+              << config_.tcp_listen_ip << ":" << config_.tcp_listen_port << std::endl;
 }
 
 void AcsEntity::stop() {
-    if (receiver_) {
-        receiver_->stop();
+    for (const auto& receiver : receivers_) {
+        receiver->stop();
     }
+    receivers_.clear();
 
     if (rxWorkGuard_.has_value()) {
         rxWorkGuard_->reset();
@@ -142,6 +165,14 @@ void AcsEntity::subscribeTopics() {
         return;
     }
 
+    eventBus_->subscribe(AcsOutgoingJsonEvent::Topic, [this](const EventBus::EventPtr& event) {
+        handleOutgoingJsonEvent(event);
+    });
+
+    eventBus_->subscribe(AcsStateUpdateEvent::Topic, [this](const EventBus::EventPtr& event) {
+        handleStateUpdateEvent(event);
+    });
+
 
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
         createMASTER(event);
@@ -150,7 +181,7 @@ void AcsEntity::subscribeTopics() {
 
 void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
     const auto outgoing = std::dynamic_pointer_cast<const AcsOutgoingJsonEvent>(event);
-    if (!outgoing || !sender_) {
+    if (!outgoing) {
         return;
     }
 
@@ -161,18 +192,8 @@ void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
         return;
     }
 
-    const auto& destination = destinationIt->second;
-    const SendResult result = sender_->send(
-        outgoing->packet,
-        destination.ip_address,
-        destination.port
-    );
-
-    if (!result.success) {
-        std::cerr << "[ACS Entity] Errore invio TCP JSON verso "
-                  << destination.ip_address << ":" << destination.port
-                  << " -> " << result.error_message << std::endl;
-    }
+    sendToTcpDestination(outgoing->packet, destinationIt->second);
+    sendToMulticast(outgoing->packet);
 }
 
 void AcsEntity::handleStateUpdateEvent(const EventBus::EventPtr& event) {
@@ -222,7 +243,7 @@ void AcsEntity::createHeader(std::string header, std::string type, std::string s
 }
 
 void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
-    if (!eventBus_ || !sender_) {
+    if (!eventBus_) {
         return;
     }
 
@@ -267,16 +288,8 @@ void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        const SendResult sendResult = sender_->send(
-            outPacket,
-            destinationIt->second.ip_address,
-            destinationIt->second.port
-        );
-        if (!sendResult.success) {
-            std::cerr << "[ACS Entity] Errore invio MASTER verso "
-                      << destinationIt->second.ip_address << ":" << destinationIt->second.port
-                      << " -> " << sendResult.error_message << std::endl;
-        }
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
         return;
@@ -595,5 +608,41 @@ void AcsEntity::createHOURS(const EventBus::EventPtr& event) {
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
         return;
+    }
+}
+
+void AcsEntity::sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination) {
+    if (!tcpSender_) {
+        return;
+    }
+
+    const SendResult result = tcpSender_->send(
+        packet,
+        destination.ip_address,
+        destination.port
+    );
+
+    if (!result.success) {
+        std::cerr << "[ACS Entity] Errore invio TCP JSON verso "
+                  << destination.ip_address << ":" << destination.port
+                  << " -> " << result.error_message << std::endl;
+    }
+}
+
+void AcsEntity::sendToMulticast(const RawPacket& packet) {
+    if (!multicastSender_) {
+        return;
+    }
+
+    const SendResult result = multicastSender_->send(
+        packet,
+        config_.tx_multicast_group,
+        config_.tx_multicast_port
+    );
+
+    if (!result.success) {
+        std::cerr << "[ACS Entity] Errore invio UDP multicast verso "
+                  << config_.tx_multicast_group << ":" << config_.tx_multicast_port
+                  << " -> " << result.error_message << std::endl;
     }
 }

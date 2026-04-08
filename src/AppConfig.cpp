@@ -62,12 +62,32 @@ AppConfig loadAppConfig(const std::string& config_path) {
     }
 
     cfg.acs.listen_ip = "127.0.0.1";
-    cfg.acs.listen_port = 56100;
+    cfg.acs.multicast_group = "226.1.1.30";
+    cfg.acs.multicast_port = 56100;
+    cfg.acs.tcp_listen_ip = "127.0.0.1";
+    cfg.acs.tcp_listen_port = 56101;
+    cfg.acs.tx_multicast_group = cfg.acs.multicast_group;
+    cfg.acs.tx_multicast_port = cfg.acs.multicast_port;
 
     if (root.contains("acs") && root.at("acs").is_object()) {
         const auto& acs = root.at("acs");
         cfg.acs.listen_ip = read_required<std::string>(acs, "listen_ip", "acs");
-        cfg.acs.listen_port = read_port(acs, "listen_port", "acs");
+        cfg.acs.multicast_group = read_required<std::string>(acs, "multicast_group", "acs");
+        cfg.acs.multicast_port = read_port(acs, "multicast_port", "acs");
+        cfg.acs.tx_multicast_group = cfg.acs.multicast_group;
+        cfg.acs.tx_multicast_port = cfg.acs.multicast_port;
+
+        if (acs.contains("tcp_unicast") && acs.at("tcp_unicast").is_object()) {
+            const auto& tcp_unicast = acs.at("tcp_unicast");
+            cfg.acs.tcp_listen_ip = read_required<std::string>(tcp_unicast, "listen_ip", "acs.tcp_unicast");
+            cfg.acs.tcp_listen_port = read_port(tcp_unicast, "listen_port", "acs.tcp_unicast");
+        }
+
+        if (acs.contains("multicast_tx") && acs.at("multicast_tx").is_object()) {
+            const auto& multicast_tx = acs.at("multicast_tx");
+            cfg.acs.tx_multicast_group = read_required<std::string>(multicast_tx, "group", "acs.multicast_tx");
+            cfg.acs.tx_multicast_port = read_port(multicast_tx, "port", "acs.multicast_tx");
+        }
 
         if (acs.contains("destinations") && acs.at("destinations").is_array()) {
             for (const auto& destination : acs.at("destinations")) {

@@ -19,7 +19,12 @@ struct AcsDestination {
 
 struct AcsConfig {
     std::string listen_ip;
-    uint16_t listen_port = 0;
+    std::string multicast_group;
+    uint16_t multicast_port = 0;
+    std::string tcp_listen_ip;
+    uint16_t tcp_listen_port = 0;
+    std::string tx_multicast_group;
+    uint16_t tx_multicast_port = 0;
     std::map<uint16_t, AcsDestination> destinations;
 };
 

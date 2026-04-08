@@ -7,11 +7,12 @@
 #include <array>
 #include <string>
 
-class UdpUnicastReceiver : public IReceiver {
+class UdpMulticastReceiver : public IReceiver {
 public:
-    UdpUnicastReceiver(boost::asio::io_context& io_ctx,
-                       const std::string& listen_address,
-                       uint16_t port);
+    UdpMulticastReceiver(boost::asio::io_context& io_ctx,
+                         const std::string& listen_address,
+                         const std::string& multicast_address,
+                         int port);
 
     void set_callback(MessageCallback cb) override;
     void start() override;

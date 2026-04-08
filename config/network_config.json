@@ -8,7 +8,16 @@
   },
   "acs": {
     "listen_ip": "127.0.0.1",
-    "listen_port": 56100,
+    "multicast_group": "225.0.0.25",
+    "multicast_port": 2525,
+    "multicast_tx": {
+      "group": "225.0.0.25",
+      "port": 2525
+    },
+    "tcp_unicast": {
+      "listen_ip": "127.0.0.1",
+      "listen_port": 56101
+    },
     "destinations": [
       {
         "id": 1,
