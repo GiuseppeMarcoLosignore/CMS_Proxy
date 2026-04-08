@@ -13,6 +13,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <unordered_set>
 
 #include <nlohmann/json.hpp>
 
@@ -475,10 +476,6 @@ void CmsEntity::subscribeTopics() {
         return;
     }
 
-    eventBus_->subscribe(Topics::CmsStateUpdate, [this](const EventBus::EventPtr& event) {
-        handleStateUpdateEvent(event);
-    });
-
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
         sendLRAS_CS_ack_INS(event);
     });
@@ -509,6 +506,8 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         return;
     }
 
+    std::unordered_set<std::string> stateTopicsPublished;
+
     for (std::size_t i = 0; i < result.packets.size(); ++i) {
         const auto& packetToSend = result.packets[i];
 
@@ -522,23 +521,15 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
             dispatchTopicEvent->dispatchTopic = result.packet_topics[i];
             dispatchTopicEvent->packet = packetToSend;
             eventBus_->publish(dispatchTopicEvent);
+
+            if (!result.state_updates.empty() && stateTopicsPublished.insert(result.packet_topics[i]).second) {
+                auto stateEvent = std::make_shared<TopicStateUpdateEvent>();
+                stateEvent->sourceTopic = result.packet_topics[i];
+                stateEvent->updates = result.state_updates;
+                eventBus_->publish(stateEvent);
+            }
         }
     }
-
-    if (!result.state_updates.empty()) {
-        auto stateEvent = std::make_shared<CmsStateUpdateEvent>();
-        stateEvent->updates = result.state_updates;
-        eventBus_->publish(stateEvent);
-    }
-}
-
-void CmsEntity::handleStateUpdateEvent(const EventBus::EventPtr& event) {
-    const auto stateEvent = std::dynamic_pointer_cast<const CmsStateUpdateEvent>(event);
-    if (!stateEvent || !systemState_) {
-        return;
-    }
-
-    systemState_->applyBatch(stateEvent->updates);
 }
 
 bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {

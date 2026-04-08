@@ -1,10 +1,15 @@
 #pragma once
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "IEvent.hpp"
+
+class EventBus;
 
 // Delta update applicabile allo stato globale del sistema.
 struct StateUpdate {
@@ -44,6 +49,12 @@ struct StateUpdate {
     std::optional<uint16_t> gyroUsed;
 };
 
+struct TopicStateUpdateEvent : public IEvent {
+    std::string sourceTopic;
+    std::vector<StateUpdate> updates;
+    const std::string& topic() const override { return sourceTopic; }
+};
+
 // Snapshot immutabile dello stato di sistema (copia point-in-time)
 struct SystemStateSnapshot {
     std::string systemMode;
@@ -62,6 +73,9 @@ class SystemState : public IStateProvider {
 public:
     SystemState() = default;
 
+    // Subscribe directly to protocol topics that can carry state updates.
+    void subscribeToTopics(const std::shared_ptr<EventBus>& eventBus);
+
     // --- Snapshot ---
     SystemStateSnapshot getSnapshot() const override;
 
@@ -73,6 +87,7 @@ public:
     uint64_t getLastUpdatedMs() const;
 
 private:
+    void handleTopicStateUpdateEvent(const std::shared_ptr<const IEvent>& event);
     bool applyUnlocked(const StateUpdate& update);
     void touch();  // aggiorna il timestamp
 

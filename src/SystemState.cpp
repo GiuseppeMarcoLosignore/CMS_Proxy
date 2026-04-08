@@ -1,10 +1,58 @@
 #include "SystemState.hpp"
+
+#include "EventBus.hpp"
+#include "Topics.hpp"
+
 #include <chrono>
 
 static uint64_t nowMs() {
     using namespace std::chrono;
     return static_cast<uint64_t>(
         duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+void SystemState::subscribeToTopics(const std::shared_ptr<EventBus>& eventBus) {
+    if (!eventBus) {
+        return;
+    }
+
+    static const std::vector<std::string> stateTopics = {
+        Topics::CS_LRAS_change_configuration_order_INS,
+        Topics::CS_LRAS_cueing_order_cancellation_INS,
+        Topics::CS_LRAS_cueing_order_INS,
+        Topics::CS_LRAS_emission_control_INS,
+        Topics::CS_LRAS_emission_mode_INS,
+        Topics::CS_LRAS_inhibition_sectors_INS,
+        Topics::CS_LRAS_joystick_control_lrad_1_INS,
+        Topics::CS_LRAS_joystick_control_lrad_2_INS,
+        Topics::CS_LRAS_recording_command_INS,
+        Topics::CS_LRAS_request_emission_mode_INS,
+        Topics::CS_LRAS_request_engagement_capability_INS,
+        Topics::CS_LRAS_request_full_status_INS,
+        Topics::CS_LRAS_request_installation_data_INS,
+        Topics::CS_LRAS_request_message_table_INS,
+        Topics::CS_LRAS_request_software_version_INS,
+        Topics::CS_LRAS_request_thresholds_INS,
+        Topics::CS_LRAS_request_translation_INS,
+        Topics::CS_LRAS_video_tracking_command_INS,
+        Topics::CS_MULTI_health_status_INS,
+        Topics::CS_MULTI_update_cst_kinematics_INS
+    };
+
+    for (const auto& topic : stateTopics) {
+        eventBus->subscribe(topic, [this](const EventBus::EventPtr& event) {
+            handleTopicStateUpdateEvent(event);
+        });
+    }
+}
+
+void SystemState::handleTopicStateUpdateEvent(const std::shared_ptr<const IEvent>& event) {
+    const auto stateEvent = std::dynamic_pointer_cast<const TopicStateUpdateEvent>(event);
+    if (!stateEvent || stateEvent->updates.empty()) {
+        return;
+    }
+
+    applyBatch(stateEvent->updates);
 }
 
 void SystemState::touch() {

@@ -29,6 +29,8 @@ set(SOURCES
     src/acs/AcsEntity.cpp
     src/acs/TcpJsonSender.cpp
     src/acs/UdpUnicastReceiver.cpp
+    # NAVS
+    src/navs/NavsEntity.cpp
 )
 
 
@@ -41,6 +43,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     include
     include/cms
     include/acs
+    include/navs
 )
 
 # Definizioni specifiche

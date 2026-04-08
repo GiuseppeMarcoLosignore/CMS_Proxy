@@ -9,12 +9,6 @@
 
 #include "Topics.hpp"
 
-struct CmsStateUpdateEvent : public IEvent {
-    inline static const std::string Topic = Topics::CmsStateUpdate;
-    std::vector<StateUpdate> updates;
-    const std::string& topic() const override { return Topic; }
-};
-
 struct CmsDispatchTopicPacketEvent : public IEvent {
     std::string dispatchTopic;
     RawPacket packet;
@@ -44,7 +38,6 @@ private:
 
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void subscribeTopics();
-    void handleStateUpdateEvent(const EventBus::EventPtr& event);
     void periodicMessages();
 
     ConversionResult convertIncomingPacket(const RawPacket& packet, const SystemStateSnapshot& snapshot) const;

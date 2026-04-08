@@ -30,9 +30,23 @@ struct CmsConfig {
     std::vector<CmsUnicastRelayConfig> unicast_relays;  // relay verso altre entità
 };
 
+struct NavsTopicBinding {
+    uint32_t message_id = 0;
+    std::string topic;
+};
+
+struct NavsConfig {
+    bool enabled = false;
+    std::string listen_ip;
+    std::string multicast_group;
+    uint16_t multicast_port = 0;
+    std::vector<NavsTopicBinding> topic_bindings;
+};
+
 struct AppConfig {
     CmsConfig cms;
     AcsConfig acs;
+    NavsConfig navs;
 };
 
 AppConfig loadAppConfig(const std::string& config_path);

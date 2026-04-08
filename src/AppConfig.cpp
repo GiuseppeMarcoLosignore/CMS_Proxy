@@ -90,5 +90,29 @@ AppConfig loadAppConfig(const std::string& config_path) {
         }
     }
 
+    if (root.contains("navs") && root.at("navs").is_object()) {
+        const auto& navs = root.at("navs");
+        cfg.navs.enabled = true;
+        cfg.navs.listen_ip = read_required<std::string>(navs, "listen_ip", "navs");
+        cfg.navs.multicast_group = read_required<std::string>(navs, "multicast_group", "navs");
+        cfg.navs.multicast_port = read_port(navs, "multicast_port", "navs");
+
+        if (navs.contains("topic_bindings") && navs.at("topic_bindings").is_array()) {
+            for (const auto& binding : navs.at("topic_bindings")) {
+                if (!binding.is_object()) {
+                    throw std::runtime_error("Elemento non valido in 'navs.topic_bindings'");
+                }
+
+                const auto message_id = read_required<uint32_t>(binding, "message_id", "navs.topic_bindings");
+                const auto topic = read_required<std::string>(binding, "topic", "navs.topic_bindings");
+
+                NavsTopicBinding topic_binding;
+                topic_binding.message_id = message_id;
+                topic_binding.topic = topic;
+                cfg.navs.topic_bindings.push_back(topic_binding);
+            }
+        }
+    }
+
     return cfg;
 }
