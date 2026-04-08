@@ -23,6 +23,7 @@ struct AcsOutgoingJsonEvent : public IEvent {
     RawPacket packet;
     nlohmann::json payload;
     uint16_t destinationId = 0;
+    int nackreason = 0;
     const std::string& topic() const override { return Topic; }
 };
 

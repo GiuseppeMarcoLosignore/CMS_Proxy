@@ -7,6 +7,7 @@ struct RawPacket {
     std::vector<uint8_t> data;
     std::chrono::steady_clock::time_point timestamp;
     uint16_t destinationLradId;
+    int nackreason = 0;
 
     RawPacket() : timestamp(std::chrono::steady_clock::now()), destinationLradId(0) {}
     explicit RawPacket(std::vector<uint8_t> d)

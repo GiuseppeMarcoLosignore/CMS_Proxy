@@ -12,6 +12,7 @@
 struct CmsDispatchTopicPacketEvent : public IEvent {
     std::string dispatchTopic;
     RawPacket packet;
+    uint16_t nackreason = 0;
     const std::string& topic() const override { return dispatchTopic; }
 };
 
@@ -43,26 +44,26 @@ private:
     ConversionResult convertIncomingPacket(const RawPacket& packet, const SystemStateSnapshot& snapshot) const;
     bool parseHeader(const RawPacket& packet, ParsedHeader& out) const;
 
-    std::vector<RawPacket> parse_CS_LRAS_change_configuration_order_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_cueing_order_cancellation_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_cueing_order_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_emission_control_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_emission_mode_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_inhibition_sectors_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_joystick_control_lrad_1_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_joystick_control_lrad_2_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_recording_command_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_emission_mode_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_engagement_capability_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_full_status_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_installation_data_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_message_table_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_software_version_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_thresholds_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_request_translation_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_LRAS_video_tracking_command_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_MULTI_health_status_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
-    std::vector<RawPacket> parse_CS_MULTI_update_cst_kinematics_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_change_configuration_order_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_cueing_order_cancellation_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_cueing_order_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_emission_control_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_emission_mode_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_inhibition_sectors_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_joystick_control_lrad_1_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_joystick_control_lrad_2_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_recording_command_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_emission_mode_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_engagement_capability_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_full_status_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_installation_data_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_message_table_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_software_version_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_thresholds_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_request_translation_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_LRAS_video_tracking_command_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_MULTI_health_status_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
+    RawPacket parse_CS_MULTI_update_cst_kinematics_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
 
     void sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const;

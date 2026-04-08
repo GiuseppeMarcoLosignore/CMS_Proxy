@@ -16,8 +16,8 @@ struct SendResult {
 };
 
 struct ConversionResult {
-    std::vector<RawPacket> packets;
-    std::vector<std::string> packet_topics;
+    std::optional<RawPacket> packet;
+    std::string packet_topic;
     std::vector<StateUpdate> state_updates;
 };
 

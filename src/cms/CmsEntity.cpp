@@ -13,7 +13,6 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
-#include <unordered_set>
 
 #include <nlohmann/json.hpp>
 
@@ -447,7 +446,7 @@ void CmsEntity::start() {
     });
 
     boost::asio::post(rxIoContext_, [this]() {
-        periodicMessages();
+        // periodicMessages(); // Commentato per test.
     });
      
 
@@ -480,6 +479,10 @@ void CmsEntity::subscribeTopics() {
         sendLRAS_CS_ack_INS(event);
     });
 
+    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_CS_ack_INS(event);
+    });
+
     eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const EventBus::EventPtr& event) {
         sendLRAS_CS_lrad_1_status_INS(event);
     });
@@ -501,33 +504,31 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     const SystemStateSnapshot snapshot = systemState_ ? systemState_->getSnapshot() : SystemStateSnapshot{};
     const ConversionResult result = convertIncomingPacket(packet, snapshot);
 
-    if (result.packets.empty()) {
+    if (!result.packet.has_value()) {
         std::cerr << "[CMS Entity] Messaggio ignorato: source_id=" << sourceMessageId << std::endl;
         return;
     }
 
-    std::unordered_set<std::string> stateTopicsPublished;
+    const RawPacket& packetToSend = *result.packet;
 
-    for (std::size_t i = 0; i < result.packets.size(); ++i) {
-        const auto& packetToSend = result.packets[i];
+    auto acsOutgoingEvent = std::make_shared<AcsOutgoingJsonEvent>();
+    acsOutgoingEvent->packet = packetToSend;
+    acsOutgoingEvent->destinationId = packetToSend.destinationLradId;
+    acsOutgoingEvent->nackreason = packetToSend.nackreason;
+    eventBus_->publish(acsOutgoingEvent);
 
-        auto acsOutgoingEvent = std::make_shared<AcsOutgoingJsonEvent>();
-        acsOutgoingEvent->packet = packetToSend;
-        acsOutgoingEvent->destinationId = packetToSend.destinationLradId;
-        eventBus_->publish(acsOutgoingEvent);
+    if (!result.packet_topic.empty()) {
+        auto dispatchTopicEvent = std::make_shared<CmsDispatchTopicPacketEvent>();
+        dispatchTopicEvent->dispatchTopic = result.packet_topic;
+        dispatchTopicEvent->packet = packetToSend;
+        dispatchTopicEvent->nackreason = packetToSend.nackreason;
+        eventBus_->publish(dispatchTopicEvent);
 
-        if (i < result.packet_topics.size() && !result.packet_topics[i].empty()) {
-            auto dispatchTopicEvent = std::make_shared<CmsDispatchTopicPacketEvent>();
-            dispatchTopicEvent->dispatchTopic = result.packet_topics[i];
-            dispatchTopicEvent->packet = packetToSend;
-            eventBus_->publish(dispatchTopicEvent);
-
-            if (!result.state_updates.empty() && stateTopicsPublished.insert(result.packet_topics[i]).second) {
-                auto stateEvent = std::make_shared<TopicStateUpdateEvent>();
-                stateEvent->sourceTopic = result.packet_topics[i];
-                stateEvent->updates = result.state_updates;
-                eventBus_->publish(stateEvent);
-            }
+        if (!result.state_updates.empty()) {
+            auto stateEvent = std::make_shared<TopicStateUpdateEvent>();
+            stateEvent->sourceTopic = result.packet_topic;
+            stateEvent->updates = result.state_updates;
+            eventBus_->publish(stateEvent);
         }
     }
 }
@@ -543,7 +544,7 @@ bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
 }
 
 ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet, const SystemStateSnapshot&) const {
-    using ParserFn = std::vector<RawPacket> (CmsEntity::*)(
+    using ParserFn = RawPacket (CmsEntity::*)(
         const RawPacket&,
         std::vector<StateUpdate>&) const;
 
@@ -580,27 +581,27 @@ ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet, const
 
     switch (header.messageId) {
         case MessageId_CS_LRAS_change_configuration_order_INS:
-            result.packets = parse_CS_LRAS_change_configuration_order_INS(packet, result.state_updates);
-            result.packet_topics.assign(result.packets.size(), Topics::CS_LRAS_change_configuration_order_INS);
+            result.packet = parse_CS_LRAS_change_configuration_order_INS(packet, result.state_updates);
+            result.packet_topic = Topics::CS_LRAS_change_configuration_order_INS;
             break;
         case MessageId_CS_LRAS_cueing_order_cancellation_INS:
-            result.packets = parse_CS_LRAS_cueing_order_cancellation_INS(packet, result.state_updates);
-            result.packet_topics.assign(result.packets.size(), Topics::CS_LRAS_cueing_order_cancellation_INS);
+            result.packet = parse_CS_LRAS_cueing_order_cancellation_INS(packet, result.state_updates);
+            result.packet_topic = Topics::CS_LRAS_cueing_order_cancellation_INS;
             break;
         case MessageId_CS_LRAS_cueing_order_INS:
-            result.packets = parse_CS_LRAS_cueing_order_INS(packet, result.state_updates);
-            result.packet_topics.assign(result.packets.size(), Topics::CS_LRAS_cueing_order_INS);
+            result.packet = parse_CS_LRAS_cueing_order_INS(packet, result.state_updates);
+            result.packet_topic = Topics::CS_LRAS_cueing_order_INS;
             break;
         case MessageId_CS_LRAS_emission_control_INS:
-            result.packets = parse_CS_LRAS_emission_control_INS(packet, result.state_updates);
-            result.packet_topics.assign(result.packets.size(), Topics::CS_LRAS_emission_control_INS);
+            result.packet = parse_CS_LRAS_emission_control_INS(packet, result.state_updates);
+            result.packet_topic = Topics::CS_LRAS_emission_control_INS;
             break;
         default:
             {
                 const auto bindingIt = additionalParserBindings.find(header.messageId);
                 if (bindingIt != additionalParserBindings.end()) {
-                    result.packets = (this->*(bindingIt->second.parser))(packet, result.state_updates);
-                    result.packet_topics.assign(result.packets.size(), bindingIt->second.topic);
+                    result.packet = (this->*(bindingIt->second.parser))(packet, result.state_updates);
+                    result.packet_topic = bindingIt->second.topic;
                 }
             }
             break;
@@ -609,71 +610,74 @@ ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet, const
     return result;
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
+RawPacket CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     const RawPacket& packet,
     std::vector<StateUpdate>& stateUpdates) const {
-    std::vector<RawPacket> results;
     constexpr std::size_t offset = 16;
     constexpr std::size_t blockSize = 8;
 
-    std::size_t currentOffset = offset;
-    while (currentOffset + blockSize <= packet.data.size()) {
-        const uint16_t actionId = read_u16_be(packet.data, currentOffset);
-        const uint16_t lradId = read_u16_be(packet.data, currentOffset + 4);
-        const uint16_t rawConfig = read_u16_be(packet.data, currentOffset + 6);
-
-        json payload;
-        payload["Action Id"] = std::to_string(actionId);
-        payload["LRAD ID"] = std::to_string(lradId);
-        payload["Configuration"] = std::to_string(rawConfig);
-
-
-        const std::string jsonString = payload.dump();
-        RawPacket converted;
-        converted.data.assign(jsonString.begin(), jsonString.end());
-        converted.destinationLradId = lradId;
-        results.push_back(converted);
-
-        StateUpdate update;
-        update.lradId = lradId;
-        update.engaged = (rawConfig != 0);
-        stateUpdates.push_back(update);
-        currentOffset += blockSize;
+    if (offset + blockSize > packet.data.size()) {
+        return make_empty_packet();
     }
 
-    return results;
+    const uint16_t actionId = read_u16_be(packet.data, offset);
+    const uint16_t lradId = read_u16_be(packet.data, offset + 4);
+    const uint16_t rawConfig = read_u16_be(packet.data, offset + 6);
+
+    json payload;
+    payload["Action Id"] = std::to_string(actionId);
+    payload["LRAD ID"] = std::to_string(lradId);
+    payload["Configuration"] = std::to_string(rawConfig);
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    converted.destinationLradId = lradId;
+    if (rawConfig != 0 && rawConfig != 1) {
+        converted.nackreason = 2;
+    }
+
+    StateUpdate update;
+    update.lradId = lradId;
+    update.engaged = (rawConfig != 0);
+    stateUpdates.push_back(update);
+
+    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
+RawPacket CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
     const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    std::vector<RawPacket> results;
     constexpr std::size_t offset = 16;
     constexpr std::size_t blockSize = 6;
     if (offset + blockSize > packet.data.size()) {
-        return results;
+        return make_empty_packet();
     }
 
+    const uint32_t actionId = read_u32_be(packet.data, offset);
     const uint16_t lradId = read_u16_be(packet.data, offset + 4);
 
     json payload;
+    payload["Action Id"] = actionId;
     payload["LRAD ID"] = std::to_string(lradId);
 
     const std::string jsonString = payload.dump();
     RawPacket converted;
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
-    results.push_back(converted);
-    return results;
+    return converted;
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_cueing_order_INS(
+RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
     const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    std::vector<RawPacket> results;
     constexpr std::size_t minPayloadSize = 22;
     if (packet.data.size() < HeaderSize + minPayloadSize) {
-        return results;
+        return make_empty_packet();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -761,16 +765,14 @@ std::vector<RawPacket> CmsEntity::parse_CS_LRAS_cueing_order_INS(
     RawPacket converted;
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
-    results.push_back(converted);
-    return results;
+    return converted;
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_emission_control_INS(
+RawPacket CmsEntity::parse_CS_LRAS_emission_control_INS(
     const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    std::vector<RawPacket> results;
     if (packet.data.size() < 838) {
-        return results;
+        return make_empty_packet();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -859,104 +861,103 @@ std::vector<RawPacket> CmsEntity::parse_CS_LRAS_emission_control_INS(
     RawPacket converted;
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
-    results.push_back(converted);
-    return results;
+    return converted;
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_emission_mode_INS(
+RawPacket CmsEntity::parse_CS_LRAS_emission_mode_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
+RawPacket CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
+RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
+RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_recording_command_INS(
+RawPacket CmsEntity::parse_CS_LRAS_recording_command_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_full_status_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_full_status_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_installation_data_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_installation_data_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_message_table_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_message_table_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_software_version_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_software_version_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_thresholds_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_thresholds_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_request_translation_INS(
+RawPacket CmsEntity::parse_CS_LRAS_request_translation_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
+RawPacket CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_MULTI_health_status_INS(
+RawPacket CmsEntity::parse_CS_MULTI_health_status_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
-std::vector<RawPacket> CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
+RawPacket CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
-    return { make_empty_packet() };
+    return make_empty_packet();
 }
 
 void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
@@ -988,8 +989,11 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
         return;
     }
 
-    constexpr uint16_t ackNackAccepted = 1;
-    constexpr uint16_t nackReasonNone = 0;
+    constexpr uint16_t ackNackAccepted = 1; // ACK accepted, no NACK reason    
+    const uint16_t nackReason = static_cast<uint16_t>(dispatchEvent->nackreason);
+    if (nackReason != 0) {
+        constexpr uint16_t ackNackAccepted = 2; // ACK with NACK reason
+    }
     constexpr uint32_t payloadLength = 12;
 
     RawPacket ackPacket;
@@ -1001,7 +1005,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
     append_u32_be(ackPacket.data, *actionId);
     append_u32_be(ackPacket.data, sourceMessageId);
     append_u16_be(ackPacket.data, ackNackAccepted);
-    append_u16_be(ackPacket.data, nackReasonNone);
+    append_u16_be(ackPacket.data, nackReason);
 
     try {
         boost::asio::io_context txIoContext;
@@ -1072,3 +1076,4 @@ void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) c
     const RawPacket packet = build_lrad_status_packet(state, MessageId_LRAS_CS_lrad_2_status_INS);
     send_multicast_packet(packet, "LRAS_CS_lrad_2_status_INS");
 }
+

@@ -23,25 +23,31 @@ Uso:
 """
 
 import argparse
+import random
 import socket
 import struct
 import time
 
 # ---------------------------------------------------------------------------
 # Registro messaggi: message_id -> (description, payload_builder)
-# Il payload builder riceve (lrad_id, configuration) e restituisce bytes.
-# actionId è sempre 0x00000000 (non esposto come flag).
+# Il payload builder riceve (action_id, lrad_id, configuration) e restituisce bytes.
+# actionId viene generato casualmente se non specificato esplicitamente.
 # ---------------------------------------------------------------------------
 MESSAGES = {
     1679949825: {
         "description": "CS_LRAS_change_configuration_order_INS",
-        "builder":     lambda lrad_id, configuration: struct.pack(">IHH", 0, lrad_id, configuration),
+        "builder":     lambda action_id, lrad_id, configuration: struct.pack(">IHH", action_id, lrad_id, configuration),
     },
     1679949826: {
         "description": "CS_LRAS_cueing_order_cancellation_INS",
-        "builder":     lambda lrad_id, configuration: struct.pack(">IH", 0, lrad_id),
+        "builder":     lambda action_id, lrad_id, configuration: struct.pack(">IH", action_id, lrad_id),
     },
 }
+
+
+def generate_action_id() -> int:
+    """Generate a non-zero random uint32 action id."""
+    return random.randint(1, 0xFFFFFFFF)
 
 
 def build_cueing_order_payload(args) -> bytes:
@@ -53,7 +59,7 @@ def build_cueing_order_payload(args) -> bytes:
     microseconds = int((now - seconds) * 1_000_000)
 
     # Base fields
-    struct.pack_into(">I", payload, 0, 0)  # action_id (fixed to 0)
+    struct.pack_into(">I", payload, 0, int(args.action_id) & 0xFFFFFFFF)
     struct.pack_into(">H", payload, 4, args.lrad_id)
     struct.pack_into(">H", payload, 6, args.cueing_type)
     struct.pack_into(">I", payload, 8, args.cstn)
@@ -248,6 +254,7 @@ def main():
                         help="Horizontal reference enum (default: 0)")
 
     args = parser.parse_args()
+    args.action_id = generate_action_id() if args.action_id == 0 else args.action_id
 
     supported_ids = sorted(set(MESSAGES.keys()) | {1679949827, 1679949828})
     if args.message_id not in supported_ids:
@@ -262,11 +269,12 @@ def main():
         payload = build_emission_control_payload(args)
     else:
         msg_info = MESSAGES[args.message_id]
-        payload = msg_info["builder"](args.lrad_id, args.configuration)
+        payload = msg_info["builder"](args.action_id, args.lrad_id, args.configuration)
     header   = build_header(args.message_id, payload, sender=args.sender)
     packet   = header + payload
 
     print(f"Messaggio : {msg_info['description']} (id={args.message_id})")
+    print(f"Action ID : {args.action_id}")
     print(f"Bytes     : {packet.hex(' ').upper()}")
     print(f"Lunghezza : {len(packet)} byte")
     print(f"Invio a   : {args.group}:{args.port}")
