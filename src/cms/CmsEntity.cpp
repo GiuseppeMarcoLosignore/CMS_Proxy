@@ -665,10 +665,16 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
     payload["Action Id"] = actionId;
     payload["LRAD ID"] = std::to_string(lradId);
 
+    
+
     const std::string jsonString = payload.dump();
     RawPacket converted;
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
+
+    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+        converted.nackreason = 2;
+    }
     return converted;
 }
 
@@ -765,6 +771,10 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
     RawPacket converted;
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
+
+    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+        converted.nackreason = 2;
+    }
     return converted;
 }
 
@@ -812,55 +822,40 @@ RawPacket CmsEntity::parse_CS_LRAS_emission_control_INS(
     const uint16_t horizontalReference = read_u16_be(packet.data, 836);
 
     json payload;
-    payload["header"] = "EMISS";
-    payload["type"] = "CMD";
-    payload["sender"] = "CMS";
-    payload["message_name"] = "CS_LRAS_emission_control_INS";
-    payload["message_id"] = MessageId_CS_LRAS_emission_control_INS;
-    payload["param"] = {
-        {"action_id", actionId},
-        {"lrad_id", lradId},
-        {"audio_mode_validity", audioModeValidity},
-        {"audio_mode", {
-            {"volume_mode", {
-                {"level", volumeLevel},
-                {"audio_volume_db", audioVolumeDb},
-                {"mute", mute},
-                {"audio_mode", audioMode}
-            }},
-            {"recorded_message_tone", {
-                {"message_id", recordedMessageId},
-                {"language", recordedLanguage},
-                {"loop", recordedLoop}
-            }},
-            {"free_text", {
-                {"text", {
-                    {"language_in", freeTextLanguageIn},
-                    {"language_out", freeTextLanguageOut},
-                    {"message_text", freeTextMessage}
-                }},
-                {"loop", freeTextLoop}
-            }}
-        }},
-        {"laser_mode_validity", laserModeValidity},
-        {"laser_mode", laserMode},
-        {"light_mode_validity", lightModeValidity},
-        {"light_mode", {
-            {"light_power", lightPower},
-            {"light_zoom", lightZoom}
-        }},
-        {"lrf_mode_validity", lrfModeValidity},
-        {"lrf_on_off", lrfOnOff},
-        {"camera_zoom_validity", cameraZoomValidity},
-        {"camera_zoom", cameraZoom},
-        {"horizontal_reference_validity", horizontalReferenceValidity},
-        {"horizontal_reference", horizontalReference}
-    };
+    payload["actionId"] = actionId;
+    payload["lradId"] = lradId;
+    payload["audioModeValidity"] = audioModeValidity;
+    payload["volumeLevel"] = volumeLevel;
+    payload["audioVolumeDb"] = audioVolumeDb;
+    payload["mute"] = mute;
+    payload["audioMode"] = audioMode;
+    payload["recordedMessageId"] = recordedMessageId;
+    payload["recordedLanguage"] = recordedLanguage;
+    payload["recordedLoop"] = recordedLoop;
+    payload["freeTextLanguageIn"] = freeTextLanguageIn;
+    payload["freeTextLanguageOut"] = freeTextLanguageOut;
+    payload["freeTextMessage"] = freeTextMessage;
+    payload["freeTextLoop"] = freeTextLoop;
+    payload["laserModeValidity"] = laserModeValidity;
+    payload["laserMode"] = laserMode;
+    payload["lightModeValidity"] = lightModeValidity;
+    payload["lightPower"] = lightPower;
+    payload["lightZoom"] = lightZoom;
+    payload["lrfModeValidity"] = lrfModeValidity;
+    payload["lrfOnOff"] = lrfOnOff;
+    payload["cameraZoomValidity"] = cameraZoomValidity;
+    payload["cameraZoom"] = cameraZoom;
+    payload["horizontalReferenceValidity"] = horizontalReferenceValidity;
+    payload["horizontalReference"] = horizontalReference;
 
     const std::string jsonString = payload.dump();
     RawPacket converted;
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
+
+    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+        converted.nackreason = 2;
+    }
     return converted;
 }
 

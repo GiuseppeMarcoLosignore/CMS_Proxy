@@ -177,6 +177,27 @@ void AcsEntity::subscribeTopics() {
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
         createMASTER(event);
     });
+
+    eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const EventBus::EventPtr& event) {
+        createSEARCHLIGHT(event);
+        createAUDIO(event);
+        createLAD(event);
+        createLRF(event);
+        createZOOM(event);
+        createLRF(event);
+    });    
+
+    eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const EventBus::EventPtr& event) {
+        createSHADOW(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const EventBus::EventPtr& event) {
+        createDELTA(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const EventBus::EventPtr& event) {
+        createDELTA(event);
+    });
 }
 
 void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
