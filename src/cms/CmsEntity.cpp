@@ -51,6 +51,10 @@ constexpr uint32_t MessageId_CS_LRAS_request_installation_data_INS = 1679949842;
 constexpr uint32_t MessageId_CS_MULTI_health_status_INS = 1684229565;
 constexpr uint32_t MessageId_CS_MULTI_update_cst_kinematics_INS = 1684229569;
 constexpr uint32_t MessageLength_LRAS_CS_lrad_status_INS = 32;
+constexpr uint32_t MessageId_LRAS_MULTI_full_status_v2_INS = 576913411;
+constexpr uint32_t MessageLength_LRAS_MULTI_full_status_v2_INS = 88; // 2 LRADs x 44 bytes each
+constexpr uint32_t MessageId_LRAS_MULTI_health_status_INS = 576913410;
+constexpr uint32_t MessageLength_LRAS_MULTI_health_status_INS = 1728; // 6 (sys) + 2x856 (LRADs) + 10 (consoles)
 constexpr const char* LrasStatusMulticastGroup = "226.1.1.43";
 constexpr uint16_t LrasStatusMulticastPort = 55010;
 
@@ -242,6 +246,133 @@ void send_multicast_packet(const RawPacket& packet, const char* messageName) {
         std::cerr << "[CMS Entity] Eccezione durante invio " << messageName << ": "
                   << e.what() << std::endl;
     }
+}
+
+// Appends the 44-byte "LRAD x full status" block (Lrad_full 40-byte struct + IR camera 4 bytes)
+void append_lrad_full_status(std::vector<uint8_t>& buffer, const StateUpdate& state) {
+    // Lrad_full (40 bytes)
+    append_u16_be(buffer, state.communication.value_or(0));
+    append_u16_be(buffer, state.motionAzimuthStatus.value_or(0));
+    append_u16_be(buffer, state.motionElevationStatus.value_or(0));
+    // Audio Emitter
+    append_u16_be(buffer, state.audioEmitterOvertemperature.value_or(0));
+    append_u16_be(buffer, state.audioEmitterCommFailure.value_or(0));
+    // Searchlight
+    append_u16_be(buffer, state.searchlightOvertemperature.value_or(0));
+    append_u16_be(buffer, state.searchlightCommFailure.value_or(0));
+    // Laser Dazzler
+    append_u16_be(buffer, state.laserDazzlerOvertemperature.value_or(0));
+    append_u16_be(buffer, state.laserDazzlerCommFailure.value_or(0));
+    // LRF
+    append_u16_be(buffer, state.lrfOvertemperature.value_or(0));
+    append_u16_be(buffer, state.lrfCommFailure.value_or(0));
+    // Remaining Lrad_full fields
+    append_u16_be(buffer, state.trackingBoardStatus.value_or(0));
+    append_u16_be(buffer, state.visibleCameraStatus.value_or(0));
+    append_u16_be(buffer, state.visibleCameraSignal.value_or(0));
+    append_u16_be(buffer, state.internalImuStatus.value_or(0));
+    append_u16_be(buffer, state.canBus1.value_or(0));
+    append_u16_be(buffer, state.canBus2.value_or(0));
+    append_u16_be(buffer, state.cpuSlaveStatus.value_or(0));
+    append_u16_be(buffer, state.electronicBoxTemperature.value_or(0));
+    append_u16_be(buffer, state.interfaceBoxTemperature.value_or(0));
+    // Outside Lrad_full but within LRAD x full status block (4 bytes)
+    append_u16_be(buffer, state.irCameraStatus.value_or(0));
+    append_u16_be(buffer, state.irCameraSignal.value_or(0));
+}
+
+// Appends the 856-byte "LRAD x health" block for LRAS_MULTI_health_status_INS.
+// Layout (byte offsets relative to block start):
+//   0  Configuration (2)
+//   2  Condition (2)
+//   4  Operative State (2)
+//   6  HW emission authorization (2)
+//   8  Audio Emitter Condition (2)
+//  10  Audio Mode struct (792):
+//         VolumeMode(10): Level(2)+AudioVolumedB(4)+Mute(2)+AudioMode(2)
+//         RecordedMessageTone(8): messId(4)+Language(2)+Loop(2)
+//         FreeText(774): LanguageIn(2)+LanguageOut(2)+messageText(768)+Loop(2)
+// 802  Searchlight Condition (2)
+// 804  Searchlight Mode (4): LightPower(2)+LightZoom(2)
+// 808  Laser Dazzler Condition (2)
+// 810  Laser Mode (2)
+// 812  LRF Condition (2)
+// 814  LRF on off (2)
+// 816  Camera Condition (2)
+// 818  Camera Zoom (2)
+// 820  IMU Condition (2)
+// 822  Recorder Condition (2)
+// 824  Recorder Mode (2)
+// 826  Recorder Time limit (8): ElapsedSec(4)+ElapsedUsec(4)
+// 834  Horizontal Reference (2)
+// 836  Inhibit Sector 1 (10): OnOff(2)+AzStart(4)+AzStop(4)
+// 846  Inhibit Sector 2 (10): OnOff(2)+AzStart(4)+AzStop(4)
+// Total = 856 bytes
+void append_lrad_health_block(std::vector<uint8_t>& buffer, const StateUpdate& state) {
+    // Pre-AudioMode fields (10 bytes)
+    append_u16_be(buffer, state.lradConfiguration.value_or(0));
+    append_u16_be(buffer, state.lradCondition.value_or(0));
+    append_u16_be(buffer, state.lradOperativeState.value_or(0));
+    append_u16_be(buffer, state.hwEmissionAuth.value_or(0));
+    append_u16_be(buffer, state.audioEmitterCondition.value_or(0));
+
+    // Audio Mode struct (792 bytes)
+    // Volume Mode (10 bytes)
+    append_u16_be(buffer, state.volumeLevel.value_or(0));
+    append_f32_be(buffer, state.audioVolumeDb.value_or(0.0f));
+    append_u16_be(buffer, state.mute.value_or(0));
+    append_u16_be(buffer, state.audioMode.value_or(0));
+    // Recorded Message-Tone (8 bytes)
+    append_u32_be(buffer, state.recordedMessageId.value_or(0));
+    append_u16_be(buffer, state.recordedMessageLanguage.value_or(0));
+    append_u16_be(buffer, state.recordedMessageLoop.value_or(0));
+    // Free Text (774 bytes): Language in(2) + Language out(2) + text(768) + Loop(2)
+    append_u16_be(buffer, state.freeTextLanguageIn.value_or(0));
+    append_u16_be(buffer, state.freeTextLanguageOut.value_or(0));
+    {
+        // message text: fixed 768-byte UTF-8 field, zero-padded
+        constexpr std::size_t textSize = 768;
+        const std::string& text = state.freeTextMessage.value_or(std::string{});
+        const std::size_t copyLen = std::min(text.size(), textSize);
+        buffer.insert(buffer.end(),
+                      reinterpret_cast<const uint8_t*>(text.data()),
+                      reinterpret_cast<const uint8_t*>(text.data()) + copyLen);
+        buffer.insert(buffer.end(), textSize - copyLen, 0x00);
+    }
+    append_u16_be(buffer, state.freeTextLoop.value_or(0));
+
+    // Searchlight Condition + Mode (6 bytes)
+    append_u16_be(buffer, state.searchlightCondition.value_or(0));
+    append_u16_be(buffer, state.searchlightPower.value_or(0));   // Light Power
+    append_u16_be(buffer, state.searchlightZoom.value_or(0));    // Light Zoom
+
+    // Laser Dazzler, LRF, Camera (10 bytes)
+    append_u16_be(buffer, state.laserDazzlerCondition.value_or(0));
+    append_u16_be(buffer, state.laserMode.value_or(0));
+    append_u16_be(buffer, state.lrfCondition.value_or(0));
+    append_u16_be(buffer, state.lrfOnOff.value_or(0));
+    append_u16_be(buffer, state.cameraCondition.value_or(0));
+    append_u16_be(buffer, state.cameraZoom.value_or(0));
+
+    // IMU, Recorder (10 bytes + 8 bytes time limit)
+    append_u16_be(buffer, state.imuCondition.value_or(0));
+    append_u16_be(buffer, state.recorderCondition.value_or(0));
+    append_u16_be(buffer, state.recorderMode.value_or(0));
+    append_u32_be(buffer, state.recorderElapsedSeconds.value_or(0));
+    append_u32_be(buffer, state.recorderElapsedMicroseconds.value_or(0));
+
+    // Horizontal Reference (2 bytes)
+    append_u16_be(buffer, state.horizontalReference.value_or(0));
+
+    // Inhibit Sector 1 (10 bytes)
+    append_u16_be(buffer, state.inhibitSector1Active.value_or(0));
+    append_f32_be(buffer, state.inhibitSector1Start.value_or(0.0f));
+    append_f32_be(buffer, state.inhibitSector1Stop.value_or(0.0f));
+
+    // Inhibit Sector 2 (10 bytes)
+    append_u16_be(buffer, state.inhibitSector2Active.value_or(0));
+    append_f32_be(buffer, state.inhibitSector2Start.value_or(0.0f));
+    append_f32_be(buffer, state.inhibitSector2Stop.value_or(0.0f));
 }
 
 uint32_t source_message_id_from_topic(const std::string& topic) {
@@ -446,7 +577,7 @@ void CmsEntity::start() {
     });
 
     boost::asio::post(rxIoContext_, [this]() {
-        // periodicMessages(); // Commentato per test.
+        periodicMessages(); // Commentare per test.
     });
      
 
@@ -491,7 +622,13 @@ void CmsEntity::subscribeTopics() {
         sendLRAS_CS_lrad_2_status_INS(event);
     });
 
+    eventBus_->subscribe(Topics::LRAS_MULTI_full_status_v2_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_MULTI_full_status_v2_INS(event);
+    });
 
+    eventBus_->subscribe(Topics::LRAS_MULTI_health_status_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_MULTI_health_status_INS(event);
+    });
 
 }
 
@@ -1039,6 +1176,16 @@ void CmsEntity::periodicMessages() {
             eventLrad2->packet = make_empty_packet();
             eventBus_->publish(eventLrad2);
 
+            auto eventFullStatus = std::make_shared<CmsDispatchTopicPacketEvent>();
+            eventFullStatus->dispatchTopic = Topics::LRAS_MULTI_full_status_v2_INS;
+            eventFullStatus->packet = make_empty_packet();
+            eventBus_->publish(eventFullStatus);
+
+            auto eventHealthStatus = std::make_shared<CmsDispatchTopicPacketEvent>();
+            eventHealthStatus->dispatchTopic = Topics::LRAS_MULTI_health_status_INS;
+            eventHealthStatus->packet = make_empty_packet();
+            eventBus_->publish(eventHealthStatus);            
+
             periodicMessages();
         }
     });
@@ -1072,3 +1219,75 @@ void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) c
     send_multicast_packet(packet, "LRAS_CS_lrad_2_status_INS");
 }
 
+void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    if (!systemState_) {
+        return;
+    }
+
+    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
+    const auto lrad1It = snapshot.lradStates.find(1);
+    const StateUpdate state1 = (lrad1It != snapshot.lradStates.end()) ? lrad1It->second : StateUpdate{};
+    const auto lrad2It = snapshot.lradStates.find(2);
+    const StateUpdate state2 = (lrad2It != snapshot.lradStates.end()) ? lrad2It->second : StateUpdate{};
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_full_status_v2_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_MULTI_full_status_v2_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_MULTI_full_status_v2_INS);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // LRAD 1 full status (44 bytes)
+    append_lrad_full_status(packet.data, state1);
+    // LRAD 2 full status (44 bytes)
+    append_lrad_full_status(packet.data, state2);
+
+    send_multicast_packet(packet, "LRAS_MULTI_full_status_v2_INS");
+}
+
+void CmsEntity::sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    if (!systemState_) {
+        return;
+    }
+
+    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
+    const auto lrad1It = snapshot.lradStates.find(1);
+    const StateUpdate state1 = (lrad1It != snapshot.lradStates.end()) ? lrad1It->second : StateUpdate{};
+    const auto lrad2It = snapshot.lradStates.find(2);
+    const StateUpdate state2 = (lrad2It != snapshot.lradStates.end()) ? lrad2It->second : StateUpdate{};
+    const SystemHealthUpdate& sys = snapshot.systemHealth;
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_health_status_INS);
+
+    // Header (16 bytes)
+    append_u32_be(packet.data, MessageId_LRAS_MULTI_health_status_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_MULTI_health_status_INS);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // System-level fields (6 bytes)
+    append_u16_be(packet.data, sys.lrasCondition.value_or(0));
+    append_u16_be(packet.data, sys.lrasOperativeState.value_or(0));
+    append_u16_be(packet.data, sys.laserDazzlerMainAuth.value_or(0));
+
+    // LRAD 1 health (856 bytes)
+    append_lrad_health_block(packet.data, state1);
+    // LRAD 2 health (856 bytes)
+    append_lrad_health_block(packet.data, state2);
+
+    // LRAS Server Status + Console statuses (10 bytes)
+    append_u16_be(packet.data, sys.lrasServerStatus.value_or(0));
+    append_u16_be(packet.data, sys.console1Health.value_or(0));
+    append_u16_be(packet.data, sys.console1ControlledLrad.value_or(0));
+    append_u16_be(packet.data, sys.console2Health.value_or(0));
+    append_u16_be(packet.data, sys.console2ControlledLrad.value_or(0));
+
+    send_multicast_packet(packet, "LRAS_MULTI_health_status_INS");
+}

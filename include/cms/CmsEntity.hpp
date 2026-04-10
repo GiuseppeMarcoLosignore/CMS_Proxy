@@ -68,6 +68,8 @@ private:
     void sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const;
     CmsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
     std::shared_ptr<SystemState> systemState_;

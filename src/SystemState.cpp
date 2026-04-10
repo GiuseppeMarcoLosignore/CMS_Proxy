@@ -176,6 +176,7 @@ SystemStateSnapshot SystemState::getSnapshot() const {
     SystemStateSnapshot snap;
     snap.systemMode  = systemMode_;
     snap.lradStates  = lradStates_;
+    snap.systemHealth = systemHealth_;
     snap.timestampMs = lastUpdatedMs_;
     return snap;
 }
@@ -206,4 +207,22 @@ void SystemState::applyBatch(const std::vector<StateUpdate>& updates) {
 uint64_t SystemState::getLastUpdatedMs() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return lastUpdatedMs_;
+}
+
+void SystemState::applySystemHealth(const SystemHealthUpdate& health) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bool changed = false;
+
+    if (health.lrasCondition.has_value()) { systemHealth_.lrasCondition = health.lrasCondition; changed = true; }
+    if (health.lrasOperativeState.has_value()) { systemHealth_.lrasOperativeState = health.lrasOperativeState; changed = true; }
+    if (health.laserDazzlerMainAuth.has_value()) { systemHealth_.laserDazzlerMainAuth = health.laserDazzlerMainAuth; changed = true; }
+    if (health.lrasServerStatus.has_value()) { systemHealth_.lrasServerStatus = health.lrasServerStatus; changed = true; }
+    if (health.console1Health.has_value()) { systemHealth_.console1Health = health.console1Health; changed = true; }
+    if (health.console1ControlledLrad.has_value()) { systemHealth_.console1ControlledLrad = health.console1ControlledLrad; changed = true; }
+    if (health.console2Health.has_value()) { systemHealth_.console2Health = health.console2Health; changed = true; }
+    if (health.console2ControlledLrad.has_value()) { systemHealth_.console2ControlledLrad = health.console2ControlledLrad; changed = true; }
+
+    if (changed) {
+        touch();
+    }
 }
