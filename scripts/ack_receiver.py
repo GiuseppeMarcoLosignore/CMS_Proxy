@@ -29,7 +29,7 @@ import struct
 import sys
 import time
 
-MSG_ID_LRAS_CS_ACK_INS = 576879045
+MSG_ID_LRAS_CS_ACK_INS = 576978945
 EXPECTED_TOTAL_SIZE = 28
 
 ACK_NACK_LABELS = {

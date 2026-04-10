@@ -27,7 +27,7 @@ namespace {
 using json = nlohmann::json;
 
 constexpr std::size_t HeaderSize = 16;
-constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576879045;
+constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576978945;
 constexpr uint32_t MessageId_LRAS_CS_lrad_1_status_INS = 576978949;
 constexpr uint32_t MessageId_LRAS_CS_lrad_2_status_INS = 576978950;
 constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
@@ -527,6 +527,10 @@ uint16_t read_u16_be(const std::vector<uint8_t>& data, std::size_t offset) {
     return ntohs(value);
 }
 
+int16_t read_i16_be(const std::vector<uint8_t>& data, std::size_t offset) {
+    return static_cast<int16_t>(read_u16_be(data, offset));
+}
+
 float read_f32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     uint32_t raw = read_u32_be(data, offset);
     float value = 0.0f;
@@ -540,6 +544,15 @@ uint32_t extract_message_id_from_header(const RawPacket& packet) {
 
 RawPacket make_empty_packet() {
     return RawPacket{};
+}
+
+bool has_known_lrad(const std::shared_ptr<SystemState>& systemState, uint16_t lradId) {
+    if (!systemState) {
+        return false;
+    }
+
+    const SystemStateSnapshot snapshot = systemState->getSnapshot();
+    return snapshot.lradStates.find(lradId) != snapshot.lradStates.end();
 }
 
 } // namespace
@@ -779,7 +792,7 @@ RawPacket CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     update.engaged = (rawConfig != 0);
     stateUpdates.push_back(update);
 
-    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+    if (!has_known_lrad(systemState_, lradId)) {
         converted.nackreason = 2;
     }
 
@@ -809,7 +822,7 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
 
-    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+    if (!has_known_lrad(systemState_, lradId)) {
         converted.nackreason = 2;
     }
     return converted;
@@ -909,7 +922,7 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
 
-    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+    if (!has_known_lrad(systemState_, lradId)) {
         converted.nackreason = 2;
     }
     return converted;
@@ -990,7 +1003,7 @@ RawPacket CmsEntity::parse_CS_LRAS_emission_control_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
 
-    if (systemState_->getSnapshot().lradStates.find(lradId) == systemState_->getSnapshot().lradStates.end()) {
+    if (!has_known_lrad(systemState_, lradId)) {
         converted.nackreason = 2;
     }
     return converted;
@@ -1003,27 +1016,177 @@ RawPacket CmsEntity::parse_CS_LRAS_emission_mode_INS(
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
-    const RawPacket&,
-    std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    const RawPacket& packet,
+    std::vector<StateUpdate>& stateUpdates) const {
+    // Message layout (total 42 bytes):
+    // Header(16) + ActionId(4) + LRAD ID(2) + Sector1(10) + Sector2(10)
+    constexpr std::size_t minPacketSize = 42;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint16_t lradId = read_u16_be(packet.data, 20);
+
+    const uint16_t sector1OnOff = read_u16_be(packet.data, 22);
+    const float sector1Start = read_f32_be(packet.data, 24);
+    const float sector1Stop = read_f32_be(packet.data, 28);
+
+    const uint16_t sector2OnOff = read_u16_be(packet.data, 32);
+    const float sector2Start = read_f32_be(packet.data, 34);
+    const float sector2Stop = read_f32_be(packet.data, 38);
+
+    json payload;
+    payload["Action Id"] = actionId;
+    payload["LRAD ID"] = lradId;
+    payload["Sector 1"] = {
+        {"On Off", sector1OnOff},
+        {"start", sector1Start},
+        {"stop", sector1Stop}
+    };
+    payload["Sector 2"] = {
+        {"On Off", sector2OnOff},
+        {"start", sector2Start},
+        {"stop", sector2Stop}
+    };
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    converted.destinationLradId = lradId;
+
+    StateUpdate update;
+    update.lradId = lradId;
+    update.inhibitSector1Active = sector1OnOff;
+    update.inhibitSector1Start = sector1Start;
+    update.inhibitSector1Stop = sector1Stop;
+    update.inhibitSector2Active = sector2OnOff;
+    update.inhibitSector2Start = sector2Start;
+    update.inhibitSector2Stop = sector2Stop;
+    stateUpdates.push_back(update);
+
+    if ((sector1OnOff != 0 && sector1OnOff != 1) || (sector2OnOff != 0 && sector2OnOff != 1)) {
+        converted.nackreason = 2;
+    }
+
+    if (!has_known_lrad(systemState_, lradId)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
-    const RawPacket&,
+    const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    // Message layout (total 20 bytes): Header(16) + X(2) + Y(2)
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const int16_t xPosition = read_i16_be(packet.data, 16);
+    const int16_t yPosition = read_i16_be(packet.data, 18);
+
+    json payload;
+    payload["LRAD ID"] = 1;
+    payload["xPosition"] = xPosition;
+    payload["yPosition"] = yPosition;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    converted.destinationLradId = 1;
+
+    if (!has_known_lrad(systemState_, 1)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
-    const RawPacket&,
+    const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    // Message layout (total 20 bytes): Header(16) + X(2) + Y(2)
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const int16_t xPosition = read_i16_be(packet.data, 16);
+    const int16_t yPosition = read_i16_be(packet.data, 18);
+
+    json payload;
+    payload["LRAD ID"] = 2;
+    payload["xPosition"] = xPosition;
+    payload["yPosition"] = yPosition;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    converted.destinationLradId = 2;
+
+    if (!has_known_lrad(systemState_, 2)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_recording_command_INS(
-    const RawPacket&,
-    std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    const RawPacket& packet,
+    std::vector<StateUpdate>& stateUpdates) const {
+    // Message layout (total 36 bytes):
+    // Header(16) + ActionId(4) + LRAD ID(2) + Video source(2) + Video profile(2)
+    // + Recording mode(2) + Elapsed seconds(4) + Elapsed micro seconds(4)
+    constexpr std::size_t minPacketSize = 36;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint16_t lradId = read_u16_be(packet.data, 20);
+    const uint16_t videoSource = read_u16_be(packet.data, 22);
+    const uint16_t videoProfile = read_u16_be(packet.data, 24);
+    const uint16_t recordingMode = read_u16_be(packet.data, 26);
+    const uint32_t elapsedSeconds = read_u32_be(packet.data, 28);
+    const uint32_t elapsedMicroseconds = read_u32_be(packet.data, 32);
+
+    json payload;
+    payload["Action Id"] = actionId;
+    payload["LRAD ID"] = lradId;
+    payload["videoSource"] = videoSource;
+    payload["videoProfile"] = videoProfile;
+    payload["recordingMode"] = recordingMode;
+    payload["elapsedSeconds"] = elapsedSeconds;
+    payload["elapsedMicroseconds"] = elapsedMicroseconds;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    converted.destinationLradId = lradId;
+
+    StateUpdate update;
+    update.lradId = lradId;
+    update.recorderMode = recordingMode;
+    update.recorderElapsedSeconds = elapsedSeconds;
+    update.recorderElapsedMicroseconds = elapsedMicroseconds;
+    stateUpdates.push_back(update);
+
+    if (videoSource != 1 ||
+        (videoProfile < 1 || videoProfile > 4) ||
+        (recordingMode > 2) ||
+        (elapsedSeconds > 2147483647U) ||
+        (elapsedMicroseconds > 999999U)) {
+        converted.nackreason = 2;
+    }
+
+    if (!has_known_lrad(systemState_, lradId)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
@@ -1033,9 +1196,112 @@ RawPacket CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
-    const RawPacket&,
+    const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    // Message layout (total 60 bytes):
+    // Header(16) + ActionId(4) + CSTN(4) + CST Kinematics(36)
+    constexpr std::size_t minPacketSize = 60;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint32_t cstn = read_u32_be(packet.data, 20);
+    const uint32_t validitySeconds = read_u32_be(packet.data, 24);
+    const uint32_t validityMicroseconds = read_u32_be(packet.data, 28);
+    const uint16_t kinematicsType = read_u16_be(packet.data, 32);
+
+    json payload;
+    payload["Action Id"] = actionId;
+    payload["CSTN"] = cstn;
+    payload["timeOfValidity"] = {
+        {"seconds", validitySeconds},
+        {"microseconds", validityMicroseconds}
+    };
+    payload["kinematicsType"] = kinematicsType;
+
+    json kinematics;
+    switch (kinematicsType) {
+        case 1: // 3D Cartesian Kinematics
+            kinematics["x"] = read_f32_be(packet.data, 36);
+            kinematics["y"] = read_f32_be(packet.data, 40);
+            kinematics["z"] = read_f32_be(packet.data, 44);
+            kinematics["vx"] = read_f32_be(packet.data, 48);
+            kinematics["vy"] = read_f32_be(packet.data, 52);
+            kinematics["vz"] = read_f32_be(packet.data, 56);
+            break;
+        case 2: // 3D Cartesian Position
+            kinematics["x"] = read_f32_be(packet.data, 36);
+            kinematics["y"] = read_f32_be(packet.data, 40);
+            kinematics["z"] = read_f32_be(packet.data, 44);
+            break;
+        case 3: // 2D Cartesian Kinematics
+            kinematics["x"] = read_f32_be(packet.data, 36);
+            kinematics["y"] = read_f32_be(packet.data, 40);
+            kinematics["vx"] = read_f32_be(packet.data, 44);
+            kinematics["vy"] = read_f32_be(packet.data, 48);
+            break;
+        case 4: // 2D Cartesian Position
+            kinematics["x"] = read_f32_be(packet.data, 36);
+            kinematics["y"] = read_f32_be(packet.data, 40);
+            break;
+        case 5: // 2D Polar Kinematics
+            kinematics["trueBearing"] = read_f32_be(packet.data, 36);
+            kinematics["angleOfSight"] = read_f32_be(packet.data, 40);
+            kinematics["trueBearingRate"] = read_f32_be(packet.data, 44);
+            kinematics["angleOfSightRate"] = read_f32_be(packet.data, 48);
+            break;
+        case 6: // 2D Polar Surface Kinematics
+            kinematics["trueBearing"] = read_f32_be(packet.data, 36);
+            kinematics["range"] = read_f32_be(packet.data, 40);
+            kinematics["trueBearingRate"] = read_f32_be(packet.data, 44);
+            kinematics["rangeRate"] = read_f32_be(packet.data, 48);
+            break;
+        case 7: // 2D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 36);
+            kinematics["angleOfSight"] = read_f32_be(packet.data, 40);
+            break;
+        case 8: // 2D Polar Surface Position
+            kinematics["range"] = read_f32_be(packet.data, 36);
+            kinematics["trueBearing"] = read_f32_be(packet.data, 40);
+            break;
+        case 9: // 1D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 36);
+            break;
+        case 10: // EW 1D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 36);
+            kinematics["origin"] = {
+                {"latitude", read_f32_be(packet.data, 40)},
+                {"longitude", read_f32_be(packet.data, 44)}
+            };
+            break;
+        case 11: // EW 2D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 36);
+            kinematics["angleOfSight"] = read_f32_be(packet.data, 40);
+            kinematics["origin"] = {
+                {"latitude", read_f32_be(packet.data, 44)},
+                {"longitude", read_f32_be(packet.data, 48)}
+            };
+            break;
+        default:
+            // Unknown type: keep base fields only.
+            break;
+    }
+
+    payload["kinematics"] = kinematics;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    if ((cstn < 1 || cstn > 9999) ||
+        (validitySeconds > 2147483647U) ||
+        (validityMicroseconds > 999999U) ||
+        (kinematicsType < 1 || kinematicsType > 11)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_request_full_status_INS(
@@ -1045,9 +1311,23 @@ RawPacket CmsEntity::parse_CS_LRAS_request_full_status_INS(
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_request_installation_data_INS(
-    const RawPacket&,
+    const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    // Message layout (total 20 bytes): Header(16) + ActionId(4)
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+
+    json payload;
+    payload["Action Id"] = actionId;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_request_message_table_INS(
@@ -1063,33 +1343,277 @@ RawPacket CmsEntity::parse_CS_LRAS_request_software_version_INS(
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_request_thresholds_INS(
-    const RawPacket&,
+    const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    // Message layout (total 28 bytes):
+    // Header(16) + ActionId(4) + Volume selector(2) + Audio Volume dB(4) + Scenario(2)
+    constexpr std::size_t minPacketSize = 28;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint16_t volumeSelector = read_u16_be(packet.data, 20);
+    const float audioVolumeDb = read_f32_be(packet.data, 22);
+    const uint16_t scenario = read_u16_be(packet.data, 26);
+
+    json payload;
+    payload["Action Id"] = actionId;
+    payload["volumeSelector"] = volumeSelector;
+    payload["audioVolumeDb"] = audioVolumeDb;
+    payload["scenario"] = scenario;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    if ((volumeSelector > 1) ||
+        (scenario > 2) ||
+        (volumeSelector == 1 && (audioVolumeDb < -128.0f || audioVolumeDb > 0.0f))) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_request_translation_INS(
-    const RawPacket&,
-    std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    const RawPacket& packet,
+    std::vector<StateUpdate>& stateUpdates) const {
+    // Message layout (total 794 bytes):
+    // Header(16) + ActionId(4) + LRAD ID(2) + FreeText(772)
+    // FreeText = LanguageIn(2) + LanguageOut(2) + MessageText(768)
+    constexpr std::size_t minPacketSize = 794;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint16_t lradId = read_u16_be(packet.data, 20);
+    const uint16_t languageIn = read_u16_be(packet.data, 22);
+    const uint16_t languageOut = read_u16_be(packet.data, 24);
+
+    std::string messageText;
+    messageText.reserve(768);
+    for (std::size_t i = 26; i < 26 + 768; ++i) {
+        const char c = static_cast<char>(packet.data[i]);
+        if (c == '\0') {
+            break;
+        }
+        messageText.push_back(c);
+    }
+
+    json payload;
+    payload["Action Id"] = actionId;
+    payload["LRAD ID"] = lradId;
+    payload["languageIn"] = languageIn;
+    payload["languageOut"] = languageOut;
+    payload["messageText"] = messageText;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    converted.destinationLradId = lradId;
+
+    StateUpdate update;
+    update.lradId = lradId;
+    update.freeTextLanguageIn = languageIn;
+    update.freeTextLanguageOut = languageOut;
+    update.freeTextMessage = messageText;
+    stateUpdates.push_back(update);
+
+    // Spec notes: LanguageIn valid only Italian/English, LanguageOut tone not valid.
+    if ((lradId != 1 && lradId != 2) ||
+        (languageIn != 0 && languageIn != 1) ||
+        (languageOut != 0 && languageOut != 1 && languageOut != 2)) {
+        converted.nackreason = 2;
+    }
+
+    if (!has_known_lrad(systemState_, lradId)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
-    const RawPacket&,
-    std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    const RawPacket& packet,
+    std::vector<StateUpdate>& stateUpdates) const {
+    // Message layout (total 24 bytes):
+    // Header(16) + ActionId(4) + LRAD ID(2) + Auto tracking(2)
+    constexpr std::size_t minPacketSize = 24;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    const uint16_t lradId = read_u16_be(packet.data, 20);
+    const uint16_t autoTracking = read_u16_be(packet.data, 22);
+
+    json payload;
+    payload["Action Id"] = actionId;
+    payload["LRAD ID"] = lradId;
+    payload["autoTracking"] = autoTracking;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+    converted.destinationLradId = lradId;
+
+    StateUpdate update;
+    update.lradId = lradId;
+    update.videoTrackingStatus = (autoTracking == 1) ? 1 : 0;
+    stateUpdates.push_back(update);
+
+    if ((lradId != 1 && lradId != 2) || (autoTracking != 0 && autoTracking != 1)) {
+        converted.nackreason = 2;
+    }
+
+    if (!has_known_lrad(systemState_, lradId)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_MULTI_health_status_INS(
-    const RawPacket&,
+    const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    // Message layout (total 24 bytes):
+    // Header(16) + CS status(2) + DRMU status(2) + Spare(2) + CSS status(2)
+    constexpr std::size_t minPacketSize = 24;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint16_t csStatus = read_u16_be(packet.data, 16);
+    const uint16_t drmuStatus = read_u16_be(packet.data, 18);
+    const uint16_t spare = read_u16_be(packet.data, 20);
+    const uint16_t cssStatus = read_u16_be(packet.data, 22);
+
+    json payload;
+    payload["csStatus"] = csStatus;
+    payload["drmuStatus"] = drmuStatus;
+    payload["spare"] = spare;
+    payload["cssStatus"] = cssStatus;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    if ((csStatus < 1 || csStatus > 3) ||
+        (drmuStatus < 1 || drmuStatus > 3) ||
+        (cssStatus < 1 || cssStatus > 2)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 RawPacket CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
-    const RawPacket&,
+    const RawPacket& packet,
     std::vector<StateUpdate>&) const {
-    return make_empty_packet();
+    // Message layout (total 56 bytes):
+    // Header(16) + CSTN(4) + TimeOfValidity(8) + Kinematics(28)
+    // Kinematics = KinematicsType(2) + union data (up to 26 bytes)
+    constexpr std::size_t minPacketSize = 56;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t cstn = read_u32_be(packet.data, 16);
+    const uint32_t validitySeconds = read_u32_be(packet.data, 20);
+    const uint32_t validityMicroseconds = read_u32_be(packet.data, 24);
+    const uint16_t kinematicsType = read_u16_be(packet.data, 28);
+
+    json payload;
+    payload["CSTN"] = cstn;
+    payload["timeOfValidity"] = {
+        {"seconds", validitySeconds},
+        {"microseconds", validityMicroseconds}
+    };
+    payload["kinematicsType"] = kinematicsType;
+
+    json kinematics;
+    switch (kinematicsType) {
+        case 1: // 3D Cartesian Kinematics
+            kinematics["x"] = read_f32_be(packet.data, 32);
+            kinematics["y"] = read_f32_be(packet.data, 36);
+            kinematics["z"] = read_f32_be(packet.data, 40);
+            kinematics["vx"] = read_f32_be(packet.data, 44);
+            kinematics["vy"] = read_f32_be(packet.data, 48);
+            kinematics["vz"] = read_f32_be(packet.data, 52);
+            break;
+        case 2: // 3D Cartesian Position
+            kinematics["x"] = read_f32_be(packet.data, 32);
+            kinematics["y"] = read_f32_be(packet.data, 36);
+            kinematics["z"] = read_f32_be(packet.data, 40);
+            break;
+        case 3: // 2D Cartesian Kinematics
+            kinematics["x"] = read_f32_be(packet.data, 32);
+            kinematics["y"] = read_f32_be(packet.data, 36);
+            kinematics["vx"] = read_f32_be(packet.data, 40);
+            kinematics["vy"] = read_f32_be(packet.data, 44);
+            break;
+        case 4: // 2D Cartesian Position
+            kinematics["x"] = read_f32_be(packet.data, 32);
+            kinematics["y"] = read_f32_be(packet.data, 36);
+            break;
+        case 5: // 2D Polar Kinematics
+            kinematics["trueBearing"] = read_f32_be(packet.data, 32);
+            kinematics["angleOfSight"] = read_f32_be(packet.data, 36);
+            kinematics["trueBearingRate"] = read_f32_be(packet.data, 40);
+            kinematics["angleOfSightRate"] = read_f32_be(packet.data, 44);
+            break;
+        case 6: // 2D Polar Surface Kinematics
+            kinematics["trueBearing"] = read_f32_be(packet.data, 32);
+            kinematics["range"] = read_f32_be(packet.data, 36);
+            kinematics["trueBearingRate"] = read_f32_be(packet.data, 40);
+            kinematics["rangeRate"] = read_f32_be(packet.data, 44);
+            break;
+        case 7: // 2D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 32);
+            kinematics["angleOfSight"] = read_f32_be(packet.data, 36);
+            break;
+        case 8: // 2D Polar Surface Position
+            kinematics["range"] = read_f32_be(packet.data, 32);
+            kinematics["trueBearing"] = read_f32_be(packet.data, 36);
+            break;
+        case 9: // 1D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 32);
+            break;
+        case 10: // EW 1D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 32);
+            kinematics["origin"] = {
+                {"latitude", read_f32_be(packet.data, 36)},
+                {"longitude", read_f32_be(packet.data, 40)}
+            };
+            break;
+        case 11: // EW 2D Polar Position
+            kinematics["trueBearing"] = read_f32_be(packet.data, 32);
+            kinematics["angleOfSight"] = read_f32_be(packet.data, 36);
+            kinematics["origin"] = {
+                {"latitude", read_f32_be(packet.data, 40)},
+                {"longitude", read_f32_be(packet.data, 44)}
+            };
+            break;
+        default:
+            break;
+    }
+
+    payload["kinematics"] = kinematics;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    if ((cstn < 1 || cstn > 9999) ||
+        (validitySeconds > 2147483647U) ||
+        (validityMicroseconds > 999999U) ||
+        (kinematicsType < 1 || kinematicsType > 11)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
 }
 
 void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {

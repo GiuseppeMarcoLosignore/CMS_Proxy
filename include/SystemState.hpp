@@ -218,7 +218,7 @@ public:
 // Classe thread-safe che gestisce lo stato del sistema
 class SystemState : public IStateProvider {
 public:
-    SystemState() = default;
+    SystemState();
 
     // Subscribe directly to protocol topics that can carry state updates.
     void subscribeToTopics(const std::shared_ptr<EventBus>& eventBus);

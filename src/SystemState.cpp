@@ -5,10 +5,128 @@
 
 #include <chrono>
 
+namespace {
+
+StateUpdate makeDefaultLradState(uint16_t lradId) {
+    StateUpdate state;
+    state.lradId = lradId;
+    state.systemMode = "normal";
+    state.cueingStatus = "0";
+    state.configuration = "integrated";
+    state.online = true;
+    state.engaged = false;
+    state.audioEnabled = false;
+    state.ladEnabled = false;
+    state.lrfEnabled = false;
+    state.inibithionSector1 = 0.0;
+    state.inibithionSector2 = 0.0;
+
+    // LRAS_CS_lrad_x_status_INS defaults
+    state.lradStatus = 1;
+    state.lradMode = 1;
+    state.videoTrackingStatus = 0;
+    state.azimuth = 0.0f;
+    state.elevation = 0.0f;
+    state.lrfDistance = static_cast<int16_t>(-1);
+    state.withinInhibitionSector = false;
+    state.searchlightPower = 0;
+    state.searchlightZoom = 0;
+    state.laserDazzlerMode = 0;
+    state.videoZoom = 0;
+    state.gyroSelection = 2;
+    state.gyroUsed = 0;
+
+    // LRAD full diagnostics defaults
+    state.communication = 0;
+    state.motionAzimuthStatus = 0;
+    state.motionElevationStatus = 0;
+    state.audioEmitterOvertemperature = 0;
+    state.audioEmitterCommFailure = 0;
+    state.searchlightOvertemperature = 0;
+    state.searchlightCommFailure = 0;
+    state.laserDazzlerOvertemperature = 0;
+    state.laserDazzlerCommFailure = 0;
+    state.lrfOvertemperature = 0;
+    state.lrfCommFailure = 0;
+    state.trackingBoardStatus = 0;
+    state.visibleCameraStatus = 0;
+    state.visibleCameraSignal = 0;
+    state.internalImuStatus = 0;
+    state.canBus1 = 0;
+    state.canBus2 = 0;
+    state.cpuSlaveStatus = 0;
+    state.electronicBoxTemperature = 0;
+    state.interfaceBoxTemperature = 0;
+    state.irCameraStatus = 0;
+    state.irCameraSignal = 0;
+
+    // LRAS_MULTI_health_status_INS per-LRAD defaults
+    state.lradConfiguration = 1;
+    state.lradCondition = 1;
+    state.lradOperativeState = 1;
+    state.hwEmissionAuth = 0;
+    state.audioEmitterCondition = 1;
+    state.volumeLevel = 0;
+    state.audioVolumeDb = -128.0f;
+    state.mute = 0;
+    state.audioMode = 0;
+    state.recordedMessageId = 0;
+    state.recordedMessageLanguage = 0;
+    state.recordedMessageLoop = 0;
+    state.freeTextLanguageIn = 0;
+    state.freeTextLanguageOut = 0;
+    state.freeTextMessage = "";
+    state.freeTextLoop = 0;
+    state.searchlightCondition = 1;
+    state.laserDazzlerCondition = 1;
+    state.laserMode = 0;
+    state.lrfCondition = 1;
+    state.lrfOnOff = 0;
+    state.cameraCondition = 1;
+    state.cameraZoom = 0;
+    state.imuCondition = 1;
+    state.recorderCondition = 1;
+    state.recorderMode = 0;
+    state.recorderElapsedSeconds = 0;
+    state.recorderElapsedMicroseconds = 0;
+    state.horizontalReference = 0;
+    state.inhibitSector1Active = 0;
+    state.inhibitSector1Start = 0.0f;
+    state.inhibitSector1Stop = 0.0f;
+    state.inhibitSector2Active = 0;
+    state.inhibitSector2Start = 0.0f;
+    state.inhibitSector2Stop = 0.0f;
+
+    return state;
+}
+
+SystemHealthUpdate makeDefaultSystemHealth() {
+    SystemHealthUpdate health;
+    health.lrasCondition = 1;
+    health.lrasOperativeState = 1;
+    health.laserDazzlerMainAuth = 0;
+    health.lrasServerStatus = 0;
+    health.console1Health = 0;
+    health.console1ControlledLrad = 0;
+    health.console2Health = 0;
+    health.console2ControlledLrad = 0;
+    return health;
+}
+
+} // namespace
+
 static uint64_t nowMs() {
     using namespace std::chrono;
     return static_cast<uint64_t>(
         duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+SystemState::SystemState() {
+    systemMode_ = "normal";
+    lradStates_.emplace(1, makeDefaultLradState(1));
+    lradStates_.emplace(2, makeDefaultLradState(2));
+    systemHealth_ = makeDefaultSystemHealth();
+    touch();
 }
 
 void SystemState::subscribeToTopics(const std::shared_ptr<EventBus>& eventBus) {
