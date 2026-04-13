@@ -573,7 +573,7 @@ void CmsEntity::start() {
 
     receiver_ = std::make_shared<UdpMulticastReceiver>(
         rxIoContext_,
-        config_.listen_ip,
+        "0.0.0.0",
         config_.multicast_group,
         config_.multicast_port
     );
@@ -590,7 +590,7 @@ void CmsEntity::start() {
     });
 
     boost::asio::post(rxIoContext_, [this]() {
-        periodicMessages(); // Commentare per test.
+    //    periodicMessages(); // Commentare per test.
     });
      
 
@@ -689,8 +689,30 @@ bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
     }
 
     out.messageId = read_u32_be(packet.data, 0);
-    out.messageLength = static_cast<uint16_t>(read_u32_be(packet.data, 4) & 0xFFFF);
-    return packet.data.size() >= HeaderSize + out.messageLength;
+    const uint32_t rawLength32 = read_u32_be(packet.data, 4);
+
+    // In current INS frames this 32-bit word is composite; the effective length is in low 16 bits.
+    const uint32_t length16 = rawLength32 & 0xFFFFu;
+
+    // Convention A: length field is payload length.
+    if (packet.data.size() >= HeaderSize + length16) {
+        out.messageLength = static_cast<uint16_t>(length16);
+        return true;
+    }
+
+    // Convention B: length field is total packet length (header + payload).
+    if (length16 >= HeaderSize && packet.data.size() >= length16) {
+        out.messageLength = static_cast<uint16_t>(length16 - HeaderSize);
+        return true;
+    }
+
+    // Fallback for senders that really use a plain 32-bit total-length field.
+    if (rawLength32 >= HeaderSize && packet.data.size() >= rawLength32) {
+        out.messageLength = static_cast<uint16_t>((rawLength32 - HeaderSize) & 0xFFFFu);
+        return true;
+    }
+
+    return false;
 }
 
 ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet, const SystemStateSnapshot&) const {
@@ -1655,7 +1677,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
     RawPacket ackPacket;
     ackPacket.data.reserve(HeaderSize + payloadLength);
     append_u32_be(ackPacket.data, MessageId_LRAS_CS_ack_INS);
-    append_u32_be(ackPacket.data, payloadLength);
+    append_u32_be(ackPacket.data, payloadLength + HeaderSize);
     append_u32_be(ackPacket.data, 0);
     append_u32_be(ackPacket.data, 0);
     append_u32_be(ackPacket.data, *actionId);

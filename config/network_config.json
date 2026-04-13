@@ -1,6 +1,5 @@
 {
   "cms": {
-    "listen_ip": "127.0.0.1",
     "multicast_group": "226.1.1.30",
     "multicast_port": 55000,
     "unicast_relays": [

@@ -29,7 +29,6 @@ struct AcsConfig {
 };
 
 struct CmsConfig {
-    std::string listen_ip;
     std::string multicast_group;
     uint16_t multicast_port = 0;
     std::vector<CmsUnicastRelayConfig> unicast_relays;  // relay verso altre entità

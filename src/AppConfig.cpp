@@ -41,7 +41,6 @@ AppConfig loadAppConfig(const std::string& config_path) {
     const auto& cms = root.at("cms");
 
     AppConfig cfg;
-    cfg.cms.listen_ip = read_required<std::string>(cms, "listen_ip", "cms");
     cfg.cms.multicast_group = read_required<std::string>(cms, "multicast_group", "cms");
     cfg.cms.multicast_port = read_port(cms, "multicast_port", "cms");
 
