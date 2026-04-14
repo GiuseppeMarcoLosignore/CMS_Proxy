@@ -10,7 +10,7 @@ namespace {
 StateUpdate makeDefaultLradState(uint16_t lradId) {
     StateUpdate state;
     state.lradId = lradId;
-    state.systemMode = "normal";
+    state.systemMode = "Operative";
     state.cueingStatus = "0";
     state.configuration = "integrated";
     state.online = true;
@@ -122,7 +122,7 @@ static uint64_t nowMs() {
 }
 
 SystemState::SystemState() {
-    systemMode_ = "normal";
+    systemMode_ = "Operative";
     lradStates_.emplace(1, makeDefaultLradState(1));
     lradStates_.emplace(2, makeDefaultLradState(2));
     systemHealth_ = makeDefaultSystemHealth();
@@ -325,6 +325,55 @@ void SystemState::applyBatch(const std::vector<StateUpdate>& updates) {
 uint64_t SystemState::getLastUpdatedMs() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return lastUpdatedMs_;
+}
+
+bool SystemState::isDataFresh(uint64_t timeoutMs) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    uint64_t now = nowMs();
+    
+    // Se lastUpdatedMs_ è 0 (mai aggiornato), considerare non-fresh
+    if (lastUpdatedMs_ == 0) {
+        return false;
+    }
+    
+    // Calcolare il tempo trascorso dall'ultimo aggiornamento
+    uint64_t elapsed = now - lastUpdatedMs_;
+    
+    // Restituire true se non è scaduto (elapsed < timeout)
+    return elapsed < timeoutMs;
+}
+
+void SystemState::resetToDefaults() {
+    // Nota: questa funzione deve essere chiamata con il lock già acquisito
+    systemMode_ = "normal";
+    lradStates_[1] = makeDefaultLradState(1);
+    lradStates_[2] = makeDefaultLradState(2);
+    systemHealth_ = makeDefaultSystemHealth();
+    touch();
+}
+
+bool SystemState::checkDataHealth(uint64_t timeoutMs) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    uint64_t now = nowMs();
+    
+    // Se lastUpdatedMs_ è 0 (mai aggiornato), considerare scaduto
+    if (lastUpdatedMs_ == 0) {
+        resetToDefaults();
+        return true;
+    }
+    
+    // Calcolare il tempo trascorso
+    uint64_t elapsed = now - lastUpdatedMs_;
+    
+    // Se i dati sono ancora freschi, non fare nulla
+    if (elapsed < timeoutMs) {
+        return false;
+    }
+    
+    // I dati sono scaduti: resetta ai valori di default
+    resetToDefaults();
+    return true;
 }
 
 void SystemState::applySystemHealth(const SystemHealthUpdate& health) {

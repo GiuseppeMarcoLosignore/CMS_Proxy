@@ -233,11 +233,20 @@ public:
 
     // --- Timestamp ---
     uint64_t getLastUpdatedMs() const;
+    
+    // Verifica se i dati sono ancora freschi (non scaduti)
+    // Restituisce true se il timestamp è più recente di timeoutMs
+    bool isDataFresh(uint64_t timeoutMs) const;
+    
+    // Controlla la salute dei dati: se scaduti, resetta ai valori di default
+    // Restituisce true se è stato necessario fare il reset
+    bool checkDataHealth(uint64_t timeoutMs);
 
 private:
     void handleTopicStateUpdateEvent(const std::shared_ptr<const IEvent>& event);
     bool applyUnlocked(const StateUpdate& update);
     void touch();  // aggiorna il timestamp
+    void resetToDefaults();  // Resetta lo stato ai valori di default
 
     mutable std::mutex mutex_;
     std::string systemMode_;

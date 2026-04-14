@@ -627,6 +627,10 @@ void CmsEntity::subscribeTopics() {
         sendLRAS_CS_ack_INS(event);
     });
 
+    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_CS_ack_INS(event);
+    });
+
     eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const EventBus::EventPtr& event) {
         sendLRAS_CS_lrad_1_status_INS(event);
     });
