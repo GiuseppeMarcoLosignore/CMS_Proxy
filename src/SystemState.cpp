@@ -10,7 +10,7 @@ namespace {
 StateUpdate makeDefaultLradState(uint16_t lradId) {
     StateUpdate state;
     state.lradId = lradId;
-    state.systemMode = "Operative";
+    state.systemMode = "OPERATING";
     state.cueingStatus = "0";
     state.configuration = "integrated";
     state.online = true;
@@ -61,7 +61,7 @@ StateUpdate makeDefaultLradState(uint16_t lradId) {
     state.irCameraSignal = 0;
 
     // LRAS_MULTI_health_status_INS per-LRAD defaults
-    state.lradConfiguration = 1;
+    state.lradConfiguration = 0;
     state.lradCondition = 1;
     state.lradOperativeState = 1;
     state.hwEmissionAuth = 0;
@@ -102,7 +102,7 @@ StateUpdate makeDefaultLradState(uint16_t lradId) {
 
 SystemHealthUpdate makeDefaultSystemHealth() {
     SystemHealthUpdate health;
-    health.lrasCondition = 1;
+    health.lrasCondition = 0;
     health.lrasOperativeState = 1;
     health.laserDazzlerMainAuth = 0;
     health.lrasServerStatus = 0;
@@ -345,7 +345,7 @@ bool SystemState::isDataFresh(uint64_t timeoutMs) const {
 
 void SystemState::resetToDefaults() {
     // Nota: questa funzione deve essere chiamata con il lock già acquisito
-    systemMode_ = "normal";
+    systemMode_ = "OPERATING";
     lradStates_[1] = makeDefaultLradState(1);
     lradStates_[2] = makeDefaultLradState(2);
     systemHealth_ = makeDefaultSystemHealth();

@@ -19,7 +19,7 @@
 #include <thread>
 
 struct AcsOutgoingJsonEvent : public IEvent {
-    inline static const std::string Topic = Topics::AcsOutgoingJson;
+    std::string Topic;
     RawPacket packet;
     nlohmann::json payload;
     uint16_t destinationId = 0;

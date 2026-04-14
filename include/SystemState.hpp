@@ -12,7 +12,66 @@
 class EventBus;
 
 // Delta update applicabile allo stato globale del sistema.
+
+struct lrad_status {
+    uint16_t lradStatus;           // 1=Operative, 2=Degraded, 3=Failure
+    uint16_t lradMode;             // 1=Stand-by, 2=Manual Search, 3=Cueing, 4=Cueing in blind arc, 5=Video Tracking
+    uint16_t CueingStatus;         // 0=No Cueing, 1=Cueing in progress, 2=Blind Arc, 3=Cueing in pause
+    uint16_t videoTrackingStatus;  // 0=No Tracking, 1=Tracking, 2=Tracking prediction, 3=Target lost
+    float azimuth;                 // deg [0..360]
+    float elevation;               // deg [-90..90]
+    int16_t lrfDistance;           // m [-1..4000], -1 = out of range/not valid
+    bool withinInhibitionSector;
+    uint16_t searchlightPower;     // 0=Off, 1=35W, 2=45W, 3=85W
+    uint16_t searchlightZoom;      // [0..99]
+    uint16_t laserDazzlerMode;     // 0=Off, 1=On, 2=Strobo
+    uint16_t videoZoom;           // [0..99]
+    uint16_t gyroSelection;       // 0=Force Internal IMU, 1=Force Ship Gyro, 2=Automatic
+    uint16_t gyroUsed;            // 0=Force Internal IMU, 1=Force Ship Gyro
+};
+
+struct full_status_v2 {
+    uint16_t communication;                // 0=OK, 1=Failure
+    uint16_t motionAzimuthStatus;          // 0=OK, 1=Failure, 2=Overcurrent, 3=Emergency stop
+    uint16_t motionElevationStatus;        // 0=OK, 1=Failure, 2=Overcurrent, 3=Emergency stop
+    uint16_t audioEmitterOvertemperature;  // 0=Nominal, 1=Overtemperature
+    uint16_t audioEmitterCommFailure;      // 0=Nominal, 1=Communication Failure
+    uint16_t searchlightOvertemperature;   // 0=Nominal, 1=Overtemperature
+    uint16_t searchlightCommFailure;       // 0=Nominal, 1=Communication Failure
+    uint16_t laserDazzlerOvertemperature;   // 0=Nominal, 1=Overtemperature
+    uint16_t laserDazzlerCommFailure;       // 0=Nominal, 1=Communication Failure
+    uint16_t lrfOvertemperature;           // 0=Nominal, 1=Overtemperature (not used for LRF per spec)
+    uint16_t lrfCommFailure;               // 0=Nominal, 1=Communication Failure
+    uint16_t trackingBoardStatus;          // 0=Operative, 1=No Communications
+    uint16_t visibleCameraStatus;          // 0=Operative, 1=No Communications
+    uint16_t visibleCameraSignal;          // 0=OK, 1=Not OK
+    uint16_t internalImuStatus;           // 0=OK, 1=Absence, 2=Corrupted, 3=Failure
+    uint16_t canBus1;                     // 0=OK, 1=Not OK
+    uint16_t canBus2;                     // 0=OK, 1=Not OK
+    uint16_t cpuSlaveStatus;              // 0=OK, 1=Not OK
+    uint16_t electronicBoxTemperature;     // 0=OK, 1=Sensor Failure, 2=Over Temperature
+    uint16_t interfaceBoxTemperature;      // 0=OK, 1=Sensor Failure, 2=Over Temperature
+    uint16_t irCameraStatus;              // 0=Operative, 1=No Communications
+    uint16_t irCameraSignal;              // 0=OK, 1=Not OK
+};
+
+struct lrad_healt_status{
+    uint16_t lradConfiguration;   // 0=Local, 1=Integrated
+    uint16_t lradCondition;       // 0=Unknown, 1=Normal, 2=Degraded, 3=Fault
+    uint16_t lradOperativeState; // 0=Unknown, 1=Operative, 2=Not Operative
+    uint16_t hwEmissionAuth;      // 0=FALSE, 1=TRUE (HW emission enabled)
+    uint16_t audioEmitterCondition; // 0=Unknown, 1=Normal, 2=Degraded, 3=Fault
+};
+
+struct Enable_payload {
+    std::optional<bool> audioEnabled;
+    std::optional<bool> ladEnabled;
+    std::optional<bool> lrfEnabled;
+    std::optional<bool> lightEnabled;
+
+};
 struct StateUpdate {
+    //cueing & emission configuration
     std::optional<std::string> systemMode;
     std::optional<uint16_t> lradId;
     std::optional<std::string> cueingStatus;
@@ -253,4 +312,9 @@ private:
     std::map<uint16_t, StateUpdate> lradStates_;
     SystemHealthUpdate systemHealth_;
     uint64_t lastUpdatedMs_ = 0;
+
+    // healt_status fields (from LRAS_MULTI_health_status_INS)
+    std::uint16_t LRAS_Condition; // 0=Unknown, 1=Normal, 2=Degraded, 3=Fault
+    std::uint16_t LRAS_OperativeState; // 0=Unknown, 1=Operative, 2=Not Operative
+    std::uint16_t laserDazzlerMainAuth; // 0=Disable, 1=Enable
 };

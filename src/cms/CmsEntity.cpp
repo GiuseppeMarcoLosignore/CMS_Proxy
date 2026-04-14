@@ -590,7 +590,7 @@ void CmsEntity::start() {
     });
 
     boost::asio::post(rxIoContext_, [this]() {
-    //    periodicMessages(); // Commentare per test.
+        periodicMessages(); // Commentare per test.
     });
      
 
@@ -665,11 +665,6 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
 
     const RawPacket& packetToSend = *result.packet;
 
-    auto acsOutgoingEvent = std::make_shared<AcsOutgoingJsonEvent>();
-    acsOutgoingEvent->packet = packetToSend;
-    acsOutgoingEvent->destinationId = packetToSend.destinationLradId;
-    acsOutgoingEvent->nackreason = packetToSend.nackreason;
-    eventBus_->publish(acsOutgoingEvent);
 
     if (!result.packet_topic.empty()) {
         auto dispatchTopicEvent = std::make_shared<CmsDispatchTopicPacketEvent>();
@@ -812,6 +807,7 @@ RawPacket CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     if (rawConfig != 0 && rawConfig != 1) {
         converted.nackreason = 2;
     }
+    
 
     StateUpdate update;
     update.lradId = lradId;
@@ -821,6 +817,10 @@ RawPacket CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     if (!has_known_lrad(systemState_, lradId)) {
         converted.nackreason = 2;
     }
+
+    SystemStateSnapshot state = systemState_->getSnapshot();
+    if(state.lradStates[lradId].lradStatus != 1)
+        converted.nackreason = 4;
 
     return converted;
 }
@@ -851,6 +851,11 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
     if (!has_known_lrad(systemState_, lradId)) {
         converted.nackreason = 2;
     }
+
+    SystemStateSnapshot state = systemState_->getSnapshot();
+    if(state.lradStates[lradId].lradStatus != 1)
+        converted.nackreason = 4;
+    
     return converted;
 }
 
@@ -951,6 +956,11 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
     if (!has_known_lrad(systemState_, lradId)) {
         converted.nackreason = 2;
     }
+    
+    SystemStateSnapshot state = systemState_->getSnapshot();
+    if(state.lradStates[lradId].lradStatus != 1)
+        converted.nackreason = 4;
+
     return converted;
 }
 
@@ -1218,6 +1228,13 @@ RawPacket CmsEntity::parse_CS_LRAS_recording_command_INS(
 RawPacket CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
     const RawPacket&,
     std::vector<StateUpdate>&) const {
+    
+    json payload;
+    payload["Action Id"] = 1234;
+    payload["LRAD ID"] = 1; 
+
+    
+    
     return make_empty_packet();
 }
 

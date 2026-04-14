@@ -5,6 +5,12 @@ namespace Topics {
 // ACS
 inline constexpr const char* AcsOutgoingJson = "acs.outgoing_json";
 inline constexpr const char* AcsStateUpdate = "acs.state_update";
+inline constexpr const char* AcsAlive = "ALIVE";
+inline constexpr const char* AcsDiagnostic = "DIAGNOSTIC";
+inline constexpr const char* AcsError = "ERROR";
+inline constexpr const char* AcsContext = "CONTEXT";
+
+
 
 // CMS
 inline constexpr const char* CmsStateUpdate = "cms.state_update";

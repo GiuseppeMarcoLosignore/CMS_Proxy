@@ -224,8 +224,10 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     }
 
     nlohmann::json payload;
+    std::string sendTopic;
     try {
         payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        sendTopic = payload["sender"];
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido: " << e.what() << std::endl;
         return;
@@ -234,6 +236,8 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     const auto destinationId = extract_destination_id(payload);
     if (destinationId.has_value()) {
         auto outgoingEvent = std::make_shared<AcsOutgoingJsonEvent>();
+        //TODO: Try/catch per estrarre topic da payload, altrimenti loggare errore e usare topic di default
+        outgoingEvent->Topic = sendTopic;
         outgoingEvent->packet = packet;
         outgoingEvent->payload = payload;
         outgoingEvent->destinationId = *destinationId;
@@ -531,9 +535,39 @@ void AcsEntity::createDELTA(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+
+        //std::string mode = "REQ";
+        if (inputPayload.contains("X position") && inputPayload.contains("Y position")) {
+            const auto& X = inputPayload.at("X position");
+            const auto& Y = inputPayload.at("Y position");
+            
+            param["az"] = X*0.1; //TODO: verificare se è necessario scalare i comandi di delta (es. 0.1) per adattarli alla sensibilità richiesta dall'ACS, e se questa scala è la stessa per azimuth e elevazione
+            param["el"] = Y*0.1;
+        }
+        //TODO:gestire anche il caso del cueing status (es. "cueing_status": "ON") per determinare se inviare comandi di delta o di posizione assoluta
+        
+
+        createHeader("DELTA", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
         return;
