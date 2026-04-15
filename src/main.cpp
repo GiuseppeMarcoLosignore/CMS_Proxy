@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
 
         auto system_state = std::make_shared<SystemState>();
         system_state->subscribeToTopics(event_bus);
+        
         auto acs_tcp_sender = std::make_shared<TcpJsonSender>(delivery_io_ctx);
         auto acs_multicast_sender = std::make_shared<UdpMulticastSender>(delivery_io_ctx);
 

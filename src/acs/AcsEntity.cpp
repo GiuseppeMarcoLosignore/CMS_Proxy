@@ -259,6 +259,7 @@ void AcsEntity::createHeader(std::string header, std::string type, std::string s
     outPayload["param"] = param;
 }
 
+
 void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
     if (!eventBus_) {
         return;
@@ -277,20 +278,10 @@ void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
     try {
         inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
 
-        std::string mode = "REQ";
-        if (inputPayload.contains("param") && inputPayload.at("param").is_object()) {
-            const auto& inputParam = inputPayload.at("param");
-            if (inputParam.contains("mode")) {
-                if (inputParam.at("mode").is_number_integer()) {
-                    mode = (inputParam.at("mode").get<int>() == 0) ? "RELEASE" : "REQ";
-                } else if (inputParam.at("mode").is_string()) {
-                    const std::string inputMode = inputParam.at("mode").get<std::string>();
-                    mode = (inputMode == "0") ? "RELEASE" : inputMode;
-                }
-            }
-        }
+        std::string mode = "";
 
-        param["mode"] = mode;
+
+        inputPayload["Configuration"] == "0" ? param["mode"] = "RELEASE": param["mode"] = "REQ";
         createHeader("MASTER", "CMD", "CMS", param, payload);
 
         const auto destinationIt = destinations_.find(packet.destinationLradId);
@@ -346,11 +337,45 @@ void AcsEntity::createAUDIO(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("Audio Volume dB") && 
+            inputPayload.contains("Mute") ) {
+            const float& inputParam = inputPayload.at("Audio Volume dB");
+            const auto& inputMute = inputPayload.at("Mute");
+
+            param["gain"] = inputParam/2;
+            param["mute"] = inputMute == 1 ? true : false;
+
+        }
+        else {
+            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
+                      << inputPayload.dump() << std::endl;
+            return;
+        }
+
+        createHeader("AUDIO", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per AUDIO: " << e.what() << std::endl;
         return;
     }
 }
@@ -541,7 +566,6 @@ void AcsEntity::createDELTA(const EventBus::EventPtr& event) {
     try {
         inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
 
-        //std::string mode = "REQ";
         if (inputPayload.contains("X position") && inputPayload.contains("Y position")) {
             const auto& X = inputPayload.at("X position");
             const auto& Y = inputPayload.at("Y position");
@@ -569,7 +593,7 @@ void AcsEntity::createDELTA(const EventBus::EventPtr& event) {
         sendToTcpDestination(outPacket, destinationIt->second);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per DELTA: " << e.what() << std::endl;
         return;
     }
 }

@@ -51,7 +51,10 @@ private:
     void handleStateUpdateEvent(const EventBus::EventPtr& event);
     void sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination);
     void sendToMulticast(const RawPacket& packet);
+
     void createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload);
+
+
     void createERROR(const EventBus::EventPtr& event);
     void createAUDIO(const EventBus::EventPtr& event);
     void createLAD(const EventBus::EventPtr& event);

@@ -573,7 +573,7 @@ void CmsEntity::start() {
 
     receiver_ = std::make_shared<UdpMulticastReceiver>(
         rxIoContext_,
-        "0.0.0.0",
+        "0.0.0.0", //useless, receiver will bind to the multicast group address directly
         config_.multicast_group,
         config_.multicast_port
     );
@@ -1012,8 +1012,8 @@ RawPacket CmsEntity::parse_CS_LRAS_emission_control_INS(
     payload["lradId"] = lradId;
     payload["audioModeValidity"] = audioModeValidity;
     payload["volumeLevel"] = volumeLevel;
-    payload["audioVolumeDb"] = audioVolumeDb;
-    payload["mute"] = mute;
+    payload["Audio Volume dB"] = audioVolumeDb;
+    payload["Mute"] = mute;
     payload["audioMode"] = audioMode;
     payload["recordedMessageId"] = recordedMessageId;
     payload["recordedLanguage"] = recordedLanguage;
