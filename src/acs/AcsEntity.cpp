@@ -179,7 +179,7 @@ void AcsEntity::subscribeTopics() {
         createLRF(event);
         createZOOM(event);
         createLRF(event);
-    });    
+    });   
 
     eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const EventBus::EventPtr& event) {
         createSHADOW(event);

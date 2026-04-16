@@ -23,8 +23,6 @@ private:
     void do_accept();
     void do_read(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
                  const std::shared_ptr<std::string>& pending_data);
-    void emit_packet(const std::string& payload,
-                     const std::shared_ptr<boost::asio::ip::tcp::socket>& socket);
 
     boost::asio::ip::tcp::acceptor acceptor_;
     std::vector<std::shared_ptr<boost::asio::ip::tcp::socket>> client_sockets_;

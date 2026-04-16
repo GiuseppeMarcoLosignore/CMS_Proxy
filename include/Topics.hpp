@@ -9,8 +9,31 @@ inline constexpr const char* AcsAlive = "ALIVE";
 inline constexpr const char* AcsDiagnostic = "DIAGNOSTIC";
 inline constexpr const char* AcsError = "ERROR";
 inline constexpr const char* AcsContext = "CONTEXT";
+inline constexpr const char* AcsSet = "SET";
+inline constexpr const char* AcsService = "SERVICE";
+inline constexpr const char* AcsAlert = "ALERT";
+inline constexpr const char* AcsMeteo = "METEO";
+inline constexpr const char* AcsPower = "POWER";
+inline constexpr const char* AcsReboot = "REBOOT";
 
-
+// CC - ATOM
+inline constexpr const char* CcAtomAudio = "AUDIO";
+inline constexpr const char* CcAtomLad = "LAD";
+inline constexpr const char* CcAtomSearchlight = "SEARCHLIGHT";
+inline constexpr const char* CcAtomLrf = "LRF";
+inline constexpr const char* CcAtomStabil = "STABIL";
+inline constexpr const char* CcAtomShadow = "SHADOW";
+inline constexpr const char* CcAtomZoom = "ZOOM";
+inline constexpr const char* CcAtomMaster = "MASTER";
+inline constexpr const char* CcAtomMasterGrant = "MASTERGRANT";
+inline constexpr const char* CcAtomPosition = "POSITION";
+inline constexpr const char* CcAtomDelta = "DELTA";
+inline constexpr const char* CcAtomTracking = "TRACKING";
+inline constexpr const char* CcAtomReboot = "REBOOT";
+inline constexpr const char* CcAtomConfig = "CONFIG";
+inline constexpr const char* CcAtomImu = "IMU";
+inline constexpr const char* CcAtomNavs = "NAVS";
+inline constexpr const char* CcAtomPower = "POWER";
 
 // CMS
 inline constexpr const char* CmsStateUpdate = "cms.state_update";

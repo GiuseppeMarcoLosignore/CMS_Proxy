@@ -94,7 +94,21 @@ void TcpUnicastReceiver::do_read(const std::shared_ptr<boost::asio::ip::tcp::soc
                     }
 
                     if (!payload.empty()) {
-                        emit_packet(payload, socket);
+                        PacketSourceInfo source_info;
+                        source_info.protocol = TransportProtocol::Tcp;
+
+                        boost::system::error_code endpoint_ec;
+                        const auto endpoint = socket->remote_endpoint(endpoint_ec);
+                        if (!endpoint_ec) {
+                            source_info.source_ip = endpoint.address().to_string();
+                            source_info.source_port = endpoint.port();
+                        }
+
+                        RawPacket packet;
+                        packet.data.assign(payload.begin(), payload.end());
+                        if (callback_) {
+                            callback_(std::move(packet), std::move(source_info));
+                        }
                     }
 
                     pending_data->erase(0, separator_pos + 1);
@@ -107,7 +121,21 @@ void TcpUnicastReceiver::do_read(const std::shared_ptr<boost::asio::ip::tcp::soc
 
             if (ec == boost::asio::error::eof) {
                 if (!pending_data->empty()) {
-                    emit_packet(*pending_data, socket);
+                    PacketSourceInfo source_info;
+                    source_info.protocol = TransportProtocol::Tcp;
+
+                    boost::system::error_code endpoint_ec;
+                    const auto endpoint = socket->remote_endpoint(endpoint_ec);
+                    if (!endpoint_ec) {
+                        source_info.source_ip = endpoint.address().to_string();
+                        source_info.source_port = endpoint.port();
+                    }
+
+                    RawPacket packet;
+                    packet.data.assign(pending_data->begin(), pending_data->end());
+                    if (callback_) {
+                        callback_(std::move(packet), std::move(source_info));
+                    }
                 }
             } else if (ec != boost::asio::error::operation_aborted) {
                 std::cerr << "[TCP Receiver] Errore read: " << ec.message() << std::endl;
@@ -121,23 +149,4 @@ void TcpUnicastReceiver::do_read(const std::shared_ptr<boost::asio::ip::tcp::soc
     );
 }
 
-void TcpUnicastReceiver::emit_packet(const std::string& payload,
-                                     const std::shared_ptr<boost::asio::ip::tcp::socket>& socket) {
-    if (!callback_) {
-        return;
-    }
 
-    PacketSourceInfo source_info;
-    source_info.protocol = TransportProtocol::Tcp;
-
-    boost::system::error_code endpoint_ec;
-    const auto endpoint = socket->remote_endpoint(endpoint_ec);
-    if (!endpoint_ec) {
-        source_info.source_ip = endpoint.address().to_string();
-        source_info.source_port = endpoint.port();
-    }
-
-    RawPacket packet;
-    packet.data.assign(payload.begin(), payload.end());
-    callback_(packet, source_info);
-}
