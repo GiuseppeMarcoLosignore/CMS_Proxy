@@ -23,7 +23,7 @@ std::string extract_message_type(const nlohmann::json& payload) {
     return header.at("type").get<std::string>();
 }
 
-std::optional<uint16_t> extract_destination_id(const nlohmann::json& payload) {
+std::optional<uint16_t> extract_header(const nlohmann::json& payload) {
     const char* keys[] = { "destination_id", "target_id", "id" };
     for (const char* key : keys) {
         if (payload.contains(key) && payload.at(key).is_number_unsigned()) {
@@ -42,6 +42,8 @@ std::optional<uint16_t> extract_destination_id(const nlohmann::json& payload) {
 
     return std::nullopt;
 }
+
+
 
 std::optional<StateUpdate> parse_state_update(const nlohmann::json& payload) {
     const nlohmann::json* source = nullptr;
@@ -233,10 +235,9 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         return;
     }
 
-    const auto destinationId = extract_destination_id(payload);
+    const auto destinationId = extract_header(payload);
     if (destinationId.has_value()) {
         auto outgoingEvent = std::make_shared<AcsOutgoingJsonEvent>();
-        //TODO: Try/catch per estrarre topic da payload, altrimenti loggare errore e usare topic di default
         outgoingEvent->Topic = sendTopic;
         outgoingEvent->packet = packet;
         outgoingEvent->payload = payload;
@@ -304,26 +305,7 @@ void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
     }
 }
 
-void AcsEntity::createERROR(const EventBus::EventPtr& event) {
-    if (!eventBus_) {
-        return;
-    }
 
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const RawPacket& packet = dispatchEvent->packet;
-
-    nlohmann::json payload;
-    try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
-        return;
-    }
-}
 
 void AcsEntity::createAUDIO(const EventBus::EventPtr& event) {
     if (!eventBus_) {
@@ -350,6 +332,8 @@ void AcsEntity::createAUDIO(const EventBus::EventPtr& event) {
 
             param["gain"] = inputParam/2;
             param["mute"] = inputMute == 1 ? true : false;
+            param["equal"] = "AUTO";
+            param["lobe"] = "WIDE"; //TODO: capire che tipo di controllo sulla lobe è previsto e mappare il parametro opportunamente
 
         }
         else {
@@ -392,11 +376,44 @@ void AcsEntity::createLAD(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("Laser Mode") ) {
+            const float& inputParam = inputPayload.at("Laser Mode");
+
+            param["mode"] = inputParam == 0 ? "OFF" : inputParam == 1 ? "ON" : "STROBE";
+            param["override"] = false; //feature non prevista per LAD, sempre false
+
+
+        }
+        else {
+            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
+                      << inputPayload.dump() << std::endl;
+            return;
+        }
+
+        createHeader("LAD", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per LAD: " << e.what() << std::endl;
         return;
     }
 }
@@ -413,11 +430,46 @@ void AcsEntity::createSEARCHLIGHT(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("Light Power") && inputPayload.contains("Light Zoom")) {
+            const float& inputParam = inputPayload.at("Light Power");
+            const float& inputParam2 = inputPayload.at("Light Zoom");
+
+            param["power"] = inputParam == 1 ? "35W" : inputParam == 2 ? "45W" : inputParam == 3 ? "85W" : "35W";
+            param["focus"] = inputParam2;
+            param["mode"] = inputParam == 0 ? "OFF" : "ON"; 
+
+
+        }
+        else {
+            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
+                      << inputPayload.dump() << std::endl;
+            return;
+        }
+
+        createHeader("SEARCHLIGHT", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per SEARCHLIGHT: " << e.what() << std::endl;
         return;
     }
 }
@@ -434,36 +486,49 @@ void AcsEntity::createLRF(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("LRF on off") ) {
+            const float& inputParam = inputPayload.at("LRF on off");
+
+            param["mode"] = inputParam == 0 ? "OFF" : "ON" ;
+            param["value"] = -1; //TODO : mappare opportunamente il parametro di potenza del LRF, se previsto 
+
+
+        }
+        else {
+            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
+                      << inputPayload.dump() << std::endl;
+            return;
+        }
+
+        createHeader("LRF", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per LRF: " << e.what() << std::endl;
         return;
     }
 }
 
-void AcsEntity::createSTABIL(const EventBus::EventPtr& event) {
-    if (!eventBus_) {
-        return;
-    }
-
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const RawPacket& packet = dispatchEvent->packet;
-
-    nlohmann::json payload;
-    try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
-        return;
-    }
-}
-
+//TODO: implementare le altre createXXX per gli altri tipi di comando previsti (es. ZOOM, SHADOW, etc.) mappando opportunamente i parametri in ingresso e quelli richiesti dall'ACS, e gestendo eventuali errori di formato o di parametri mancanti
 void AcsEntity::createSHADOW(const EventBus::EventPtr& event) {
     if (!eventBus_) {
         return;
@@ -476,11 +541,63 @@ void AcsEntity::createSHADOW(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
+    nlohmann::json sectors;
+    bool hasSectors = false;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("Sector 1") ) {
+            const auto& inputParam = inputPayload.at("Sector 1");
+            if(inputParam["On Off"] == 1) {
+                hasSectors = true;
+                nlohmann::json sector;
+                sector["target"] = "AZ";
+                sector["start"] = inputParam["start"];
+                sector["stop"] = inputParam["stop"];
+                sectors.push_back(sector);
+            }
+        }
+        if (inputPayload.contains("Sector 2") ) {
+            const auto& inputParam = inputPayload.at("Sector 2");
+            if(inputParam["On Off"] == 1) {
+                hasSectors = true;
+                nlohmann::json sector;
+                sector["target"] = "AZ";
+                sector["start"] = inputParam["start"];
+                sector["stop"] = inputParam["stop"];
+                sectors.push_back(sector);
+            }
+        }
+
+        param["sectors"] = sectors;
+        
+
+        createHeader("LRF", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        if (hasSectors) {
+            sendToTcpDestination(outPacket, destinationIt->second);
+        } else {
+            std::cout << "[ACS Entity] Nessun settore di ombreggiamento attivo, non invio comando shadow" << std::endl;
+        }
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per LRF: " << e.what() << std::endl;
         return;
     }
 }
@@ -497,35 +614,47 @@ void AcsEntity::createZOOM(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("Camera Zoom") ) {
+            const auto& inputParam = inputPayload.at("Camera Zoom");
+
+            param["id"] = "HD"; 
+            param["value"] = inputParam*0.3; //conversione da step in trentesimi da centesimi
+
+        }
+        else {
+            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
+                      << inputPayload.dump() << std::endl;
+            return;
+        }
+
+        createHeader("ZOOM", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per ZOOM: " << e.what() << std::endl;
         return;
     }
 }
 
-void AcsEntity::createCONTEXT(const EventBus::EventPtr& event) {
-    if (!eventBus_) {
-        return;
-    }
-
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const RawPacket& packet = dispatchEvent->packet;
-
-    nlohmann::json payload;
-    try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
-        return;
-    }
-}
 
 void AcsEntity::createPOSITION(const EventBus::EventPtr& event) {
     if (!eventBus_) {
@@ -539,15 +668,47 @@ void AcsEntity::createPOSITION(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("az") && inputPayload.contains("el") ) {
+
+            param["az"] = inputPayload.at("az");
+            param["el"] = inputPayload.at("el");
+            param["goTo"] = 2;
+
+        }
+
+        else {
+            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per POSITION: "
+                      << inputPayload.dump() << std::endl;
+            return;
+        }
+
+        createHeader("POSITION", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per POSITION: " << e.what() << std::endl;
         return;
     }
 }
-
 void AcsEntity::createDELTA(const EventBus::EventPtr& event) {
     if (!eventBus_) {
         return;
@@ -610,77 +771,47 @@ void AcsEntity::createTRACKING(const EventBus::EventPtr& event) {
 
     const RawPacket& packet = dispatchEvent->packet;
 
+    nlohmann::json inputPayload;
+    nlohmann::json param;
     nlohmann::json payload;
+
     try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (inputPayload.contains("Auto tracking") ) {
+            const auto& inputParam = inputPayload.at("Auto tracking");
+
+            param["auto"] = inputParam == 0 ? false : true; 
+            
+
+        }
+        else {
+            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
+                      << inputPayload.dump() << std::endl;
+            return;
+        }
+
+        createHeader("TRACKING", "CMD", "CMS", param, payload);
+
+        const auto destinationIt = destinations_.find(packet.destinationLradId);
+        if (destinationIt == destinations_.end()) {
+            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                      << packet.destinationLradId << std::endl;
+            return;
+        }
+
+        const std::string payloadStr = payload.dump();
+        RawPacket outPacket;
+        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+        outPacket.destinationLradId = packet.destinationLradId;
+
+        sendToTcpDestination(outPacket, destinationIt->second);
+        //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+        std::cerr << "[ACS Entity] JSON non valido per TRACKING: " << e.what() << std::endl;
         return;
     }
 }
 
-void AcsEntity::createCONFIG(const EventBus::EventPtr& event) {
-    if (!eventBus_) {
-        return;
-    }
-
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const RawPacket& packet = dispatchEvent->packet;
-
-    nlohmann::json payload;
-    try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
-        return;
-    }
-}
-
-void AcsEntity::createIMU(const EventBus::EventPtr& event) {
-    if (!eventBus_) {
-        return;
-    }
-
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const RawPacket& packet = dispatchEvent->packet;
-
-    nlohmann::json payload;
-    try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
-        return;
-    }
-}
-
-void AcsEntity::createHOURS(const EventBus::EventPtr& event) {
-    if (!eventBus_) {
-        return;
-    }
-
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const RawPacket& packet = dispatchEvent->packet;
-
-    nlohmann::json payload;
-    try {
-        payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
-        return;
-    }
-}
 
 void AcsEntity::sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination) {
     if (!tcpSender_) {

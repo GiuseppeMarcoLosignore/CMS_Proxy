@@ -55,22 +55,17 @@ private:
     void createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload);
 
 
-    void createERROR(const EventBus::EventPtr& event);
     void createAUDIO(const EventBus::EventPtr& event);
     void createLAD(const EventBus::EventPtr& event);
     void createSEARCHLIGHT(const EventBus::EventPtr& event);
     void createLRF(const EventBus::EventPtr& event);
-    void createSTABIL(const EventBus::EventPtr& event);
     void createSHADOW(const EventBus::EventPtr& event);
     void createZOOM(const EventBus::EventPtr& event);
     void createMASTER(const EventBus::EventPtr& event);
-    void createCONTEXT(const EventBus::EventPtr& event);
     void createPOSITION(const EventBus::EventPtr& event);
     void createDELTA(const EventBus::EventPtr& event);
     void createTRACKING(const EventBus::EventPtr& event);
-    void createCONFIG(const EventBus::EventPtr& event);
-    void createIMU(const EventBus::EventPtr& event);
-    void createHOURS(const EventBus::EventPtr& event);
+
 
     AcsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
