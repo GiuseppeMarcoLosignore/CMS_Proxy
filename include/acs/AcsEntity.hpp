@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <thread>
+#include <mutex>
 
 struct AcsOutgoingJsonEvent : public IEvent {
     std::string Topic;
@@ -48,8 +49,10 @@ private:
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void handleOutgoingJsonEvent(const EventBus::EventPtr& event);
     void handleStateUpdateEvent(const EventBus::EventPtr& event);
+    void handleConfigChanged(const EventBus::EventPtr& event);
     void sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination);
     void sendToMulticast(const RawPacket& packet);
+    std::optional<AcsDestination> findDestination(uint16_t id) const;
 
     void createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload);
 
@@ -73,6 +76,8 @@ private:
     std::shared_ptr<ISender> tcpSender_;
     std::shared_ptr<ISender> multicastSender_;
     std::map<uint16_t, AcsDestination> destinations_;
+    mutable std::mutex configMutex_;
+    mutable std::mutex destinationsMutex_;
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;
     std::vector<std::shared_ptr<IReceiver>> receivers_;

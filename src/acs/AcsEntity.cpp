@@ -1,7 +1,8 @@
 #include "AcsEntity.hpp"
 
-#include "TcpUnicastReceiver.hpp"
-#include "UdpMulticastReceiver.hpp"
+#include "NetworkConfigChangedEvent.hpp"
+#include "TcpSocket.hpp"
+#include "UdpSocket.hpp"
 #include "cms/CmsEntity.hpp"
 
 #include <fstream>
@@ -108,17 +109,23 @@ AcsEntity::AcsEntity(const AcsConfig& config,
 void AcsEntity::start() {
     subscribeTopics();
 
-    auto multicast_receiver = std::make_shared<UdpMulticastReceiver>(
+    AcsConfig startupConfig;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        startupConfig = config_;
+    }
+
+    auto multicast_receiver = std::make_shared<UdpSocket>(
         rxIoContext_,
-        config_.listen_ip,
-        config_.multicast_group,
-        config_.multicast_port
+        startupConfig.listen_ip,
+        startupConfig.multicast_group,
+        startupConfig.multicast_port
     );
 
-    auto tcp_receiver = std::make_shared<TcpUnicastReceiver>(
+    auto tcp_receiver = std::make_shared<TcpSocket>(
         rxIoContext_,
-        config_.tcp_listen_ip,
-        config_.tcp_listen_port
+        startupConfig.tcp_listen_ip,
+        startupConfig.tcp_listen_port
     );
 
     multicast_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
@@ -142,10 +149,10 @@ void AcsEntity::start() {
     });
 
     std::cout << "[ACS Entity] Avviata su "
-              << config_.multicast_group << ":" << config_.multicast_port
-              << " (iface " << config_.listen_ip << ")" << std::endl;
+              << startupConfig.multicast_group << ":" << startupConfig.multicast_port
+              << " (iface " << startupConfig.listen_ip << ")" << std::endl;
     std::cout << "[ACS Entity] TCP unicast in ascolto su "
-              << config_.tcp_listen_ip << ":" << config_.tcp_listen_port << std::endl;
+              << startupConfig.tcp_listen_ip << ":" << startupConfig.tcp_listen_port << std::endl;
 }
 
 void AcsEntity::stop() {
@@ -162,6 +169,8 @@ void AcsEntity::stop() {
 }
 
 void AcsEntity::subscribeTopics() {
+    static std::once_flag subscribed;
+    std::call_once(subscribed, [this]() {
     if (!eventBus_) {
         return;
     }
@@ -195,6 +204,96 @@ void AcsEntity::subscribeTopics() {
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const EventBus::EventPtr& event) {
         createDELTA(event);
     });
+
+    eventBus_->subscribe(Topics::NetworkConfigChanged, [this](const EventBus::EventPtr& event) {
+        handleConfigChanged(event);
+    });
+    });
+}
+
+void AcsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
+    const auto configEvent = std::dynamic_pointer_cast<const NetworkConfigChangedEvent>(event);
+    if (!configEvent) {
+        return;
+    }
+
+    const AcsConfig newConfig = configEvent->acs;
+    AcsConfig oldConfig;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        oldConfig = config_;
+    }
+
+    const bool receiverChanged =
+        (oldConfig.listen_ip != newConfig.listen_ip) ||
+        (oldConfig.multicast_group != newConfig.multicast_group) ||
+        (oldConfig.multicast_port != newConfig.multicast_port) ||
+        (oldConfig.tcp_listen_ip != newConfig.tcp_listen_ip) ||
+        (oldConfig.tcp_listen_port != newConfig.tcp_listen_port);
+
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        config_ = newConfig;
+    }
+    {
+        std::lock_guard<std::mutex> lock(destinationsMutex_);
+        destinations_ = newConfig.destinations;
+    }
+
+    if (!receiverChanged) {
+        return;
+    }
+
+    try {
+        for (const auto& receiver : receivers_) {
+            receiver->stop();
+        }
+        receivers_.clear();
+
+        auto multicast_receiver = std::make_shared<UdpSocket>(
+            rxIoContext_,
+            newConfig.listen_ip,
+            newConfig.multicast_group,
+            newConfig.multicast_port
+        );
+
+        auto tcp_receiver = std::make_shared<TcpSocket>(
+            rxIoContext_,
+            newConfig.tcp_listen_ip,
+            newConfig.tcp_listen_port
+        );
+
+        multicast_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+            onPacketReceived(packet, sourceInfo);
+        });
+
+        tcp_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+            onPacketReceived(packet, sourceInfo);
+        });
+
+        receivers_.push_back(multicast_receiver);
+        receivers_.push_back(tcp_receiver);
+        for (const auto& receiver : receivers_) {
+            receiver->start();
+        }
+
+        std::cout << "[ACS Entity] Config aggiornata: RX UDP "
+                  << newConfig.multicast_group << ":" << newConfig.multicast_port
+                  << " (iface " << newConfig.listen_ip << "), RX TCP "
+                  << newConfig.tcp_listen_ip << ":" << newConfig.tcp_listen_port << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "[ACS Entity] Errore hot reload config: " << e.what() << std::endl;
+    }
+}
+
+std::optional<AcsDestination> AcsEntity::findDestination(uint16_t id) const {
+    std::lock_guard<std::mutex> lock(destinationsMutex_);
+    const auto destinationIt = destinations_.find(id);
+    if (destinationIt == destinations_.end()) {
+        return std::nullopt;
+    }
+
+    return destinationIt->second;
 }
 
 void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
@@ -203,14 +302,14 @@ void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
         return;
     }
 
-    const auto destinationIt = destinations_.find(outgoing->destinationId);
-    if (destinationIt == destinations_.end()) {
+    const auto destination = findDestination(outgoing->destinationId);
+    if (!destination.has_value()) {
         std::cerr << "[ACS Entity] Destinazione ACS non configurata: "
                   << outgoing->destinationId << std::endl;
         return;
     }
 
-    sendToTcpDestination(outgoing->packet, destinationIt->second);
+    sendToTcpDestination(outgoing->packet, *destination);
     sendToMulticast(outgoing->packet);
 }
 
@@ -363,6 +462,7 @@ void AcsEntity::parseALIVE(const EventBus::EventPtr& event) {
         }
         configOutput << configJson.dump(2);
 
+        std::lock_guard<std::mutex> lock(destinationsMutex_);
         const auto destinationIt = destinations_.find(lradId);
         if (destinationIt != destinations_.end()) {
             destinationIt->second.ip_address = ip;
@@ -401,8 +501,8 @@ void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
         inputPayload["Configuration"] == "0" ? param["mode"] = "RELEASE": param["mode"] = "REQ";
         createHeader("MASTER", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -413,7 +513,7 @@ void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
@@ -458,8 +558,8 @@ void AcsEntity::createAUDIO(const EventBus::EventPtr& event) {
 
         createHeader("AUDIO", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -470,7 +570,7 @@ void AcsEntity::createAUDIO(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per AUDIO: " << e.what() << std::endl;
@@ -512,8 +612,8 @@ void AcsEntity::createLAD(const EventBus::EventPtr& event) {
 
         createHeader("LAD", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -524,7 +624,7 @@ void AcsEntity::createLAD(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per LAD: " << e.what() << std::endl;
@@ -568,8 +668,8 @@ void AcsEntity::createSEARCHLIGHT(const EventBus::EventPtr& event) {
 
         createHeader("SEARCHLIGHT", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -580,7 +680,7 @@ void AcsEntity::createSEARCHLIGHT(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per SEARCHLIGHT: " << e.what() << std::endl;
@@ -622,8 +722,8 @@ void AcsEntity::createLRF(const EventBus::EventPtr& event) {
 
         createHeader("LRF", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -634,7 +734,7 @@ void AcsEntity::createLRF(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per LRF: " << e.what() << std::endl;
@@ -692,8 +792,8 @@ void AcsEntity::createSHADOW(const EventBus::EventPtr& event) {
 
         createHeader("LRF", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -705,7 +805,7 @@ void AcsEntity::createSHADOW(const EventBus::EventPtr& event) {
         outPacket.destinationLradId = packet.destinationLradId;
 
         if (hasSectors) {
-            sendToTcpDestination(outPacket, destinationIt->second);
+            sendToTcpDestination(outPacket, *destination);
         } else {
             std::cout << "[ACS Entity] Nessun settore di ombreggiamento attivo, non invio comando shadow" << std::endl;
         }
@@ -749,8 +849,8 @@ void AcsEntity::createZOOM(const EventBus::EventPtr& event) {
 
         createHeader("ZOOM", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -761,7 +861,7 @@ void AcsEntity::createZOOM(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per ZOOM: " << e.what() << std::endl;
@@ -804,8 +904,8 @@ void AcsEntity::createPOSITION(const EventBus::EventPtr& event) {
 
         createHeader("POSITION", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -816,7 +916,7 @@ void AcsEntity::createPOSITION(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per POSITION: " << e.what() << std::endl;
@@ -853,8 +953,8 @@ void AcsEntity::createDELTA(const EventBus::EventPtr& event) {
 
         createHeader("DELTA", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -865,7 +965,7 @@ void AcsEntity::createDELTA(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per DELTA: " << e.what() << std::endl;
@@ -906,8 +1006,8 @@ void AcsEntity::createTRACKING(const EventBus::EventPtr& event) {
 
         createHeader("TRACKING", "CMD", "CMS", param, payload);
 
-        const auto destinationIt = destinations_.find(packet.destinationLradId);
-        if (destinationIt == destinations_.end()) {
+        const auto destination = findDestination(packet.destinationLradId);
+        if (!destination.has_value()) {
             std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
                       << packet.destinationLradId << std::endl;
             return;
@@ -918,7 +1018,7 @@ void AcsEntity::createTRACKING(const EventBus::EventPtr& event) {
         outPacket.data.assign(payloadStr.begin(), payloadStr.end());
         outPacket.destinationLradId = packet.destinationLradId;
 
-        sendToTcpDestination(outPacket, destinationIt->second);
+        sendToTcpDestination(outPacket, *destination);
         //sendToMulticast(outPacket);
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido per TRACKING: " << e.what() << std::endl;
@@ -950,15 +1050,23 @@ void AcsEntity::sendToMulticast(const RawPacket& packet) {
         return;
     }
 
+    std::string txGroup;
+    uint16_t txPort = 0;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        txGroup = config_.tx_multicast_group;
+        txPort = config_.tx_multicast_port;
+    }
+
     const SendResult result = multicastSender_->send(
         packet,
-        config_.tx_multicast_group,
-        config_.tx_multicast_port
+        txGroup,
+        txPort
     );
 
     if (!result.success) {
         std::cerr << "[ACS Entity] Errore invio UDP multicast verso "
-                  << config_.tx_multicast_group << ":" << config_.tx_multicast_port
+                  << txGroup << ":" << txPort
                   << " -> " << result.error_message << std::endl;
     }
 }

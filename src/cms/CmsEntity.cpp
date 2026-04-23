@@ -1,10 +1,10 @@
 #include "CmsEntity.hpp"
 
+#include "NetworkConfigChangedEvent.hpp"
 #include "acs/AcsEntity.hpp"
 #include "CueingMath.hpp"
 #include "Topics.hpp"
-#include "UdpMulticastReceiver.hpp"
-#include "UdpMulticastSender.hpp"
+#include "UdpSocket.hpp"
 
 #include <cctype>
 #include <cmath>
@@ -235,7 +235,7 @@ RawPacket build_lrad_status_packet(const StateUpdate& state, uint32_t messageId)
 void send_multicast_packet(const RawPacket& packet, const char* messageName) {
     try {
         boost::asio::io_context txIoContext;
-        UdpMulticastSender sender(txIoContext);
+        UdpSocket sender(txIoContext);
         const SendResult result = sender.send(packet, LrasStatusMulticastGroup, LrasStatusMulticastPort);
         if (!result.success) {
             std::cerr << "[CMS Entity] Errore invio " << messageName << " verso "
@@ -563,9 +563,11 @@ CmsEntity::CmsEntity(const CmsConfig& config,
 }
 
 void CmsEntity::start() {
-    subscribeTopics();
+    if (!subscribed_.exchange(true)) {
+        subscribeTopics();
+    }
 
-    receiver_ = std::make_shared<UdpMulticastReceiver>(
+    receiver_ = std::make_shared<UdpSocket>(
         rxIoContext_,
         "0.0.0.0", //useless, receiver will bind to the multicast group address directly
         config_.multicast_group,
@@ -586,6 +588,8 @@ void CmsEntity::start() {
     boost::asio::post(rxIoContext_, [this]() {
         periodicMessages(); // Commentare per test.
     });
+
+    running_.store(true);
      
 
     std::cout << "[CMS Entity] Avviata su "
@@ -593,6 +597,8 @@ void CmsEntity::start() {
 }
 
 void CmsEntity::stop() {
+    running_.store(false);
+
     if (receiver_) {
         receiver_->stop();
     }
@@ -641,6 +647,53 @@ void CmsEntity::subscribeTopics() {
         sendLRAS_MULTI_health_status_INS(event);
     });
 
+    eventBus_->subscribe(Topics::NetworkConfigChanged, [this](const EventBus::EventPtr& event) {
+        handleConfigChanged(event);
+    });
+
+}
+
+void CmsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
+    const auto configEvent = std::dynamic_pointer_cast<const NetworkConfigChangedEvent>(event);
+    if (!configEvent) {
+        return;
+    }
+
+    const CmsConfig newConfig = configEvent->cms;
+    boost::asio::post(rxIoContext_, [this, newConfig]() {
+        const bool endpointChanged =
+            (config_.multicast_group != newConfig.multicast_group) ||
+            (config_.multicast_port != newConfig.multicast_port);
+
+        config_ = newConfig;
+
+        if (!running_.load() || !endpointChanged) {
+            return;
+        }
+
+        try {
+            if (receiver_) {
+                receiver_->stop();
+            }
+
+            receiver_ = std::make_shared<UdpSocket>(
+                rxIoContext_,
+                "0.0.0.0",
+                config_.multicast_group,
+                config_.multicast_port
+            );
+
+            receiver_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+                onPacketReceived(packet, sourceInfo);
+            });
+
+            receiver_->start();
+            std::cout << "[CMS Entity] Config aggiornata: listener su "
+                      << config_.multicast_group << ":" << config_.multicast_port << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[CMS Entity] Errore hot reload config: " << e.what() << std::endl;
+        }
+    });
 }
 
 void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
@@ -1689,7 +1742,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
 
     try {
         boost::asio::io_context txIoContext;
-        UdpMulticastSender sender(txIoContext);
+        UdpSocket sender(txIoContext);
         const SendResult result = sender.send(ackPacket, LrasStatusMulticastGroup, LrasStatusMulticastPort);
         if (!result.success) {
             std::cerr << "[CMS Entity] Errore invio ACK multicast verso "

@@ -11,6 +11,7 @@
 #include <optional>
 #include <thread>
 #include <unordered_map>
+#include <atomic>
 
 class NavsEntity : public IEntity {
 public:
@@ -29,6 +30,7 @@ private:
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     bool parseHeader(const RawPacket& packet, ParsedHeader& out) const;
     std::string resolveTopic(uint32_t messageId) const;
+    void handleConfigChanged(const EventBus::EventPtr& event);
 
     NavsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
@@ -38,4 +40,6 @@ private:
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;
     std::shared_ptr<IReceiver> receiver_;
     std::jthread rxThread_;
+    std::atomic<bool> subscribed_{false};
+    std::atomic<bool> running_{false};
 };

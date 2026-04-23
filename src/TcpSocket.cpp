@@ -1,13 +1,22 @@
-#include "TcpUnicastReceiver.hpp"
+#include "TcpSocket.hpp"
 
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
-TcpUnicastReceiver::TcpUnicastReceiver(boost::asio::io_context& io_ctx,
-                                       const std::string& listen_address,
-                                       uint16_t port)
-    : acceptor_(io_ctx) {
+TcpSocket::TcpSocket(boost::asio::io_context& io_ctx)
+    : io_ctx_(io_ctx),
+      outgoing_socket_(io_ctx) {
+}
+
+TcpSocket::TcpSocket(boost::asio::io_context& io_ctx,
+                     const std::string& listen_address,
+                     uint16_t port)
+    : TcpSocket(io_ctx) {
+    configure_listener(listen_address, port);
+}
+
+void TcpSocket::configure_listener(const std::string& listen_address, uint16_t port) {
     boost::system::error_code ec;
     const auto address = boost::asio::ip::make_address(listen_address, ec);
     if (ec) {
@@ -15,36 +24,41 @@ TcpUnicastReceiver::TcpUnicastReceiver(boost::asio::io_context& io_ctx,
     }
 
     const boost::asio::ip::tcp::endpoint endpoint(address, port);
-    acceptor_.open(endpoint.protocol(), ec);
+    acceptor_.emplace(io_ctx_);
+    acceptor_->open(endpoint.protocol(), ec);
     if (ec) {
         throw std::runtime_error("Errore apertura acceptor TCP ACS: " + ec.message());
     }
 
-    acceptor_.set_option(boost::asio::socket_base::reuse_address(true), ec);
+    acceptor_->set_option(boost::asio::socket_base::reuse_address(true), ec);
     ec.clear();
-    acceptor_.bind(endpoint, ec);
+    acceptor_->bind(endpoint, ec);
     if (ec) {
         throw std::runtime_error("Errore bind acceptor TCP ACS: " + ec.message());
     }
 
-    acceptor_.listen(boost::asio::socket_base::max_listen_connections, ec);
+    acceptor_->listen(boost::asio::socket_base::max_listen_connections, ec);
     if (ec) {
         throw std::runtime_error("Errore listen TCP ACS: " + ec.message());
     }
 }
 
-void TcpUnicastReceiver::set_callback(MessageCallback cb) {
+void TcpSocket::set_callback(MessageCallback cb) {
     callback_ = std::move(cb);
 }
 
-void TcpUnicastReceiver::start() {
-    do_accept();
+void TcpSocket::start() {
+    if (acceptor_.has_value()) {
+        do_accept();
+    }
 }
 
-void TcpUnicastReceiver::stop() {
+void TcpSocket::stop() {
     boost::system::error_code ec;
-    acceptor_.cancel(ec);
-    acceptor_.close(ec);
+    if (acceptor_.has_value()) {
+        acceptor_->cancel(ec);
+        acceptor_->close(ec);
+    }
 
     for (const auto& socket : client_sockets_) {
         if (!socket) {
@@ -57,10 +71,63 @@ void TcpUnicastReceiver::stop() {
     }
 
     client_sockets_.clear();
+    close_outgoing_socket();
 }
 
-void TcpUnicastReceiver::do_accept() {
-    acceptor_.async_accept([this](const boost::system::error_code& ec, boost::asio::ip::tcp::socket socket) {
+SendResult TcpSocket::send(const RawPacket& packet,
+                           const std::string& target_host,
+                           uint16_t target_port) {
+    SendResult result;
+
+    boost::system::error_code ec;
+    boost::asio::ip::tcp::resolver resolver(io_ctx_);
+    auto endpoints = resolver.resolve(target_host, std::to_string(target_port), ec);
+    if (ec || endpoints.begin() == endpoints.end()) {
+        result.success = false;
+        result.error_value = ec ? ec.value() : -1;
+        result.error_category = ec ? ec.category().name() : "resolver";
+        result.error_message = ec ? ec.message() : "Nessun endpoint valido trovato";
+        return result;
+    }
+
+    close_outgoing_socket();
+    outgoing_socket_.connect(*endpoints.begin(), ec);
+    if (ec) {
+        result.success = false;
+        result.error_value = ec.value();
+        result.error_category = ec.category().name();
+        result.error_message = ec.message();
+        return result;
+    }
+
+    boost::asio::write(outgoing_socket_, boost::asio::buffer(packet.data), ec);
+    if (ec) {
+        result.success = false;
+        result.error_value = ec.value();
+        result.error_category = ec.category().name();
+        result.error_message = ec.message();
+        close_outgoing_socket();
+        return result;
+    }
+
+    close_outgoing_socket();
+    result.success = true;
+    return result;
+}
+
+void TcpSocket::close_outgoing_socket() {
+    if (!outgoing_socket_.is_open()) {
+        return;
+    }
+
+    boost::system::error_code ec;
+    outgoing_socket_.cancel(ec);
+    outgoing_socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+    outgoing_socket_.close(ec);
+}
+
+void TcpSocket::do_accept() {
+    acceptor_->async_accept([this](const boost::system::error_code& ec, boost::asio::ip::tcp::socket socket) {
         if (!ec) {
             auto client_socket = std::make_shared<boost::asio::ip::tcp::socket>(std::move(socket));
             client_sockets_.push_back(client_socket);
@@ -70,14 +137,14 @@ void TcpUnicastReceiver::do_accept() {
             std::cerr << "[TCP Receiver] Errore accept: " << ec.message() << std::endl;
         }
 
-        if (acceptor_.is_open()) {
+        if (acceptor_.has_value() && acceptor_->is_open()) {
             do_accept();
         }
     });
 }
 
-void TcpUnicastReceiver::do_read(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
-                                 const std::shared_ptr<std::string>& pending_data) {
+void TcpSocket::do_read(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,
+                        const std::shared_ptr<std::string>& pending_data) {
     auto buffer = std::make_shared<std::array<char, 4096>>();
 
     socket->async_read_some(
@@ -148,5 +215,3 @@ void TcpUnicastReceiver::do_read(const std::shared_ptr<boost::asio::ip::tcp::soc
         }
     );
 }
-
-

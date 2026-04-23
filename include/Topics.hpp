@@ -38,6 +38,9 @@ inline constexpr const char* CcAtomPower = "POWER";
 // CMS
 inline constexpr const char* CmsStateUpdate = "cms.state_update";
 
+// Runtime config
+inline constexpr const char* NetworkConfigChanged = "system.network_config.changed";
+
 // Protocol message topics
 inline constexpr const char* COS_LRAS_audio_live_1_PtP = "COS_LRAS_audio_live_1_PtP";
 inline constexpr const char* COS_LRAS_audio_live_2_PtP = "COS_LRAS_audio_live_2_PtP";

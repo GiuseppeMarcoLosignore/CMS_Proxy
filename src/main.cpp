@@ -11,8 +11,8 @@
 #include "EventBus.hpp"
 #include "NavsEntity.hpp"
 #include "ProxyEngine.hpp"
-#include "TcpJsonSender.hpp"
-#include "UdpMulticastSender.hpp"
+#include "TcpSocket.hpp"
+#include "UdpSocket.hpp"
 
 int main(int argc, char* argv[]) {
     try {
@@ -22,8 +22,8 @@ int main(int argc, char* argv[]) {
         boost::asio::io_context delivery_io_ctx;
         auto event_bus = std::make_shared<EventBus>();
         
-        auto acs_tcp_sender = std::make_shared<TcpJsonSender>(delivery_io_ctx);
-        auto acs_multicast_sender = std::make_shared<UdpMulticastSender>(delivery_io_ctx);
+        auto acs_tcp_sender = std::make_shared<TcpSocket>(delivery_io_ctx);
+        auto acs_multicast_sender = std::make_shared<UdpSocket>(delivery_io_ctx);
 
         auto cms_entity = std::make_shared<CmsEntity>(
             config.cms, 

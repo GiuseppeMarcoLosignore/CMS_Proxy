@@ -22,6 +22,7 @@ struct CmsDispatchTopicPacketEvent : public IEvent {
 #include <memory>
 #include <optional>
 #include <thread>
+#include <atomic>
 
 class CmsEntity : public IEntity {
 public:
@@ -39,6 +40,7 @@ private:
 
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void subscribeTopics();
+    void handleConfigChanged(const EventBus::EventPtr& event);
     void periodicMessages();
 
     ConversionResult convertIncomingPacket(const RawPacket& packet) const;
@@ -78,4 +80,6 @@ private:
     std::optional<boost::asio::steady_timer> periodicTimer_;
     std::shared_ptr<IReceiver> receiver_;
     std::jthread rxThread_;
+    std::atomic<bool> subscribed_{false};
+    std::atomic<bool> running_{false};
 };

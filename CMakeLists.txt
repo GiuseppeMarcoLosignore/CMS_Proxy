@@ -19,15 +19,13 @@ set(SOURCES
     src/AppConfig.cpp
     src/main.cpp
     src/ProxyEngine.cpp
+    src/TcpSocket.cpp
+    src/UdpSocket.cpp
     CueingMathCpp.cpp
     # CMS
     src/cms/CmsEntity.cpp
-    src/cms/UdpMulticastSender.cpp
-    src/UdpMulticastReceiver.cpp
     # ACS
     src/acs/AcsEntity.cpp
-    src/acs/TcpJsonSender.cpp
-    src/TcpUnicastReceiver.cpp
     # NAVS
     src/navs/NavsEntity.cpp
 )
