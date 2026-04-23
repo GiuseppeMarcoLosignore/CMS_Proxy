@@ -46,52 +46,6 @@ std::optional<uint16_t> extract_header(const nlohmann::json& payload) {
     return std::nullopt;
 }
 
-
-
-std::optional<StateUpdate> parse_state_update(const nlohmann::json& payload) {
-    const nlohmann::json* source = nullptr;
-    if (payload.contains("state_update") && payload.at("state_update").is_object()) {
-        source = &payload.at("state_update");
-    } else if (payload.contains("state") && payload.at("state").is_object()) {
-        source = &payload.at("state");
-    }
-
-    if (!source) {
-        return std::nullopt;
-    }
-
-    StateUpdate update;
-    if (source->contains("system_mode") && source->at("system_mode").is_string()) {
-        update.systemMode = source->at("system_mode").get<std::string>();
-    }
-    if (source->contains("lrad_id") && source->at("lrad_id").is_number_unsigned()) {
-        update.lradId = static_cast<uint16_t>(source->at("lrad_id").get<uint32_t>());
-    }
-    if (source->contains("cueing_status") && source->at("cueing_status").is_string()) {
-        update.cueingStatus = source->at("cueing_status").get<std::string>();
-    }
-    if (source->contains("configuration") && source->at("configuration").is_string()) {
-        update.configuration = source->at("configuration").get<std::string>();
-    }
-    if (source->contains("online") && source->at("online").is_boolean()) {
-        update.online = source->at("online").get<bool>();
-    }
-    if (source->contains("engaged") && source->at("engaged").is_boolean()) {
-        update.engaged = source->at("engaged").get<bool>();
-    }
-    if (source->contains("audio_enabled") && source->at("audio_enabled").is_boolean()) {
-        update.audioEnabled = source->at("audio_enabled").get<bool>();
-    }
-    if (source->contains("lad_enabled") && source->at("lad_enabled").is_boolean()) {
-        update.ladEnabled = source->at("lad_enabled").get<bool>();
-    }
-    if (source->contains("lrf_enabled") && source->at("lrf_enabled").is_boolean()) {
-        update.lrfEnabled = source->at("lrf_enabled").get<bool>();
-    }
-
-    return update;
-}
-
 } // namespace
 
 AcsEntity::AcsEntity(const AcsConfig& config,
@@ -313,14 +267,6 @@ void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
     sendToMulticast(outgoing->packet);
 }
 
-void AcsEntity::handleStateUpdateEvent(const EventBus::EventPtr& event) {
-    const auto stateEvent = std::dynamic_pointer_cast<const AcsStateUpdateEvent>(event);
-    if (!stateEvent) {
-        return;
-    }
-    // State updates are no longer persisted; entity simply forwards them via EventBus
-}
-
 void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
     if (!eventBus_) {
         return;
@@ -344,13 +290,6 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         outgoingEvent->payload = payload;
         outgoingEvent->destinationId = *destinationId;
         eventBus_->publish(outgoingEvent);
-    }
-
-    const auto stateUpdate = parse_state_update(payload);
-    if (stateUpdate.has_value()) {
-        auto stateEvent = std::make_shared<AcsStateUpdateEvent>();
-        stateEvent->updates.push_back(*stateUpdate);
-        eventBus_->publish(stateEvent);
     }
 }
 

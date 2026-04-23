@@ -35,8 +35,7 @@ Eventi in uscita principali:
 2. Vengono create e avviate `CmsEntity`, `AcsEntity`, `NavsEntity` tramite `ProxyEngine`.
 3. `CmsEntity` converte i messaggi CMS supportati e pubblica:
    - evento `acs.outgoing_json` per routing ACS,
-   - evento topic-specific per dispatch applicativo,
-   - eventuali `StateUpdate` per aggiornare `SystemState`.
+  - evento topic-specific per dispatch applicativo.
 4. `AcsEntity` inoltra i payload alle destinazioni ACS configurate e aggiorna lo stato quando riceve JSON con campi di update.
 5. `CmsEntity` emette periodicamente pacchetti di stato LRAS su multicast (`226.1.1.43:55010`).
 

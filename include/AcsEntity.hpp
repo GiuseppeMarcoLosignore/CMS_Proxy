@@ -3,7 +3,6 @@
 #include "AppConfig.hpp"
 #include "EventBus.hpp"
 #include "IInterfaces.hpp"
-#include "StateUpdate.hpp"
 #include "Topics.hpp"
 
 #include <nlohmann/json.hpp>
@@ -26,12 +25,6 @@ struct AcsOutgoingJsonEvent : public IEvent {
     const std::string& topic() const override { return Topic; }
 };
 
-struct AcsStateUpdateEvent : public IEvent {
-    inline static const std::string Topic = Topics::AcsStateUpdate;
-    std::vector<StateUpdate> updates;
-    const std::string& topic() const override { return Topic; }
-};
-
 class AcsEntity : public IEntity {
 public:
     AcsEntity(const AcsConfig& config,
@@ -46,7 +39,6 @@ private:
     void subscribeTopics();
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void handleOutgoingJsonEvent(const EventBus::EventPtr& event);
-    void handleStateUpdateEvent(const EventBus::EventPtr& event);
     void handleConfigChanged(const EventBus::EventPtr& event);
     void sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination);
     void sendToMulticast(const RawPacket& packet);

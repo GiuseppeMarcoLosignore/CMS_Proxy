@@ -1,5 +1,4 @@
 #pragma once
-#include "StateUpdate.hpp"
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -49,7 +48,6 @@ struct SendResult {
 struct ConversionResult {
     std::optional<RawPacket> packet;
     std::string packet_topic;
-    std::vector<StateUpdate> state_updates;
 };
 
 enum class TransportProtocol {
