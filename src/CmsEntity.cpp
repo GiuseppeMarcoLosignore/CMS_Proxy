@@ -719,7 +719,7 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         eventBus_->publish(dispatchTopicEvent);
 
         if (!result.state_updates.empty()) {
-            auto stateEvent = std::make_shared<TopicStateUpdateEvent>();
+            auto stateEvent = std::make_shared<CmsStateUpdateEvent>();
             stateEvent->sourceTopic = result.packet_topic;
             stateEvent->updates = result.state_updates;
             eventBus_->publish(stateEvent);

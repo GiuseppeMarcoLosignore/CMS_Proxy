@@ -4,7 +4,6 @@
 #include "EventBus.hpp"
 #include "IInterfaces.hpp"
 #include "StateUpdate.hpp"
-#include "TopicStateUpdateEvent.hpp"
 
 #include "Topics.hpp"
 
@@ -13,6 +12,12 @@ struct CmsDispatchTopicPacketEvent : public IEvent {
     RawPacket packet;
     uint16_t nackreason = 0;
     const std::string& topic() const override { return dispatchTopic; }
+};
+
+struct CmsStateUpdateEvent : public IEvent {
+    std::string sourceTopic;
+    std::vector<StateUpdate> updates;
+    const std::string& topic() const override { return sourceTopic; }
 };
 
 #include <boost/asio.hpp>

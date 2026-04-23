@@ -21,7 +21,6 @@ struct AcsDestination {
 };
 
 struct AcsConfig {
-    std::string listen_ip;
     std::string multicast_group;
     uint16_t multicast_port = 0;
     std::string tcp_listen_ip;
@@ -44,7 +43,6 @@ struct NavsTopicBinding {
 
 struct NavsConfig {
     bool enabled = false;
-    std::string listen_ip;
     std::string multicast_group;
     uint16_t multicast_port = 0;
     std::vector<NavsTopicBinding> topic_bindings;

@@ -1,137 +1,126 @@
 #include "AppConfig.hpp"
 
-#include <fstream>
+#include <boost/property_tree/ini_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <stdexcept>
-#include <vector>
-
-#include <nlohmann/json.hpp>
 
 namespace {
 
-template <typename T>
-T read_required(const nlohmann::json& j, const char* key, const std::string& section_name) {
-    if (!j.contains(key)) {
-        throw std::runtime_error("Campo mancante in sezione '" + section_name + "': " + key);
-    }
-    return j.at(key).get<T>();
-}
+namespace pt = boost::property_tree;
 
-uint16_t read_port(const nlohmann::json& j, const char* key, const std::string& section_name) {
-    const int value = read_required<int>(j, key, section_name);
+uint16_t get_port(const pt::ptree& tree, const std::string& path) {
+    const int value = tree.get<int>(path);
     if (value < 1 || value > 65535) {
-        throw std::runtime_error("Porta non valida in sezione '" + section_name + "': " + std::to_string(value));
+        throw std::runtime_error("Porta non valida: " + std::to_string(value) + " (" + path + ")");
     }
     return static_cast<uint16_t>(value);
+}
+
+CmsConfig parse_cms(const pt::ptree& root) {
+    if (!root.get_child_optional("cms")) {
+        throw std::runtime_error("Sezione 'cms' mancante o non valida");
+    }
+
+    CmsConfig cfg;
+    cfg.multicast_group = root.get<std::string>("cms.multicast_group");
+    cfg.multicast_port  = get_port(root, "cms.multicast_port");
+
+    if (const auto relays = root.get_child_optional("cms.unicast_relay")) {
+        for (const auto& [key, relay] : *relays) {
+            CmsUnicastRelayConfig r;
+            r.name             = relay.get<std::string>("name");
+            r.destination_ip   = relay.get<std::string>("destination_ip");
+            r.destination_port = get_port(relay, "destination_port");
+            cfg.unicast_relays.push_back(r);
+        }
+    }
+
+    return cfg;
+}
+
+AcsConfig parse_acs(const pt::ptree& root) {
+    AcsConfig cfg;
+    cfg.multicast_group    = "226.1.1.30";
+    cfg.multicast_port     = 56100;
+    cfg.tcp_listen_ip      = "127.0.0.1";
+    cfg.tcp_listen_port    = 56101;
+    cfg.tx_multicast_group = cfg.multicast_group;
+    cfg.tx_multicast_port  = cfg.multicast_port;
+    cfg.destinations[1]    = { 1, "127.0.0.1", 9000 };
+    cfg.destinations[2]    = { 2, "127.0.0.1", 9000 };
+
+    if (!root.get_child_optional("acs")) {
+        return cfg;
+    }
+
+    cfg.multicast_group    = root.get<std::string>("acs.multicast_group");
+    cfg.multicast_port     = get_port(root, "acs.multicast_port");
+    cfg.tx_multicast_group = cfg.multicast_group;
+    cfg.tx_multicast_port  = cfg.multicast_port;
+
+    if (root.get_child_optional("acs.tcp_unicast")) {
+        cfg.tcp_listen_ip   = root.get<std::string>("acs.tcp_unicast.listen_ip");
+        cfg.tcp_listen_port = get_port(root, "acs.tcp_unicast.listen_port");
+    }
+
+    if (root.get_child_optional("acs.multicast_tx")) {
+        cfg.tx_multicast_group = root.get<std::string>("acs.multicast_tx.group");
+        cfg.tx_multicast_port  = get_port(root, "acs.multicast_tx.port");
+    }
+
+    if (const auto dests = root.get_child_optional("acs.destination")) {
+        for (const auto& [key, dest_node] : *dests) {
+            const int id_value = dest_node.get<int>("id");
+            if (id_value < 0 || id_value > 65535) {
+                throw std::runtime_error("ID ACS non valido: " + std::to_string(id_value));
+            }
+            const uint16_t id = static_cast<uint16_t>(id_value);
+            AcsDestination dest;
+            dest.id         = id;
+            dest.ip_address = dest_node.get<std::string>("ip");
+            dest.port       = get_port(dest_node, "port");
+            cfg.destinations[id] = dest;
+        }
+    }
+
+    return cfg;
+}
+
+NavsConfig parse_navs(const pt::ptree& root) {
+    NavsConfig cfg;
+    if (!root.get_child_optional("navs")) {
+        return cfg;
+    }
+
+    cfg.enabled         = true;
+    cfg.multicast_group = root.get<std::string>("navs.multicast_group");
+    cfg.multicast_port  = get_port(root, "navs.multicast_port");
+
+    if (const auto bindings = root.get_child_optional("navs.topic_binding")) {
+        for (const auto& [key, binding_node] : *bindings) {
+            NavsTopicBinding binding;
+            binding.message_id = binding_node.get<uint32_t>("message_id");
+            binding.topic      = binding_node.get<std::string>("topic");
+            cfg.topic_bindings.push_back(binding);
+        }
+    }
+
+    return cfg;
 }
 
 } // namespace
 
 AppConfig loadAppConfig(const std::string& config_path) {
-    std::ifstream input(config_path);
-    if (!input.is_open()) {
-        throw std::runtime_error("Impossibile aprire il file di configurazione: " + config_path);
+    pt::ptree root;
+    try {
+        pt::ini_parser::read_ini(config_path, root);
+    } catch (const pt::ini_parser::ini_parser_error& e) {
+        throw std::runtime_error("Errore nel file di configurazione: " + std::string(e.what()));
     }
-
-    nlohmann::json root;
-    input >> root;
-
-    if (!root.contains("cms") || !root.at("cms").is_object()) {
-        throw std::runtime_error("Sezione 'cms' mancante o non valida");
-    }
-    const auto& cms = root.at("cms");
 
     AppConfig cfg;
-    cfg.cms.multicast_group = read_required<std::string>(cms, "multicast_group", "cms");
-    cfg.cms.multicast_port = read_port(cms, "multicast_port", "cms");
-
-    // Parsing unicast_relays (opzionale)
-    if (cms.contains("unicast_relays") && cms.at("unicast_relays").is_array()) {
-        for (const auto& relay : cms.at("unicast_relays")) {
-            if (!relay.is_object()) {
-                throw std::runtime_error("Elemento non valido in 'cms.unicast_relays'");
-            }
-
-            CmsUnicastRelayConfig relay_cfg;
-            relay_cfg.name = read_required<std::string>(relay, "name", "cms.unicast_relays");
-            relay_cfg.destination_ip = read_required<std::string>(relay, "destination_ip", "cms.unicast_relays");
-            relay_cfg.destination_port = read_port(relay, "destination_port", "cms.unicast_relays");
-
-            cfg.cms.unicast_relays.push_back(relay_cfg);
-        }
-    }
-
-    cfg.acs.listen_ip = "127.0.0.1";
-    cfg.acs.multicast_group = "226.1.1.30";
-    cfg.acs.multicast_port = 56100;
-    cfg.acs.tcp_listen_ip = "127.0.0.1";
-    cfg.acs.tcp_listen_port = 56101;
-    cfg.acs.tx_multicast_group = cfg.acs.multicast_group;
-    cfg.acs.tx_multicast_port = cfg.acs.multicast_port;
-
-    if (root.contains("acs") && root.at("acs").is_object()) {
-        const auto& acs = root.at("acs");
-        cfg.acs.listen_ip = read_required<std::string>(acs, "listen_ip", "acs");
-        cfg.acs.multicast_group = read_required<std::string>(acs, "multicast_group", "acs");
-        cfg.acs.multicast_port = read_port(acs, "multicast_port", "acs");
-        cfg.acs.tx_multicast_group = cfg.acs.multicast_group;
-        cfg.acs.tx_multicast_port = cfg.acs.multicast_port;
-
-        if (acs.contains("tcp_unicast") && acs.at("tcp_unicast").is_object()) {
-            const auto& tcp_unicast = acs.at("tcp_unicast");
-            cfg.acs.tcp_listen_ip = read_required<std::string>(tcp_unicast, "listen_ip", "acs.tcp_unicast");
-            cfg.acs.tcp_listen_port = read_port(tcp_unicast, "listen_port", "acs.tcp_unicast");
-        }
-
-        if (acs.contains("multicast_tx") && acs.at("multicast_tx").is_object()) {
-            const auto& multicast_tx = acs.at("multicast_tx");
-            cfg.acs.tx_multicast_group = read_required<std::string>(multicast_tx, "group", "acs.multicast_tx");
-            cfg.acs.tx_multicast_port = read_port(multicast_tx, "port", "acs.multicast_tx");
-        }
-
-        if (acs.contains("destinations") && acs.at("destinations").is_array()) {
-            for (const auto& destination : acs.at("destinations")) {
-                if (!destination.is_object()) {
-                    throw std::runtime_error("Elemento non valido in 'acs.destinations'");
-                }
-
-                const int id_value = read_required<int>(destination, "id", "acs.destinations");
-                if (id_value < 0 || id_value > 65535) {
-                    throw std::runtime_error("ID ACS non valido: " + std::to_string(id_value));
-                }
-
-                const uint16_t id = static_cast<uint16_t>(id_value);
-                AcsDestination acs_destination;
-                acs_destination.id = id;
-                acs_destination.ip_address = read_required<std::string>(destination, "ip", "acs.destinations");
-                acs_destination.port = read_port(destination, "port", "acs.destinations");
-                cfg.acs.destinations[id] = acs_destination;
-            }
-        }
-    }
-
-    if (root.contains("navs") && root.at("navs").is_object()) {
-        const auto& navs = root.at("navs");
-        cfg.navs.enabled = true;
-        cfg.navs.listen_ip = read_required<std::string>(navs, "listen_ip", "navs");
-        cfg.navs.multicast_group = read_required<std::string>(navs, "multicast_group", "navs");
-        cfg.navs.multicast_port = read_port(navs, "multicast_port", "navs");
-
-        if (navs.contains("topic_bindings") && navs.at("topic_bindings").is_array()) {
-            for (const auto& binding : navs.at("topic_bindings")) {
-                if (!binding.is_object()) {
-                    throw std::runtime_error("Elemento non valido in 'navs.topic_bindings'");
-                }
-
-                const auto message_id = read_required<uint32_t>(binding, "message_id", "navs.topic_bindings");
-                const auto topic = read_required<std::string>(binding, "topic", "navs.topic_bindings");
-
-                NavsTopicBinding topic_binding;
-                topic_binding.message_id = message_id;
-                topic_binding.topic = topic;
-                cfg.navs.topic_bindings.push_back(topic_binding);
-            }
-        }
-    }
-
+    cfg.cms  = parse_cms(root);
+    cfg.acs  = parse_acs(root);
+    cfg.navs = parse_navs(root);
     return cfg;
 }

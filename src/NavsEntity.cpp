@@ -19,6 +19,7 @@ namespace {
 
 using json = nlohmann::json;
 constexpr std::size_t HeaderSize = 16;
+constexpr const char* kAnyListenIp = "0.0.0.0";
 
 uint32_t read_u32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     if (data.size() < offset + sizeof(uint32_t)) {
@@ -78,7 +79,7 @@ void NavsEntity::start() {
 
     receiver_ = std::make_shared<UdpSocket>(
         rxIoContext_,
-        config_.listen_ip,
+        kAnyListenIp,
         config_.multicast_group,
         config_.multicast_port
     );
@@ -167,7 +168,6 @@ void NavsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
     boost::asio::post(rxIoContext_, [this, newConfig]() {
         const bool endpointChanged =
             (config_.enabled != newConfig.enabled) ||
-            (config_.listen_ip != newConfig.listen_ip) ||
             (config_.multicast_group != newConfig.multicast_group) ||
             (config_.multicast_port != newConfig.multicast_port);
 
@@ -194,7 +194,7 @@ void NavsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
 
             receiver_ = std::make_shared<UdpSocket>(
                 rxIoContext_,
-                config_.listen_ip,
+                kAnyListenIp,
                 config_.multicast_group,
                 config_.multicast_port
             );

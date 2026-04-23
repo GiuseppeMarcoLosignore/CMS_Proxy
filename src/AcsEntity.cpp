@@ -11,6 +11,8 @@
 
 namespace {
 
+constexpr const char* kAnyListenIp = "0.0.0.0";
+
 std::string extract_message_type(const nlohmann::json& payload) {
     if (!payload.contains("header") || !payload.at("header").is_object()) {
         return {};
@@ -116,7 +118,7 @@ void AcsEntity::start() {
 
     auto multicast_receiver = std::make_shared<UdpSocket>(
         rxIoContext_,
-        startupConfig.listen_ip,
+        kAnyListenIp,
         startupConfig.multicast_group,
         startupConfig.multicast_port
     );
@@ -149,7 +151,7 @@ void AcsEntity::start() {
 
     std::cout << "[ACS Entity] Avviata su "
               << startupConfig.multicast_group << ":" << startupConfig.multicast_port
-              << " (iface " << startupConfig.listen_ip << ")" << std::endl;
+              << std::endl;
     std::cout << "[ACS Entity] TCP unicast in ascolto su "
               << startupConfig.tcp_listen_ip << ":" << startupConfig.tcp_listen_port << std::endl;
 }
@@ -224,7 +226,6 @@ void AcsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
     }
 
     const bool receiverChanged =
-        (oldConfig.listen_ip != newConfig.listen_ip) ||
         (oldConfig.multicast_group != newConfig.multicast_group) ||
         (oldConfig.multicast_port != newConfig.multicast_port) ||
         (oldConfig.tcp_listen_ip != newConfig.tcp_listen_ip) ||
@@ -251,7 +252,7 @@ void AcsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
 
         auto multicast_receiver = std::make_shared<UdpSocket>(
             rxIoContext_,
-            newConfig.listen_ip,
+            kAnyListenIp,
             newConfig.multicast_group,
             newConfig.multicast_port
         );
@@ -278,7 +279,7 @@ void AcsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
 
         std::cout << "[ACS Entity] Config aggiornata: RX UDP "
                   << newConfig.multicast_group << ":" << newConfig.multicast_port
-                  << " (iface " << newConfig.listen_ip << "), RX TCP "
+                  << ", RX TCP "
                   << newConfig.tcp_listen_ip << ":" << newConfig.tcp_listen_port << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] Errore hot reload config: " << e.what() << std::endl;

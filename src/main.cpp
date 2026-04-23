@@ -16,7 +16,7 @@
 
 int main(int argc, char* argv[]) {
     try {
-        const std::string config_path = (argc > 1) ? argv[1] : "config/network_config.json";
+        const std::string config_path = (argc > 1) ? argv[1] : "config/network_config.ini";
         const AppConfig config = loadAppConfig(config_path);
 
         boost::asio::io_context delivery_io_ctx;
@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
                   << config.cms.multicast_group << ":" << config.cms.multicast_port << std::endl;
                 std::cout << "[SYSTEM] ACS multicast in ascolto su: "
                                     << config.acs.multicast_group << ":" << config.acs.multicast_port
-                                    << " (iface " << config.acs.listen_ip << ")" << std::endl;
+                                    << std::endl;
                 std::cout << "[SYSTEM] ACS TCP unicast in ascolto su: "
                                     << config.acs.tcp_listen_ip << ":" << config.acs.tcp_listen_port << std::endl;
                 std::cout << "[SYSTEM] ACS multicast in invio su: "

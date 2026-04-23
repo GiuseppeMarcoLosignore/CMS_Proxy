@@ -54,7 +54,6 @@ Esempio coerente con il codice attuale:
     "unicast_relays": []
   },
   "acs": {
-    "listen_ip": "127.0.0.1",
     "multicast_group": "225.0.0.25",
     "multicast_port": 2525,
     "multicast_tx": {
@@ -71,7 +70,6 @@ Esempio coerente con il codice attuale:
     ]
   },
   "navs": {
-    "listen_ip": "0.0.0.0",
     "multicast_group": "239.192.44.173",
     "multicast_port": 55437,
     "topic_bindings": []
