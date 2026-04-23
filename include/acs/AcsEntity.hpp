@@ -54,6 +54,8 @@ private:
 
     void createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload);
 
+    void parseALIVE(const EventBus::EventPtr& event);
+    void parseDIAGNOSTIC(const EventBus::EventPtr& event);
 
     void createAUDIO(const EventBus::EventPtr& event);
     void createLAD(const EventBus::EventPtr& event);
