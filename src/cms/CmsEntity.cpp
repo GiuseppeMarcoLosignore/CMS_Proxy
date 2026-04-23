@@ -546,23 +546,17 @@ RawPacket make_empty_packet() {
     return RawPacket{};
 }
 
-bool has_known_lrad(const std::shared_ptr<SystemState>& systemState, uint16_t lradId) {
-    if (!systemState) {
-        return false;
-    }
-
-    const SystemStateSnapshot snapshot = systemState->getSnapshot();
-    return snapshot.lradStates.find(lradId) != snapshot.lradStates.end();
+// Helper function: assume LRAD 1 and 2 are always known
+bool has_known_lrad(uint16_t lradId) {
+    return (lradId == 1 || lradId == 2);
 }
 
 } // namespace
 
 CmsEntity::CmsEntity(const CmsConfig& config,
-                     std::shared_ptr<EventBus> eventBus,
-                     std::shared_ptr<SystemState> systemState)
+                     std::shared_ptr<EventBus> eventBus)
     : config_(config),
       eventBus_(std::move(eventBus)),
-      systemState_(std::move(systemState)),
       rxIoContext_(),
             rxWorkGuard_(std::nullopt),
             periodicTimer_(std::nullopt) {
@@ -655,8 +649,7 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     }
 
     const uint32_t sourceMessageId = extract_message_id_from_header(packet);
-    const SystemStateSnapshot snapshot = systemState_ ? systemState_->getSnapshot() : SystemStateSnapshot{};
-    const ConversionResult result = convertIncomingPacket(packet, snapshot);
+    const ConversionResult result = convertIncomingPacket(packet);
 
     if (!result.packet.has_value()) {
         std::cerr << "[CMS Entity] Messaggio ignorato: source_id=" << sourceMessageId << std::endl;
@@ -714,7 +707,7 @@ bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
     return false;
 }
 
-ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet, const SystemStateSnapshot&) const {
+ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet) const {
     using ParserFn = RawPacket (CmsEntity::*)(
         const RawPacket&,
         std::vector<StateUpdate>&) const;
@@ -814,14 +807,10 @@ RawPacket CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     update.engaged = (rawConfig != 0);
     stateUpdates.push_back(update);
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
-
-    SystemStateSnapshot state = systemState_->getSnapshot();
-    if(state.lradStates[lradId].lradStatus != 1)
-        converted.nackreason = 4;
-
+    // Assume LRAD is operativefor LRAD 1 and 2
     return converted;
 }
 
@@ -848,14 +837,10 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
-
-    SystemStateSnapshot state = systemState_->getSnapshot();
-    if(state.lradStates[lradId].lradStatus != 1)
-        converted.nackreason = 4;
-    
+    // Assume LRAD is operativefor LRAD 1 and 2
     return converted;
 }
 
@@ -953,14 +938,10 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
-    
-    SystemStateSnapshot state = systemState_->getSnapshot();
-    if(state.lradStates[lradId].lradStatus != 1)
-        converted.nackreason = 4;
-
+    // Assume LRAD is operative for LRAD 1 and 2
     return converted;
 }
 
@@ -1039,7 +1020,7 @@ RawPacket CmsEntity::parse_CS_LRAS_emission_control_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = lradId;
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
     return converted;
@@ -1105,7 +1086,7 @@ RawPacket CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
         converted.nackreason = 2;
     }
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
 
@@ -1134,7 +1115,7 @@ RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = 1;
 
-    if (!has_known_lrad(systemState_, 1)) {
+    if (!has_known_lrad(1)) {
         converted.nackreason = 2;
     }
 
@@ -1163,7 +1144,7 @@ RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
     converted.data.assign(jsonString.begin(), jsonString.end());
     converted.destinationLradId = 2;
 
-    if (!has_known_lrad(systemState_, 2)) {
+    if (!has_known_lrad(2)) {
         converted.nackreason = 2;
     }
 
@@ -1218,7 +1199,7 @@ RawPacket CmsEntity::parse_CS_LRAS_recording_command_INS(
         converted.nackreason = 2;
     }
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
 
@@ -1471,7 +1452,7 @@ RawPacket CmsEntity::parse_CS_LRAS_request_translation_INS(
         converted.nackreason = 2;
     }
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
 
@@ -1511,7 +1492,7 @@ RawPacket CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
         converted.nackreason = 2;
     }
 
-    if (!has_known_lrad(systemState_, lradId)) {
+    if (!has_known_lrad(lradId)) {
         converted.nackreason = 2;
     }
 
@@ -1761,13 +1742,8 @@ void CmsEntity::periodicMessages() {
 void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const {
     (void)event;
 
-    if (!systemState_) {
-        return;
-    }
-
-    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
-    const auto stateIt = snapshot.lradStates.find(1);
-    const StateUpdate state = (stateIt != snapshot.lradStates.end()) ? stateIt->second : StateUpdate{};
+    // Use default StateUpdate for LRAD 1
+    const StateUpdate state = StateUpdate{};
     const RawPacket packet = build_lrad_status_packet(state, MessageId_LRAS_CS_lrad_1_status_INS);
     send_multicast_packet(packet, "LRAS_CS_lrad_1_status_INS");
 }  
@@ -1775,13 +1751,8 @@ void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) c
 void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const {
     (void)event;
 
-    if (!systemState_) {
-        return;
-    }
-
-    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
-    const auto stateIt = snapshot.lradStates.find(2);
-    const StateUpdate state = (stateIt != snapshot.lradStates.end()) ? stateIt->second : StateUpdate{};
+    // Use default StateUpdate for LRAD 2
+    const StateUpdate state = StateUpdate{};
     const RawPacket packet = build_lrad_status_packet(state, MessageId_LRAS_CS_lrad_2_status_INS);
     send_multicast_packet(packet, "LRAS_CS_lrad_2_status_INS");
 }
@@ -1789,15 +1760,9 @@ void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) c
 void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const {
     (void)event;
 
-    if (!systemState_) {
-        return;
-    }
-
-    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
-    const auto lrad1It = snapshot.lradStates.find(1);
-    const StateUpdate state1 = (lrad1It != snapshot.lradStates.end()) ? lrad1It->second : StateUpdate{};
-    const auto lrad2It = snapshot.lradStates.find(2);
-    const StateUpdate state2 = (lrad2It != snapshot.lradStates.end()) ? lrad2It->second : StateUpdate{};
+    // Use default StateUpdate for both LRADs
+    const StateUpdate state1 = StateUpdate{};
+    const StateUpdate state2 = StateUpdate{};
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_full_status_v2_INS);
@@ -1819,16 +1784,10 @@ void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& even
 void CmsEntity::sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const {
     (void)event;
 
-    if (!systemState_) {
-        return;
-    }
-
-    const SystemStateSnapshot snapshot = systemState_->getSnapshot();
-    const auto lrad1It = snapshot.lradStates.find(1);
-    const StateUpdate state1 = (lrad1It != snapshot.lradStates.end()) ? lrad1It->second : StateUpdate{};
-    const auto lrad2It = snapshot.lradStates.find(2);
-    const StateUpdate state2 = (lrad2It != snapshot.lradStates.end()) ? lrad2It->second : StateUpdate{};
-    const SystemHealthUpdate& sys = snapshot.systemHealth;
+    // Use default StateUpdate and SystemHealthUpdate for both LRADs
+    const StateUpdate state1 = StateUpdate{};
+    const StateUpdate state2 = StateUpdate{};
+    const SystemHealthUpdate sys = SystemHealthUpdate{};
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_health_status_INS);

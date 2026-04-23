@@ -5,7 +5,7 @@
 #include "IEntity.hpp"
 #include "IInterfaces.hpp"
 #include "IEvent.hpp"
-#include "SystemState.hpp"
+#include "StateUpdate.hpp"
 #include "Topics.hpp"
 
 #include <nlohmann/json.hpp>
@@ -38,8 +38,7 @@ public:
     AcsEntity(const AcsConfig& config,
               std::shared_ptr<EventBus> eventBus,
               std::shared_ptr<ISender> tcpSender,
-              std::shared_ptr<ISender> multicastSender,
-              std::shared_ptr<SystemState> systemState);
+              std::shared_ptr<ISender> multicastSender);
 
     void start() override;
     void stop() override;
@@ -73,7 +72,6 @@ private:
     std::shared_ptr<EventBus> eventBus_;
     std::shared_ptr<ISender> tcpSender_;
     std::shared_ptr<ISender> multicastSender_;
-    std::shared_ptr<SystemState> systemState_;
     std::map<uint16_t, AcsDestination> destinations_;
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;

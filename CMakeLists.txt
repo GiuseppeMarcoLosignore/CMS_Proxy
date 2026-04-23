@@ -19,7 +19,6 @@ set(SOURCES
     src/AppConfig.cpp
     src/main.cpp
     src/ProxyEngine.cpp
-    src/SystemState.cpp
     CueingMathCpp.cpp
     # CMS
     src/cms/CmsEntity.cpp

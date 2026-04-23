@@ -1,0 +1,26 @@
+Architettura PROXY:
+
+CMS:
+- Riceve messaggi da gruppo multicast
+- Dispatch e parsing, verificando che la struttura di ogni messaggio sia corretta.
+- Publish del messaggio parsato in formato JSON. Ogni campo del messaggio è un elemento del JSON
+- Subscribe ad eventi contenenti messaggi da inviare
+- Invio verso gruppi multicast
+
+ACS:
+- Riceve messaggi da gruppo multicast e ip unicast
+- Dispatch e parsing, verificando che la struttura di ogni messaggio sia corretta.
+- Publish del messaggio parsato in formato JSON. Ogni campo del messaggio è un elemento del JSON
+- Subscribe ad eventi contenenti messaggi da inviare
+- Invio verso gruppi multicast e ip unicast
+
+NAVS:
+- Riceve messaggi da gruppi multicast
+- Dispatch e parsing, verificando che la struttura di ogni messaggio sia corretta.
+- Publish del messaggio parsato in formato JSON. Ogni campo del messaggio è un elemento del JSON
+
+HANDLER
+- Subscribe ad eventi di CMS, ACS e NAVS
+- Legge e scrive variabili riguardanti lo stato del sistema
+- Consente il publish di eventi al verificarsi di precise condizioni minime per ogni messaggio e personalizzate per alcuni messaggi
+- Può fungere da buffer comune per costruire messaggi da inviare che dipendono da informazioni di più messaggi ricevuti

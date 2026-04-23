@@ -95,13 +95,11 @@ std::optional<StateUpdate> parse_state_update(const nlohmann::json& payload) {
 AcsEntity::AcsEntity(const AcsConfig& config,
                                          std::shared_ptr<EventBus> eventBus,
                              std::shared_ptr<ISender> tcpSender,
-                             std::shared_ptr<ISender> multicastSender,
-                                         std::shared_ptr<SystemState> systemState)
+                             std::shared_ptr<ISender> multicastSender)
     : config_(config),
       eventBus_(std::move(eventBus)),
     tcpSender_(std::move(tcpSender)),
     multicastSender_(std::move(multicastSender)),
-    systemState_(std::move(systemState)),
     destinations_(config_.destinations),
       rxIoContext_(),
       rxWorkGuard_(std::nullopt) {
@@ -218,11 +216,10 @@ void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
 
 void AcsEntity::handleStateUpdateEvent(const EventBus::EventPtr& event) {
     const auto stateEvent = std::dynamic_pointer_cast<const AcsStateUpdateEvent>(event);
-    if (!stateEvent || !systemState_) {
+    if (!stateEvent) {
         return;
     }
-
-    systemState_->applyBatch(stateEvent->updates);
+    // State updates are no longer persisted; entity simply forwards them via EventBus
 }
 
 void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {

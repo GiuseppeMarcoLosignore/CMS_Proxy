@@ -5,7 +5,8 @@
 #include "IEntity.hpp"
 #include "IInterfaces.hpp"
 #include "IEvent.hpp"
-#include "SystemState.hpp"
+#include "StateUpdate.hpp"
+#include "TopicStateUpdateEvent.hpp"
 
 #include "Topics.hpp"
 
@@ -25,8 +26,7 @@ struct CmsDispatchTopicPacketEvent : public IEvent {
 class CmsEntity : public IEntity {
 public:
     CmsEntity(const CmsConfig& config,
-              std::shared_ptr<EventBus> eventBus,
-              std::shared_ptr<SystemState> systemState);
+              std::shared_ptr<EventBus> eventBus);
 
     void start() override;
     void stop() override;
@@ -41,7 +41,7 @@ private:
     void subscribeTopics();
     void periodicMessages();
 
-    ConversionResult convertIncomingPacket(const RawPacket& packet, const SystemStateSnapshot& snapshot) const;
+    ConversionResult convertIncomingPacket(const RawPacket& packet) const;
     bool parseHeader(const RawPacket& packet, ParsedHeader& out) const;
 
     RawPacket parse_CS_LRAS_change_configuration_order_INS(const RawPacket& packet, std::vector<StateUpdate>& stateUpdates) const;
@@ -72,7 +72,6 @@ private:
     void sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const;
     CmsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
-    std::shared_ptr<SystemState> systemState_;
 
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;

@@ -1,6 +1,6 @@
 #pragma once
 #include "RawPacket.hpp"
-#include "SystemState.hpp"
+#include "StateUpdate.hpp"
 #include <functional>
 #include <memory>
 #include <string>
