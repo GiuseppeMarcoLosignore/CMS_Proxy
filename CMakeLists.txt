@@ -23,11 +23,11 @@ set(SOURCES
     src/UdpSocket.cpp
     CueingMathCpp.cpp
     # CMS
-    src/cms/CmsEntity.cpp
+    src/CmsEntity.cpp
     # ACS
-    src/acs/AcsEntity.cpp
+    src/AcsEntity.cpp
     # NAVS
-    src/navs/NavsEntity.cpp
+    src/NavsEntity.cpp
 )
 
 
@@ -38,9 +38,6 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 # Invece di include_directories globale, usa target_include_directories
 target_include_directories(${PROJECT_NAME} PRIVATE
     include
-    include/cms
-    include/acs
-    include/navs
 )
 
 # Definizioni specifiche

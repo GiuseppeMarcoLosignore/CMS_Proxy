@@ -1,7 +1,7 @@
 #include "CmsEntity.hpp"
 
 #include "NetworkConfigChangedEvent.hpp"
-#include "acs/AcsEntity.hpp"
+#include "AcsEntity.hpp"
 #include "CueingMath.hpp"
 #include "Topics.hpp"
 #include "UdpSocket.hpp"
@@ -1722,10 +1722,10 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
         return;
     }
 
-    constexpr uint16_t ackNackAccepted = 1; // ACK accepted, no NACK reason    
+    uint16_t ackNackAccepted = 1; // ACK accepted, no NACK reason
     const uint16_t nackReason = static_cast<uint16_t>(dispatchEvent->nackreason);
     if (nackReason != 0) {
-        constexpr uint16_t ackNackAccepted = 2; // ACK with NACK reason
+        ackNackAccepted = 2; // ACK with NACK reason
     }
     constexpr uint32_t payloadLength = 12;
 

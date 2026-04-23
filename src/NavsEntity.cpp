@@ -3,7 +3,7 @@
 #include "NetworkConfigChangedEvent.hpp"
 #include "Topics.hpp"
 #include "UdpSocket.hpp"
-#include "cms/CmsEntity.hpp"
+#include "CmsEntity.hpp"
 
 #include <iostream>
 #include <sstream>
