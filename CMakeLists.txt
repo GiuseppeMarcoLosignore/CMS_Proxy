@@ -21,7 +21,6 @@ set(SOURCES
     src/ProxyEngine.cpp
     src/TcpSocket.cpp
     src/UdpSocket.cpp
-    CueingMathCpp.cpp
     # CMS
     src/CmsEntity.cpp
     # ACS

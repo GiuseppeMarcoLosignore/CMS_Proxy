@@ -1,5 +1,8 @@
 #pragma once
 
+#include "IInterfaces.hpp"
+#include "Topics.hpp"
+
 #include <cstdint>
 #include <map>
 #include <string>
@@ -51,6 +54,17 @@ struct AppConfig {
     CmsConfig cms;
     AcsConfig acs;
     NavsConfig navs;
+};
+
+struct NetworkConfigChangedEvent : public IEvent {
+    CmsConfig cms;
+    AcsConfig acs;
+    NavsConfig navs;
+
+    const std::string& topic() const override {
+        static const std::string kTopic = Topics::NetworkConfigChanged;
+        return kTopic;
+    }
 };
 
 AppConfig loadAppConfig(const std::string& config_path);

@@ -1,8 +1,6 @@
 #include "CmsEntity.hpp"
 
-#include "NetworkConfigChangedEvent.hpp"
 #include "AcsEntity.hpp"
-#include "CueingMath.hpp"
 #include "Topics.hpp"
 #include "UdpSocket.hpp"
 
@@ -59,7 +57,8 @@ constexpr const char* LrasStatusMulticastGroup = "226.1.1.43";
 constexpr uint16_t LrasStatusMulticastPort = 55010;
 
 float normalize_0_360(float angleDeg) {
-    return cueing::mod360(angleDeg);
+    (void)angleDeg;
+    return 0.0f;
 }
 
 uint16_t encode_delta_u16(float angleDeg) {
@@ -941,21 +940,9 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
     float azimuthDeg = 0.0f;
     float elevationDeg = 0.0f;
     if (hasCartesianCoordinates) {
-        float range = 0.0f;
-        float azAbs = 0.0f;
-        cueing::cartesian2target(
-            x,
-            y,
-            z,
-            azimuthDeg,
-            elevationDeg,
-            range,
-            false,
-            azAbs,
-            0.0f,
-            0.0f,
-            0.0f,
-            0.0f);
+        // CueingMath removed: keep default azimuth/elevation values.
+        azimuthDeg = 0.0f;
+        elevationDeg = 0.0f;
     }
 
     json payload;

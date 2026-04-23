@@ -1,6 +1,5 @@
 #include "AcsEntity.hpp"
 
-#include "NetworkConfigChangedEvent.hpp"
 #include "TcpSocket.hpp"
 #include "UdpSocket.hpp"
 #include "CmsEntity.hpp"

@@ -1,6 +1,5 @@
 #include "NavsEntity.hpp"
 
-#include "NetworkConfigChangedEvent.hpp"
 #include "Topics.hpp"
 #include "UdpSocket.hpp"
 #include "CmsEntity.hpp"
