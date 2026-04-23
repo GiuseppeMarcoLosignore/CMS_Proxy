@@ -2,7 +2,6 @@
 
 #include "AppConfig.hpp"
 #include "EventBus.hpp"
-#include "IEntity.hpp"
 #include "IInterfaces.hpp"
 
 #include <boost/asio.hpp>

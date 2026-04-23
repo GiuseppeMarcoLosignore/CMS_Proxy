@@ -2,9 +2,7 @@
 
 #include "AppConfig.hpp"
 #include "EventBus.hpp"
-#include "IEntity.hpp"
 #include "IInterfaces.hpp"
-#include "IEvent.hpp"
 #include "StateUpdate.hpp"
 #include "Topics.hpp"
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IEvent.hpp"
+#include "IInterfaces.hpp"
 #include "StateUpdate.hpp"
 
 #include <string>

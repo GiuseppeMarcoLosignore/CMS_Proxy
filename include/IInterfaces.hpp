@@ -8,6 +8,26 @@
 #include <vector>
 #include <optional>
 
+class IEntity {
+public:
+    virtual ~IEntity() = default;
+    virtual void start() = 0;
+    virtual void stop() = 0;
+};
+
+class IEventHandler {
+public:
+    virtual ~IEventHandler() = default;
+    virtual void start() = 0;
+    virtual void stop() = 0;
+};
+
+class IEvent {
+public:
+    virtual ~IEvent() = default;
+    virtual const std::string& topic() const = 0;
+};
+
 struct SendResult {
     bool success = false;
     int error_value = 0;

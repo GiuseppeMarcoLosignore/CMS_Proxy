@@ -1,5 +1,5 @@
 #pragma once
-#include "IEntity.hpp"
+#include "IInterfaces.hpp"
 #include <memory>
 #include <vector>
 

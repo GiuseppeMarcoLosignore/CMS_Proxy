@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "IEvent.hpp"
+#include "IInterfaces.hpp"
 
 class EventBus;
 
