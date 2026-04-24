@@ -2,6 +2,8 @@
 
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <algorithm>
+#include <cctype>
 #include <stdexcept>
 
 namespace {
@@ -16,14 +18,59 @@ uint16_t get_port(const pt::ptree& tree, const std::string& path) {
     return static_cast<uint16_t>(value);
 }
 
+std::string trim_copy(std::string value) {
+    auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+    value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+    return value;
+}
+
+std::vector<std::string> parse_multicast_groups_list(const std::string& value) {
+    std::vector<std::string> groups;
+    std::size_t start = 0;
+
+    while (start <= value.size()) {
+        const std::size_t comma = value.find(',', start);
+        const std::size_t end = (comma == std::string::npos) ? value.size() : comma;
+        std::string token = trim_copy(value.substr(start, end - start));
+        if (!token.empty()) {
+            groups.push_back(std::move(token));
+        }
+
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+
+    return groups;
+}
+
 CmsConfig parse_cms(const pt::ptree& root) {
     if (!root.get_child_optional("cms")) {
         throw std::runtime_error("Sezione 'cms' mancante o non valida");
     }
 
     CmsConfig cfg;
-    cfg.multicast_group = root.get<std::string>("cms.multicast_group");
     cfg.multicast_port  = get_port(root, "cms.multicast_port");
+
+    if (const auto single_group = root.get_optional<std::string>("cms.multicast_group")) {
+        cfg.multicast_group = trim_copy(*single_group);
+    }
+
+    if (const auto groups = root.get_optional<std::string>("cms.multicast_groups")) {
+        cfg.multicast_groups = parse_multicast_groups_list(*groups);
+    }
+
+    if (cfg.multicast_groups.empty() && !cfg.multicast_group.empty()) {
+        cfg.multicast_groups.push_back(cfg.multicast_group);
+    }
+
+    if (cfg.multicast_groups.empty()) {
+        throw std::runtime_error("Configurazione CMS non valida: specificare 'cms.multicast_group' o 'cms.multicast_groups'");
+    }
+
+    cfg.multicast_group = cfg.multicast_groups.front();
 
     return cfg;
 }
@@ -31,6 +78,7 @@ CmsConfig parse_cms(const pt::ptree& root) {
 AcsConfig parse_acs(const pt::ptree& root) {
     AcsConfig cfg;
     cfg.multicast_group    = "226.1.1.30";
+    cfg.multicast_groups   = { cfg.multicast_group };
     cfg.multicast_port     = 56100;
     cfg.tcp_listen_ip      = "127.0.0.1";
     cfg.tcp_listen_port    = 56101;
@@ -43,7 +91,21 @@ AcsConfig parse_acs(const pt::ptree& root) {
         return cfg;
     }
 
-    cfg.multicast_group    = root.get<std::string>("acs.multicast_group");
+    if (const auto single_group = root.get_optional<std::string>("acs.multicast_group")) {
+        cfg.multicast_group = trim_copy(*single_group);
+    }
+    cfg.multicast_groups.clear();
+    if (const auto groups = root.get_optional<std::string>("acs.multicast_groups")) {
+        cfg.multicast_groups = parse_multicast_groups_list(*groups);
+    }
+    if (cfg.multicast_groups.empty() && !cfg.multicast_group.empty()) {
+        cfg.multicast_groups.push_back(cfg.multicast_group);
+    }
+    if (cfg.multicast_groups.empty()) {
+        throw std::runtime_error("Configurazione ACS non valida: specificare 'acs.multicast_group' o 'acs.multicast_groups'");
+    }
+    cfg.multicast_group = cfg.multicast_groups.front();
+
     cfg.multicast_port     = get_port(root, "acs.multicast_port");
     cfg.tx_multicast_group = cfg.multicast_group;
     cfg.tx_multicast_port  = cfg.multicast_port;
@@ -83,7 +145,20 @@ NavsConfig parse_navs(const pt::ptree& root) {
     }
 
     cfg.enabled         = true;
-    cfg.multicast_group = root.get<std::string>("navs.multicast_group");
+    if (const auto single_group = root.get_optional<std::string>("navs.multicast_group")) {
+        cfg.multicast_group = trim_copy(*single_group);
+    }
+    if (const auto groups = root.get_optional<std::string>("navs.multicast_groups")) {
+        cfg.multicast_groups = parse_multicast_groups_list(*groups);
+    }
+    if (cfg.multicast_groups.empty() && !cfg.multicast_group.empty()) {
+        cfg.multicast_groups.push_back(cfg.multicast_group);
+    }
+    if (cfg.multicast_groups.empty()) {
+        throw std::runtime_error("Configurazione NAVS non valida: specificare 'navs.multicast_group' o 'navs.multicast_groups'");
+    }
+    cfg.multicast_group = cfg.multicast_groups.front();
+
     cfg.multicast_port  = get_port(root, "navs.multicast_port");
 
     if (const auto bindings = root.get_child_optional("navs.topic_binding")) {

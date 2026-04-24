@@ -70,11 +70,16 @@ void AcsEntity::start() {
         startupConfig = config_;
     }
 
+    std::vector<MulticastEndpoint> multicastEndpoints;
+    multicastEndpoints.reserve(startupConfig.multicast_groups.size());
+    for (const auto& group : startupConfig.multicast_groups) {
+        multicastEndpoints.push_back(MulticastEndpoint{group, startupConfig.multicast_port});
+    }
+
     udpSocket_ = std::make_shared<UdpSocket>(
         rxIoContext_,
         kAnyListenIp,
-        startupConfig.multicast_group,
-        startupConfig.multicast_port
+        multicastEndpoints
     );
 
     tcpSocket_ = std::make_shared<TcpSocket>(
@@ -99,9 +104,8 @@ void AcsEntity::start() {
         rxIoContext_.run();
     });
 
-    std::cout << "[ACS Entity] Avviata su "
-              << startupConfig.multicast_group << ":" << startupConfig.multicast_port
-              << std::endl;
+    std::cout << "[ACS Entity] Avviata su " << startupConfig.multicast_groups.size()
+              << " gruppo/i multicast, porta " << startupConfig.multicast_port << std::endl;
     std::cout << "[ACS Entity] TCP unicast in ascolto su "
               << startupConfig.tcp_listen_ip << ":" << startupConfig.tcp_listen_port << std::endl;
 }

@@ -468,11 +468,16 @@ void CmsEntity::start() {
         subscribeTopics();
     }
 
+    std::vector<MulticastEndpoint> multicastEndpoints;
+    multicastEndpoints.reserve(config_.multicast_groups.size());
+    for (const auto& group : config_.multicast_groups) {
+        multicastEndpoints.push_back(MulticastEndpoint{group, config_.multicast_port});
+    }
+
     udpSocket_ = std::make_shared<UdpSocket>(
         rxIoContext_,
         "0.0.0.0", //useless, receiver will bind to the multicast group address directly
-        config_.multicast_group,
-        config_.multicast_port
+        multicastEndpoints
     );
 
     udpSocket_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
@@ -493,8 +498,8 @@ void CmsEntity::start() {
     running_.store(true);
      
 
-    std::cout << "[CMS Entity] Avviata su "
-              << config_.multicast_group << ":" << config_.multicast_port << std::endl;
+    std::cout << "[CMS Entity] Avviata su " << config_.multicast_groups.size()
+              << " gruppo/i multicast, porta " << config_.multicast_port << std::endl;
 }
 
 void CmsEntity::stop() {

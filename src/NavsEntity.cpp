@@ -69,11 +69,16 @@ void NavsEntity::start() {
         return;
     }
 
+    std::vector<MulticastEndpoint> multicastEndpoints;
+    multicastEndpoints.reserve(config_.multicast_groups.size());
+    for (const auto& group : config_.multicast_groups) {
+        multicastEndpoints.push_back(MulticastEndpoint{group, config_.multicast_port});
+    }
+
     receiver_ = std::make_shared<UdpSocket>(
         rxIoContext_,
         kAnyListenIp,
-        config_.multicast_group,
-        config_.multicast_port
+        multicastEndpoints
     );
 
     receiver_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
@@ -82,8 +87,8 @@ void NavsEntity::start() {
 
     receiver_->start();
 
-    std::cout << "[NAVS Entity] Avviata su "
-              << config_.multicast_group << ":" << config_.multicast_port << std::endl;
+    std::cout << "[NAVS Entity] Avviata su " << config_.multicast_groups.size()
+              << " gruppo/i multicast, porta " << config_.multicast_port << std::endl;
 }
 
 void NavsEntity::stop() {

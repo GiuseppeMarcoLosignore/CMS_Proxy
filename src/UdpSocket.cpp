@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <vector>
 
 UdpSocket::UdpSocket(boost::asio::io_context& io_ctx)
     : socket_(io_ctx) {
@@ -22,6 +23,31 @@ UdpSocket::UdpSocket(boost::asio::io_context& io_ctx,
     std::cout << "[UDP Receiver] In ascolto su " << multicast_address << ":" << port << std::endl;
 }
 
+UdpSocket::UdpSocket(boost::asio::io_context& io_ctx,
+                     const std::string& listen_address,
+                     const std::vector<std::string>& multicast_addresses,
+                     int port)
+    : socket_(io_ctx) {
+    configure_receiver(listen_address, multicast_addresses, port);
+    set_ttl(1);
+    set_loopback(true);
+
+    std::cout << "[UDP Receiver] In ascolto su " << multicast_addresses.size()
+              << " gruppi multicast su porta " << port << std::endl;
+}
+
+UdpSocket::UdpSocket(boost::asio::io_context& io_ctx,
+                     const std::string& listen_address,
+                     const std::vector<MulticastEndpoint>& multicast_endpoints)
+    : socket_(io_ctx) {
+    configure_receiver(listen_address, multicast_endpoints);
+    set_ttl(1);
+    set_loopback(true);
+
+    std::cout << "[UDP Receiver] In ascolto su " << multicast_endpoints.size()
+              << " endpoint multicast" << std::endl;
+}
+
 void UdpSocket::ensure_socket_open() {
     if (socket_.is_open()) {
         return;
@@ -37,14 +63,46 @@ void UdpSocket::ensure_socket_open() {
 void UdpSocket::configure_receiver(const std::string& listen_address,
                                    const std::string& multicast_address,
                                    int port) {
+    configure_receiver(listen_address, std::vector<std::string>{multicast_address}, port);
+}
+
+void UdpSocket::configure_receiver(const std::string& listen_address,
+                                   const std::vector<std::string>& multicast_addresses,
+                                   int port) {
+    std::vector<MulticastEndpoint> endpoints;
+    endpoints.reserve(multicast_addresses.size());
+    for (const auto& multicast_address : multicast_addresses) {
+        endpoints.push_back(MulticastEndpoint{multicast_address, static_cast<uint16_t>(port)});
+    }
+
+    configure_receiver(listen_address, endpoints);
+}
+
+void UdpSocket::configure_receiver(const std::string& listen_address,
+                                   const std::vector<MulticastEndpoint>& multicast_endpoints) {
     using namespace boost::asio::ip;
 
-    const udp::endpoint listen_endpoint(make_address(listen_address), static_cast<unsigned short>(port));
+    if (multicast_endpoints.empty()) {
+        throw std::runtime_error("Nessun endpoint multicast configurato");
+    }
+
+    const uint16_t listen_port = multicast_endpoints.front().port;
+    for (const auto& endpoint : multicast_endpoints) {
+        if (endpoint.port != listen_port) {
+            throw std::runtime_error("Tutti gli endpoint multicast devono usare la stessa porta sullo stesso socket");
+        }
+    }
+
+    const udp::endpoint listen_endpoint(make_address(listen_address), static_cast<unsigned short>(listen_port));
 
     ensure_socket_open();
     socket_.set_option(udp::socket::reuse_address(true));
     socket_.bind(listen_endpoint);
-    socket_.set_option(multicast::join_group(make_address(multicast_address)));
+
+    for (const auto& endpoint : multicast_endpoints) {
+        socket_.set_option(multicast::join_group(make_address(endpoint.ip)));
+    }
+
     receive_enabled_ = true;
 }
 

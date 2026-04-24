@@ -5,7 +5,14 @@
 #include <boost/asio.hpp>
 
 #include <array>
+#include <cstdint>
 #include <string>
+#include <vector>
+
+struct MulticastEndpoint {
+    std::string ip;
+    uint16_t port = 0;
+};
 
 class UdpSocket : public IReceiver, public ISender {
 public:
@@ -14,6 +21,13 @@ public:
               const std::string& listen_address,
               const std::string& multicast_address,
               int port);
+    UdpSocket(boost::asio::io_context& io_ctx,
+              const std::string& listen_address,
+              const std::vector<std::string>& multicast_addresses,
+              int port);
+    UdpSocket(boost::asio::io_context& io_ctx,
+              const std::string& listen_address,
+              const std::vector<MulticastEndpoint>& multicast_endpoints);
 
     void set_callback(MessageCallback cb) override;
     void start() override;
@@ -31,6 +45,11 @@ private:
     void configure_receiver(const std::string& listen_address,
                             const std::string& multicast_address,
                             int port);
+    void configure_receiver(const std::string& listen_address,
+                            const std::vector<std::string>& multicast_addresses,
+                            int port);
+    void configure_receiver(const std::string& listen_address,
+                            const std::vector<MulticastEndpoint>& multicast_endpoints);
     void do_receive();
 
     boost::asio::ip::udp::socket socket_;

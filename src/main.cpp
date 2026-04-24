@@ -37,18 +37,35 @@ int main(int argc, char* argv[]) {
 
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "
                   << config_path << std::endl;
-        std::cout << "[SYSTEM] CMS multicast in ascolto su: "
-                  << config.cms.multicast_group << ":" << config.cms.multicast_port << std::endl;
-                std::cout << "[SYSTEM] ACS multicast in ascolto su: "
-                                    << config.acs.multicast_group << ":" << config.acs.multicast_port
-                                    << std::endl;
+        std::cout << "[SYSTEM] CMS multicast in ascolto su: ";
+        for (std::size_t i = 0; i < config.cms.multicast_groups.size(); ++i) {
+            if (i > 0) {
+                std::cout << ", ";
+            }
+            std::cout << config.cms.multicast_groups[i] << ":" << config.cms.multicast_port;
+        }
+        std::cout << std::endl;
+                std::cout << "[SYSTEM] ACS multicast in ascolto su: ";
+                for (std::size_t i = 0; i < config.acs.multicast_groups.size(); ++i) {
+                    if (i > 0) {
+                        std::cout << ", ";
+                    }
+                    std::cout << config.acs.multicast_groups[i] << ":" << config.acs.multicast_port;
+                }
+                std::cout << std::endl;
                 std::cout << "[SYSTEM] ACS TCP unicast in ascolto su: "
                                     << config.acs.tcp_listen_ip << ":" << config.acs.tcp_listen_port << std::endl;
                 std::cout << "[SYSTEM] ACS multicast in invio su: "
                                     << config.acs.tx_multicast_group << ":" << config.acs.tx_multicast_port << std::endl;
         if (config.navs.enabled) {
-            std::cout << "[SYSTEM] NAVS multicast in ascolto su: "
-                      << config.navs.multicast_group << ":" << config.navs.multicast_port << std::endl;
+            std::cout << "[SYSTEM] NAVS multicast in ascolto su: ";
+            for (std::size_t i = 0; i < config.navs.multicast_groups.size(); ++i) {
+                if (i > 0) {
+                    std::cout << ", ";
+                }
+                std::cout << config.navs.multicast_groups[i] << ":" << config.navs.multicast_port;
+            }
+            std::cout << std::endl;
         }
 
         for (;;) {
@@ -59,6 +76,4 @@ int main(int argc, char* argv[]) {
         std::cerr << "[CRITICAL ERROR] " << e.what() << std::endl;
         return 1;
     }
-
-    return 0;
 }
