@@ -47,21 +47,7 @@ private:
 
     void createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload);
 
-    void parseALIVE(const EventBus::EventPtr& event);
-    void parseDIAGNOSTIC(const EventBus::EventPtr& event);
-    void parseERROR(const EventBus::EventPtr& event);
-    void parseAUDIO(const EventBus::EventPtr& event);
-    void parseLAD(const EventBus::EventPtr& event);
-    void parseSEARCHLIGHT(const EventBus::EventPtr& event);
-    void parseLRF(const EventBus::EventPtr& event);
-    void parseSHADOW(const EventBus::EventPtr& event);
-    void parseZOOM(const EventBus::EventPtr& event);
-    void parseMASTER(const EventBus::EventPtr& event);
-    void parseCONTEXT(const EventBus::EventPtr& event);
-    void parsePOSITION(const EventBus::EventPtr& event);
-    void parseTRACKING(const EventBus::EventPtr& event);
-    void parseIMU(const EventBus::EventPtr& event);
-    void parseHOURS(const EventBus::EventPtr& event);
+
 
     void createAUDIO(const EventBus::EventPtr& event);
     void createLAD(const EventBus::EventPtr& event);

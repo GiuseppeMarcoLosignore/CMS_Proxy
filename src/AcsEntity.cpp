@@ -132,9 +132,7 @@ void AcsEntity::subscribeTopics() {
         return;
     }
 
-    eventBus_->subscribe(Topics::AcsAlive, [this](const EventBus::EventPtr& event) {
-        parseALIVE(event);
-    });    
+    
 
 
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
@@ -275,114 +273,9 @@ void AcsEntity::createHeader(std::string header, std::string type, std::string s
     outPayload["param"] = param;
 }
 
-void AcsEntity::parseALIVE(const EventBus::EventPtr& event) {
- if (!eventBus_) {
-        return;
-    }
 
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
 
-    const RawPacket& packet = dispatchEvent->packet;
 
-    nlohmann::json inputPayload;
-
-    try {
-        inputPayload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-        if (!inputPayload.contains("param") || !inputPayload.at("param").is_object()) {
-            std::cerr << "[ACS Entity] Campo 'param' mancante o non valido per ALIVE: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        const auto& input = inputPayload.at("param");
-        if (!input.contains("name") || !input.at("name").is_string()) {
-            std::cerr << "[ACS Entity] Campo 'name' mancante o non valido per ALIVE: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        std::string ip;
-        if (input.contains("ip") && input.at("ip").is_string()) {
-            ip = input.at("ip").get<std::string>();
-        } else if (input.contains("ipAddress") && input.at("ipAddress").is_string()) {
-            ip = input.at("ipAddress").get<std::string>();
-        }
-
-        if (ip.empty()) {
-            std::cerr << "[ACS Entity] Campo 'ip' mancante o non valido per ALIVE: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        const std::string sideName = input.at("name").get<std::string>();
-        uint16_t lradId = 0;
-        if (sideName == "PORT") {
-            lradId = 1;
-        } else if (sideName == "STARBOARD") {
-            lradId = 2;
-        } else {
-            std::cerr << "[ACS Entity] Valore 'name' non supportato per ALIVE: "
-                      << sideName << std::endl;
-            return;
-        }
-
-        const char* configPath = "config/network_config.ini";
-
-        namespace pt = boost::property_tree;
-        pt::ptree tree;
-        try {
-            pt::ini_parser::read_ini(configPath, tree);
-        } catch (const pt::ini_parser::ini_parser_error& e) {
-            std::cerr << "[ACS Entity] Impossibile aprire il file di configurazione: "
-                      << e.what() << std::endl;
-            return;
-        }
-
-        bool updated = false;
-        if (const auto dests = tree.get_child_optional("acs.destination")) {
-            for (auto& [key, dest_node] : *dests) {
-                const auto idOpt = dest_node.get_optional<int>("id");
-                if (!idOpt.has_value()) {
-                    continue;
-                }
-                if (static_cast<uint16_t>(*idOpt) == lradId) {
-                    dest_node.put("ip", ip);
-                    updated = true;
-                    break;
-                }
-            }
-        }
-
-        if (!updated) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << lradId << std::endl;
-            return;
-        }
-
-        try {
-            pt::ini_parser::write_ini(configPath, tree);
-        } catch (const std::exception& e) {
-            std::cerr << "[ACS Entity] Impossibile scrivere il file di configurazione: "
-                      << e.what() << std::endl;
-            return;
-        }
-
-        std::lock_guard<std::mutex> lock(destinationsMutex_);
-        const auto destinationIt = destinations_.find(lradId);
-        if (destinationIt != destinations_.end()) {
-            destinationIt->second.ip_address = ip;
-        }
-
-        std::cout << "[ACS Entity] ALIVE aggiornato: " << sideName
-                  << " -> " << ip << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] Errore parsing/salvataggio ALIVE: " << e.what() << std::endl;
-        return;
-    }
-}
 
 
 void AcsEntity::createMASTER(const EventBus::EventPtr& event) {
