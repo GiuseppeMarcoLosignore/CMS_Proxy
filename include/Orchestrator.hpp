@@ -4,6 +4,9 @@
 #include <optional>
 #include <thread>
 #include <atomic>
+#include <mutex>
+#include <string>
+#include <vector>
 
 #include "CmsEntity.hpp"
 #include "AcsEntity.hpp"
@@ -54,10 +57,11 @@ public:
 private:
     std::vector<Lrad_full> lradList_;
     Lras_full lrasList_;
-    std::mutex lradMutex_;
-    std::mutex lrasMutex_;
+    mutable std::mutex lradMutex_;
+    mutable std::mutex lrasMutex_;
     CmsEntity &cmsEntity_;
     AcsEntity &acsEntity_;
     NavsEntity &navsEntity_;
     std::thread updateThread_;
+    std::shared_ptr<EventBus> eventBus_;
 };
