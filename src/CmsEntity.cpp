@@ -48,6 +48,10 @@ constexpr uint32_t MessageId_CS_LRAS_request_emission_mode_INS = 1679949841;
 constexpr uint32_t MessageId_CS_LRAS_request_installation_data_INS = 1679949842;
 constexpr uint32_t MessageId_CS_MULTI_health_status_INS = 1684229565;
 constexpr uint32_t MessageId_CS_MULTI_update_cst_kinematics_INS = 1684229569;
+constexpr uint32_t MessageId_NAVS_MULTI_gyro_fore_nav_data_10ms_INS = 425920942;
+constexpr uint32_t MessageId_NAVS_MULTI_health_status_INS = 425920943;
+constexpr uint32_t MessageId_NAVS_MULTI_nav_data_100ms_INS = 425920944;
+constexpr uint32_t MessageId_NAVS_MULTI_ships_admin_force_time_INS = 425920947;
 constexpr uint32_t MessageLength_LRAS_CS_lrad_status_INS = 32;
 constexpr uint32_t MessageId_LRAS_MULTI_full_status_v2_INS = 576913411;
 constexpr uint32_t MessageLength_LRAS_MULTI_full_status_v2_INS = 88; // 2 LRADs x 44 bytes each
@@ -442,6 +446,17 @@ uint32_t extract_message_id_from_header(const RawPacket& packet) {
     return read_u32_be(packet.data, 0);
 }
 
+std::string bytes_to_hex(const std::vector<uint8_t>& data, std::size_t offset) {
+    std::ostringstream stream;
+    stream << std::hex;
+    for (std::size_t i = offset; i < data.size(); ++i) {
+        stream.width(2);
+        stream.fill('0');
+        stream << static_cast<int>(data[i]);
+    }
+    return stream.str();
+}
+
 RawPacket make_empty_packet() {
     return RawPacket{};
 }
@@ -469,9 +484,12 @@ void CmsEntity::start() {
     }
 
     std::vector<MulticastEndpoint> multicastEndpoints;
-    multicastEndpoints.reserve(config_.multicast_groups.size());
+    multicastEndpoints.reserve(config_.multicast_groups.size() + config_.navs_multicast_endpoints.size());
     for (const auto& group : config_.multicast_groups) {
         multicastEndpoints.push_back(MulticastEndpoint{group, config_.multicast_port});
+    }
+    for (const auto& ep : config_.navs_multicast_endpoints) {
+        multicastEndpoints.push_back(ep);
     }
 
     udpSocket_ = std::make_shared<UdpSocket>(
@@ -635,7 +653,11 @@ ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet) const
         { MessageId_CS_LRAS_request_translation_INS, { &CmsEntity::parse_CS_LRAS_request_translation_INS, Topics::CS_LRAS_request_translation_INS } },
         { MessageId_CS_LRAS_video_tracking_command_INS, { &CmsEntity::parse_CS_LRAS_video_tracking_command_INS, Topics::CS_LRAS_video_tracking_command_INS } },
         { MessageId_CS_MULTI_health_status_INS, { &CmsEntity::parse_CS_MULTI_health_status_INS, Topics::CS_MULTI_health_status_INS } },
-        { MessageId_CS_MULTI_update_cst_kinematics_INS, { &CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS, Topics::CS_MULTI_update_cst_kinematics_INS } }
+        { MessageId_CS_MULTI_update_cst_kinematics_INS, { &CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS, Topics::CS_MULTI_update_cst_kinematics_INS } },
+        { MessageId_NAVS_MULTI_gyro_fore_nav_data_10ms_INS, { &CmsEntity::parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS, Topics::NAVS_MULTI_gyro_fore_nav_data_10ms_INS } },
+        { MessageId_NAVS_MULTI_health_status_INS, { &CmsEntity::parse_NAVS_MULTI_health_status_INS, Topics::NAVS_MULTI_health_status_INS } },
+        { MessageId_NAVS_MULTI_nav_data_100ms_INS, { &CmsEntity::parse_NAVS_MULTI_nav_data_100ms_INS, Topics::NAVS_MULTI_nav_data_100ms_INS } },
+        { MessageId_NAVS_MULTI_ships_admin_force_time_INS, { &CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS, Topics::NAVS_MULTI_ships_admin_force_time_INS } }
     };
 
     ParsedHeader header;
@@ -1469,6 +1491,272 @@ RawPacket CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
         (validitySeconds > 2147483647U) ||
         (validityMicroseconds > 999999U) ||
         (kinematicsType < 1 || kinematicsType > 11)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
+}
+
+RawPacket CmsEntity::parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(
+    const RawPacket& packet) const {
+    constexpr std::size_t minPacketSize = 66; // Header(16) + payload(50)
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint16_t sensorReference = read_u16_be(packet.data, 16);
+    const uint16_t gyroReadinessState = read_u16_be(packet.data, 18);
+    const uint16_t gyroAvailability = read_u16_be(packet.data, 20);
+    const uint32_t timeSeconds = read_u32_be(packet.data, 22);
+    const uint32_t timeMicroseconds = read_u32_be(packet.data, 26);
+
+    const float heading = read_f32_be(packet.data, 30);
+    const float relativeRoll = read_f32_be(packet.data, 34);
+    const float absolutePitch = read_f32_be(packet.data, 38);
+    const float headingRate = read_f32_be(packet.data, 42);
+    const float relativeRollRate = read_f32_be(packet.data, 46);
+    const float absolutePitchRate = read_f32_be(packet.data, 50);
+    const float northVelocity = read_f32_be(packet.data, 54);
+    const float eastVelocity = read_f32_be(packet.data, 58);
+    const float verticalVelocity = read_f32_be(packet.data, 62);
+
+    json payload;
+    payload["sensor_reference"] = sensorReference;
+    payload["gyro_readiness_state"] = gyroReadinessState;
+    payload["gyro_availability"] = gyroAvailability;
+    payload["time_of_validity"] = {
+        {"seconds", timeSeconds},
+        {"microseconds", timeMicroseconds}
+    };
+    payload["ship_attitude"] = {
+        {"heading_rad", heading},
+        {"relative_roll_rad", relativeRoll},
+        {"absolute_pitch_rad", absolutePitch},
+        {"heading_rate_rad_s", headingRate},
+        {"relative_roll_rate_rad_s", relativeRollRate},
+        {"absolute_pitch_rate_rad_s", absolutePitchRate},
+        {"north_velocity_m_s", northVelocity},
+        {"east_velocity_m_s", eastVelocity},
+        {"vertical_velocity_m_s", verticalVelocity}
+    };
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    if ((sensorReference > 1) ||
+        (gyroReadinessState > 2) ||
+        (gyroAvailability > 2)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
+}
+
+RawPacket CmsEntity::parse_NAVS_MULTI_health_status_INS(
+    const RawPacket& packet) const {
+    constexpr std::size_t minPacketSize = 20; // Header(16) + Readiness State(2) + Availability(2)
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint16_t readinessState = read_u16_be(packet.data, 16);
+    const uint16_t availability = read_u16_be(packet.data, 18);
+
+    json payload;
+    payload["readiness_state"] = readinessState;
+    payload["availability"] = availability;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    if ((readinessState > 1) ||
+        (availability > 2)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
+}
+
+RawPacket CmsEntity::parse_NAVS_MULTI_nav_data_100ms_INS(
+    const RawPacket& packet) const {
+    constexpr std::size_t minPacketSize = 116; // Header(16) + payload(100)
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    const uint32_t timeSeconds = read_u32_be(packet.data, 16);
+    const uint32_t timeMicroseconds = read_u32_be(packet.data, 20);
+
+    // Ship position
+    const float latitude = read_f32_be(packet.data, 24);
+    const float longitude = read_f32_be(packet.data, 28);
+    const float logSpeed = read_f32_be(packet.data, 32);
+    const float courseMadeGood = read_f32_be(packet.data, 36);
+    const float speedOverGround = read_f32_be(packet.data, 40);
+    const float set = read_f32_be(packet.data, 44);
+    const float drift = read_f32_be(packet.data, 48);
+    const float latitudeAccuracy = read_f32_be(packet.data, 52);
+    const float longitudeAccuracy = read_f32_be(packet.data, 56);
+
+    // Ship attitude
+    const float heading = read_f32_be(packet.data, 60);
+    const float relativeRoll = read_f32_be(packet.data, 64);
+    const float absolutePitch = read_f32_be(packet.data, 68);
+    const float headingRate = read_f32_be(packet.data, 72);
+    const float relativeRollRate = read_f32_be(packet.data, 76);
+    const float absolutePitchRate = read_f32_be(packet.data, 80);
+    const float northVelocity = read_f32_be(packet.data, 84);
+    const float eastVelocity = read_f32_be(packet.data, 88);
+    const float verticalVelocity = read_f32_be(packet.data, 92);
+    const float shipHeave = read_f32_be(packet.data, 96);
+    const float waterDepth = read_f32_be(packet.data, 100);
+
+    // Validity enums
+    const uint16_t attitudeVelocitiesValidity = read_u16_be(packet.data, 104);
+    const uint16_t headingValidity = read_u16_be(packet.data, 106);
+    const uint16_t courseSpeedValidity = read_u16_be(packet.data, 108);
+    const uint16_t positionValidity = read_u16_be(packet.data, 110);
+    const uint16_t setDriftValidity = read_u16_be(packet.data, 112);
+    const uint16_t waterDepthValidity = read_u16_be(packet.data, 114);
+
+    json payload;
+    payload["time_of_validity"] = {
+        {"seconds", timeSeconds},
+        {"microseconds", timeMicroseconds}
+    };
+    payload["ship_position"] = {
+        {"latitude_deg", latitude},
+        {"longitude_deg", longitude},
+        {"log_speed_m_s", logSpeed},
+        {"course_made_good_rad", courseMadeGood},
+        {"speed_over_ground_m_s", speedOverGround},
+        {"set_rad", set},
+        {"drift_m_s", drift},
+        {"latitude_accuracy_nm", latitudeAccuracy},
+        {"longitude_accuracy_nm", longitudeAccuracy}
+    };
+    payload["ship_attitude"] = {
+        {"heading_rad", heading},
+        {"relative_roll_rad", relativeRoll},
+        {"absolute_pitch_rad", absolutePitch},
+        {"heading_rate_rad_s", headingRate},
+        {"relative_roll_rate_rad_s", relativeRollRate},
+        {"absolute_pitch_rate_rad_s", absolutePitchRate},
+        {"north_velocity_m_s", northVelocity},
+        {"east_velocity_m_s", eastVelocity},
+        {"vertical_velocity_m_s", verticalVelocity},
+        {"ship_heave_m", shipHeave},
+        {"water_depth_m", waterDepth}
+    };
+    payload["validity"] = {
+        {"attitude_velocities", attitudeVelocitiesValidity},
+        {"heading", headingValidity},
+        {"course_speed", courseSpeedValidity},
+        {"position", positionValidity},
+        {"set_drift", setDriftValidity},
+        {"water_depth", waterDepthValidity}
+    };
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    // Validate all enum fields (0-2 range)
+    if ((attitudeVelocitiesValidity > 2) ||
+        (headingValidity > 2) ||
+        (courseSpeedValidity > 2) ||
+        (positionValidity > 2) ||
+        (setDriftValidity > 2) ||
+        (waterDepthValidity > 2)) {
+        converted.nackreason = 2;
+    }
+
+    return converted;
+}
+
+RawPacket CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS(
+    const RawPacket& packet) const {
+    constexpr std::size_t minPacketSize = 62; // Header(16) + payload(46)
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_packet();
+    }
+
+    // Helper lambda to read 2-byte ASCII string
+    auto read_ascii_2 = [&packet](std::size_t offset) -> std::string {
+        if (offset + 2 > packet.data.size()) {
+            return "";
+        }
+        return std::string(
+            reinterpret_cast<const char*>(packet.data.data() + offset),
+            2
+        );
+    };
+
+    // Force Time (18 bytes)
+    const std::string forceCentury = read_ascii_2(16);
+    const std::string forceYear = read_ascii_2(18);
+    const std::string forceMonth = read_ascii_2(20);
+    const std::string forceDay = read_ascii_2(22);
+    const std::string forceHour = read_ascii_2(24);
+    const std::string forceMinute = read_ascii_2(26);
+    const std::string forceSecond = read_ascii_2(28);
+    const std::string forceHundredth = read_ascii_2(30);
+    const std::string forceTimeZone = read_ascii_2(32);
+
+    // Admin Time (18 bytes)
+    const std::string adminCentury = read_ascii_2(34);
+    const std::string adminYear = read_ascii_2(36);
+    const std::string adminMonth = read_ascii_2(38);
+    const std::string adminDay = read_ascii_2(40);
+    const std::string adminHour = read_ascii_2(42);
+    const std::string adminMinute = read_ascii_2(44);
+    const std::string adminSecond = read_ascii_2(46);
+    const std::string adminHundredth = read_ascii_2(48);
+    const std::string adminTimeZone = read_ascii_2(50);
+
+    // Time of measurement
+    const uint32_t measurementSeconds = read_u32_be(packet.data, 52);
+    const uint32_t measurementMicroseconds = read_u32_be(packet.data, 56);
+
+    // Time source enum
+    const uint16_t timeSource = read_u16_be(packet.data, 60);
+
+    json payload;
+    payload["force_time"] = {
+        {"century", forceCentury},
+        {"year", forceYear},
+        {"month", forceMonth},
+        {"day", forceDay},
+        {"hour", forceHour},
+        {"minute", forceMinute},
+        {"second", forceSecond},
+        {"hundredth", forceHundredth},
+        {"time_zone", forceTimeZone}
+    };
+    payload["admin_time"] = {
+        {"century", adminCentury},
+        {"year", adminYear},
+        {"month", adminMonth},
+        {"day", adminDay},
+        {"hour", adminHour},
+        {"minute", adminMinute},
+        {"second", adminSecond},
+        {"hundredth", adminHundredth},
+        {"time_zone", adminTimeZone}
+    };
+    payload["time_of_measurement"] = {
+        {"seconds", measurementSeconds},
+        {"microseconds", measurementMicroseconds}
+    };
+    payload["time_source"] = timeSource;
+
+    const std::string jsonString = payload.dump();
+    RawPacket converted;
+    converted.data.assign(jsonString.begin(), jsonString.end());
+
+    if (timeSource > 1) {
         converted.nackreason = 2;
     }
 

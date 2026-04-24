@@ -29,6 +29,7 @@ struct CmsConfig {
     std::string multicast_group;
     std::vector<std::string> multicast_groups;
     uint16_t multicast_port = 0;
+    std::vector<MulticastEndpoint> navs_multicast_endpoints;
 };
 
 struct NavsTopicBinding {

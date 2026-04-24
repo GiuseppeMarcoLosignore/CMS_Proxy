@@ -7,6 +7,11 @@
 #include <vector>
 #include <optional>
 
+struct MulticastEndpoint {
+    std::string ip;
+    uint16_t port = 0;
+};
+
 struct RawPacket {
     std::vector<uint8_t> data;
     std::chrono::steady_clock::time_point timestamp;

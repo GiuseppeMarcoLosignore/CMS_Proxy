@@ -9,11 +9,6 @@
 #include <string>
 #include <vector>
 
-struct MulticastEndpoint {
-    std::string ip;
-    uint16_t port = 0;
-};
-
 class UdpSocket : public IReceiver, public ISender {
 public:
     explicit UdpSocket(boost::asio::io_context& io_ctx);

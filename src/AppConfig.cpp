@@ -46,6 +46,38 @@ std::vector<std::string> parse_multicast_groups_list(const std::string& value) {
     return groups;
 }
 
+std::vector<MulticastEndpoint> parse_multicast_endpoints_list(const std::string& value) {
+    std::vector<MulticastEndpoint> endpoints;
+    std::size_t start = 0;
+
+    while (start <= value.size()) {
+        const std::size_t comma = value.find(',', start);
+        const std::size_t end = (comma == std::string::npos) ? value.size() : comma;
+        std::string token = trim_copy(value.substr(start, end - start));
+
+        if (!token.empty()) {
+            const std::size_t colon = token.rfind(':');
+            if (colon != std::string::npos) {
+                MulticastEndpoint ep;
+                ep.ip = trim_copy(token.substr(0, colon));
+                const int port = std::stoi(token.substr(colon + 1));
+                if (port < 1 || port > 65535) {
+                    throw std::runtime_error("Porta non valida in endpoint multicast: " + token);
+                }
+                ep.port = static_cast<uint16_t>(port);
+                endpoints.push_back(std::move(ep));
+            }
+        }
+
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+
+    return endpoints;
+}
+
 CmsConfig parse_cms(const pt::ptree& root) {
     if (!root.get_child_optional("cms")) {
         throw std::runtime_error("Sezione 'cms' mancante o non valida");
@@ -71,6 +103,10 @@ CmsConfig parse_cms(const pt::ptree& root) {
     }
 
     cfg.multicast_group = cfg.multicast_groups.front();
+
+    if (const auto endpoints = root.get_optional<std::string>("cms.navs_multicast_endpoints")) {
+        cfg.navs_multicast_endpoints = parse_multicast_endpoints_list(*endpoints);
+    }
 
     return cfg;
 }

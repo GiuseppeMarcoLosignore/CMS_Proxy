@@ -64,6 +64,11 @@ private:
     RawPacket parse_CS_MULTI_health_status_INS(const RawPacket& packet) const;
     RawPacket parse_CS_MULTI_update_cst_kinematics_INS(const RawPacket& packet) const;
 
+    RawPacket parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(const RawPacket& packet) const;
+    RawPacket parse_NAVS_MULTI_health_status_INS(const RawPacket& packet) const;
+    RawPacket parse_NAVS_MULTI_nav_data_100ms_INS(const RawPacket& packet) const;
+    RawPacket parse_NAVS_MULTI_ships_admin_force_time_INS(const RawPacket& packet) const;
+
     void sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const;
