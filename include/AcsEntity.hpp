@@ -16,6 +16,9 @@
 #include <thread>
 #include <mutex>
 
+class TcpSocket;
+class UdpSocket;
+
 struct AcsOutgoingJsonEvent : public IEvent {
     std::string Topic;
     RawPacket packet;
@@ -28,9 +31,7 @@ struct AcsOutgoingJsonEvent : public IEvent {
 class AcsEntity : public IEntity {
 public:
     AcsEntity(const AcsConfig& config,
-              std::shared_ptr<EventBus> eventBus,
-              std::shared_ptr<ISender> tcpSender,
-              std::shared_ptr<ISender> multicastSender);
+              std::shared_ptr<EventBus> eventBus);
 
     void start() override;
     void stop() override;
@@ -48,6 +49,19 @@ private:
 
     void parseALIVE(const EventBus::EventPtr& event);
     void parseDIAGNOSTIC(const EventBus::EventPtr& event);
+    void parseERROR(const EventBus::EventPtr& event);
+    void parseAUDIO(const EventBus::EventPtr& event);
+    void parseLAD(const EventBus::EventPtr& event);
+    void parseSEARCHLIGHT(const EventBus::EventPtr& event);
+    void parseLRF(const EventBus::EventPtr& event);
+    void parseSHADOW(const EventBus::EventPtr& event);
+    void parseZOOM(const EventBus::EventPtr& event);
+    void parseMASTER(const EventBus::EventPtr& event);
+    void parseCONTEXT(const EventBus::EventPtr& event);
+    void parsePOSITION(const EventBus::EventPtr& event);
+    void parseTRACKING(const EventBus::EventPtr& event);
+    void parseIMU(const EventBus::EventPtr& event);
+    void parseHOURS(const EventBus::EventPtr& event);
 
     void createAUDIO(const EventBus::EventPtr& event);
     void createLAD(const EventBus::EventPtr& event);
@@ -63,13 +77,12 @@ private:
 
     AcsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
-    std::shared_ptr<ISender> tcpSender_;
-    std::shared_ptr<ISender> multicastSender_;
+    std::shared_ptr<TcpSocket> tcpSocket_;
+    std::shared_ptr<UdpSocket> udpSocket_;
     std::map<uint16_t, AcsDestination> destinations_;
     mutable std::mutex configMutex_;
     mutable std::mutex destinationsMutex_;
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;
-    std::vector<std::shared_ptr<IReceiver>> receivers_;
     std::jthread rxThread_;
 };

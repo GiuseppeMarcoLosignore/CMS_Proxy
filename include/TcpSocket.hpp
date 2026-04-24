@@ -6,6 +6,7 @@
 
 #include <array>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -36,5 +37,8 @@ private:
     std::optional<boost::asio::ip::tcp::acceptor> acceptor_;
     std::vector<std::shared_ptr<boost::asio::ip::tcp::socket>> client_sockets_;
     boost::asio::ip::tcp::socket outgoing_socket_;
+    std::optional<std::string> outgoing_target_host_;
+    std::optional<uint16_t> outgoing_target_port_;
+    std::mutex outgoing_mutex_;
     MessageCallback callback_;
 };

@@ -8,12 +8,6 @@
 #include <string>
 #include <vector>
 
-struct CmsUnicastRelayConfig {
-    std::string name;               // topic remoto (es: "acs.outgoing_packet")
-    std::string destination_ip;
-    uint16_t destination_port = 0;
-};
-
 struct AcsDestination {
     uint16_t id = 0;
     std::string ip_address;
@@ -33,7 +27,6 @@ struct AcsConfig {
 struct CmsConfig {
     std::string multicast_group;
     uint16_t multicast_port = 0;
-    std::vector<CmsUnicastRelayConfig> unicast_relays;  // relay verso altre entità
 };
 
 struct NavsTopicBinding {
@@ -55,9 +48,7 @@ struct AppConfig {
 };
 
 struct NetworkConfigChangedEvent : public IEvent {
-    CmsConfig cms;
     AcsConfig acs;
-    NavsConfig navs;
 
     const std::string& topic() const override {
         static const std::string kTopic = Topics::NetworkConfigChanged;

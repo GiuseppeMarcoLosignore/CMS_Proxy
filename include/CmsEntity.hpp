@@ -20,6 +20,8 @@ struct CmsDispatchTopicPacketEvent : public IEvent {
 #include <thread>
 #include <atomic>
 
+class UdpSocket;
+
 class CmsEntity : public IEntity {
 public:
     CmsEntity(const CmsConfig& config,
@@ -36,7 +38,6 @@ private:
 
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void subscribeTopics();
-    void handleConfigChanged(const EventBus::EventPtr& event);
     void periodicMessages();
 
     ConversionResult convertIncomingPacket(const RawPacket& packet) const;
@@ -68,13 +69,15 @@ private:
     void sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const;
+    void sendMulticastPacket(const RawPacket& packet, const char* messageName) const;
+
     CmsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
 
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;
     std::optional<boost::asio::steady_timer> periodicTimer_;
-    std::shared_ptr<IReceiver> receiver_;
+    std::shared_ptr<UdpSocket> udpSocket_;
     std::jthread rxThread_;
     std::atomic<bool> subscribed_{false};
     std::atomic<bool> running_{false};

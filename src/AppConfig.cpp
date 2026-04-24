@@ -25,16 +25,6 @@ CmsConfig parse_cms(const pt::ptree& root) {
     cfg.multicast_group = root.get<std::string>("cms.multicast_group");
     cfg.multicast_port  = get_port(root, "cms.multicast_port");
 
-    if (const auto relays = root.get_child_optional("cms.unicast_relay")) {
-        for (const auto& [key, relay] : *relays) {
-            CmsUnicastRelayConfig r;
-            r.name             = relay.get<std::string>("name");
-            r.destination_ip   = relay.get<std::string>("destination_ip");
-            r.destination_port = get_port(relay, "destination_port");
-            cfg.unicast_relays.push_back(r);
-        }
-    }
-
     return cfg;
 }
 

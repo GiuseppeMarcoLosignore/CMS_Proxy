@@ -57,14 +57,6 @@ NavsEntity::NavsEntity(const NavsConfig& config,
 }
 
 void NavsEntity::start() {
-    if (!subscribed_.exchange(true)) {
-        if (eventBus_) {
-            eventBus_->subscribe(Topics::NetworkConfigChanged, [this](const EventBus::EventPtr& event) {
-                handleConfigChanged(event);
-            });
-        }
-    }
-
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {
         rxIoContext_.run();
@@ -156,58 +148,4 @@ std::string NavsEntity::resolveTopic(uint32_t messageId) const {
     }
 
     return "navs.unknown";
-}
-
-void NavsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
-    const auto configEvent = std::dynamic_pointer_cast<const NetworkConfigChangedEvent>(event);
-    if (!configEvent) {
-        return;
-    }
-
-    const NavsConfig newConfig = configEvent->navs;
-    boost::asio::post(rxIoContext_, [this, newConfig]() {
-        const bool endpointChanged =
-            (config_.enabled != newConfig.enabled) ||
-            (config_.multicast_group != newConfig.multicast_group) ||
-            (config_.multicast_port != newConfig.multicast_port);
-
-        config_ = newConfig;
-        topicByMessageId_.clear();
-        for (const auto& binding : config_.topic_bindings) {
-            topicByMessageId_[binding.message_id] = binding.topic;
-        }
-
-        if (!running_.load() || !endpointChanged) {
-            return;
-        }
-
-        try {
-            if (receiver_) {
-                receiver_->stop();
-                receiver_.reset();
-            }
-
-            if (!config_.enabled) {
-                std::cout << "[NAVS Entity] Config aggiornata: listener disabilitato" << std::endl;
-                return;
-            }
-
-            receiver_ = std::make_shared<UdpSocket>(
-                rxIoContext_,
-                kAnyListenIp,
-                config_.multicast_group,
-                config_.multicast_port
-            );
-
-            receiver_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
-                onPacketReceived(packet, sourceInfo);
-            });
-
-            receiver_->start();
-            std::cout << "[NAVS Entity] Config aggiornata: listener su "
-                      << config_.multicast_group << ":" << config_.multicast_port << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "[NAVS Entity] Errore hot reload config: " << e.what() << std::endl;
-        }
-    });
 }

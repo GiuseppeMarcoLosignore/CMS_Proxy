@@ -153,22 +153,6 @@ RawPacket build_lrad_status_packet(uint32_t messageId) {
     return packet;
 }
 
-void send_multicast_packet(const RawPacket& packet, const char* messageName) {
-    try {
-        boost::asio::io_context txIoContext;
-        UdpSocket sender(txIoContext);
-        const SendResult result = sender.send(packet, LrasStatusMulticastGroup, LrasStatusMulticastPort);
-        if (!result.success) {
-            std::cerr << "[CMS Entity] Errore invio " << messageName << " verso "
-                      << LrasStatusMulticastGroup << ":" << LrasStatusMulticastPort
-                      << " -> " << result.error_message << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[CMS Entity] Eccezione durante invio " << messageName << ": "
-                  << e.what() << std::endl;
-    }
-}
-
 // Appends the 44-byte "LRAD x full status" block (Lrad_full 40-byte struct + IR camera 4 bytes)
 void append_lrad_full_status(std::vector<uint8_t>& buffer) {
     // Lrad_full (40 bytes)
@@ -474,8 +458,9 @@ CmsEntity::CmsEntity(const CmsConfig& config,
     : config_(config),
       eventBus_(std::move(eventBus)),
       rxIoContext_(),
-            rxWorkGuard_(std::nullopt),
-            periodicTimer_(std::nullopt) {
+    rxWorkGuard_(std::nullopt),
+    periodicTimer_(std::nullopt),
+    udpSocket_(nullptr) {
 }
 
 void CmsEntity::start() {
@@ -483,18 +468,18 @@ void CmsEntity::start() {
         subscribeTopics();
     }
 
-    receiver_ = std::make_shared<UdpSocket>(
+    udpSocket_ = std::make_shared<UdpSocket>(
         rxIoContext_,
         "0.0.0.0", //useless, receiver will bind to the multicast group address directly
         config_.multicast_group,
         config_.multicast_port
     );
 
-    receiver_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+    udpSocket_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
         onPacketReceived(packet, sourceInfo);
     });
 
-    receiver_->start();
+    udpSocket_->start();
 
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {
@@ -515,8 +500,8 @@ void CmsEntity::start() {
 void CmsEntity::stop() {
     running_.store(false);
 
-    if (receiver_) {
-        receiver_->stop();
+    if (udpSocket_) {
+        udpSocket_->stop();
     }
 
     if (periodicTimer_.has_value()) {
@@ -561,54 +546,6 @@ void CmsEntity::subscribeTopics() {
 
     eventBus_->subscribe(Topics::LRAS_MULTI_health_status_INS, [this](const EventBus::EventPtr& event) {
         sendLRAS_MULTI_health_status_INS(event);
-    });
-
-    eventBus_->subscribe(Topics::NetworkConfigChanged, [this](const EventBus::EventPtr& event) {
-        handleConfigChanged(event);
-    });
-
-}
-
-void CmsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
-    const auto configEvent = std::dynamic_pointer_cast<const NetworkConfigChangedEvent>(event);
-    if (!configEvent) {
-        return;
-    }
-
-    const CmsConfig newConfig = configEvent->cms;
-    boost::asio::post(rxIoContext_, [this, newConfig]() {
-        const bool endpointChanged =
-            (config_.multicast_group != newConfig.multicast_group) ||
-            (config_.multicast_port != newConfig.multicast_port);
-
-        config_ = newConfig;
-
-        if (!running_.load() || !endpointChanged) {
-            return;
-        }
-
-        try {
-            if (receiver_) {
-                receiver_->stop();
-            }
-
-            receiver_ = std::make_shared<UdpSocket>(
-                rxIoContext_,
-                "0.0.0.0",
-                config_.multicast_group,
-                config_.multicast_port
-            );
-
-            receiver_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
-                onPacketReceived(packet, sourceInfo);
-            });
-
-            receiver_->start();
-            std::cout << "[CMS Entity] Config aggiornata: listener su "
-                      << config_.multicast_group << ":" << config_.multicast_port << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "[CMS Entity] Errore hot reload config: " << e.what() << std::endl;
-        }
     });
 }
 
@@ -1580,19 +1517,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
     append_u16_be(ackPacket.data, ackNackAccepted);
     append_u16_be(ackPacket.data, nackReason);
 
-    try {
-        boost::asio::io_context txIoContext;
-        UdpSocket sender(txIoContext);
-        const SendResult result = sender.send(ackPacket, LrasStatusMulticastGroup, LrasStatusMulticastPort);
-        if (!result.success) {
-            std::cerr << "[CMS Entity] Errore invio ACK multicast verso "
-                      << LrasStatusMulticastGroup << ":" << LrasStatusMulticastPort
-                      << " -> " << result.error_message << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[CMS Entity] Eccezione durante invio ACK multicast: "
-                  << e.what() << std::endl;
-    }
+    sendMulticastPacket(ackPacket, "ACK multicast");
 }
 
 void CmsEntity::periodicMessages() {
@@ -1636,14 +1561,14 @@ void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) c
     (void)event;
 
     const RawPacket packet = build_lrad_status_packet(MessageId_LRAS_CS_lrad_1_status_INS);
-    send_multicast_packet(packet, "LRAS_CS_lrad_1_status_INS");
+    sendMulticastPacket(packet, "LRAS_CS_lrad_1_status_INS");
 }  
 
 void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const {
     (void)event;
 
     const RawPacket packet = build_lrad_status_packet(MessageId_LRAS_CS_lrad_2_status_INS);
-    send_multicast_packet(packet, "LRAS_CS_lrad_2_status_INS");
+    sendMulticastPacket(packet, "LRAS_CS_lrad_2_status_INS");
 }
 
 void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const {
@@ -1663,7 +1588,7 @@ void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& even
     // LRAD 2 full status (44 bytes)
     append_lrad_full_status(packet.data);
 
-    send_multicast_packet(packet, "LRAS_MULTI_full_status_v2_INS");
+    sendMulticastPacket(packet, "LRAS_MULTI_full_status_v2_INS");
 }
 
 void CmsEntity::sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const {
@@ -1695,6 +1620,21 @@ void CmsEntity::sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event
     append_u16_be(packet.data, 0);
     append_u16_be(packet.data, 0);
 
-    send_multicast_packet(packet, "LRAS_MULTI_health_status_INS");
+    sendMulticastPacket(packet, "LRAS_MULTI_health_status_INS");
+}
+
+void CmsEntity::sendMulticastPacket(const RawPacket& packet, const char* messageName) const {
+    if (!udpSocket_) {
+        std::cerr << "[CMS Entity] Socket UDP non inizializzato per invio "
+                  << messageName << std::endl;
+        return;
+    }
+
+    const SendResult result = udpSocket_->send(packet, LrasStatusMulticastGroup, LrasStatusMulticastPort);
+    if (!result.success) {
+        std::cerr << "[CMS Entity] Errore invio " << messageName << " verso "
+                  << LrasStatusMulticastGroup << ":" << LrasStatusMulticastPort
+                  << " -> " << result.error_message << std::endl;
+    }
 }
 

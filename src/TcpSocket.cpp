@@ -71,13 +71,18 @@ void TcpSocket::stop() {
     }
 
     client_sockets_.clear();
-    close_outgoing_socket();
+    {
+        std::lock_guard<std::mutex> lock(outgoing_mutex_);
+        close_outgoing_socket();
+    }
 }
 
 SendResult TcpSocket::send(const RawPacket& packet,
                            const std::string& target_host,
                            uint16_t target_port) {
     SendResult result;
+
+    std::lock_guard<std::mutex> lock(outgoing_mutex_);
 
     boost::system::error_code ec;
     boost::asio::ip::tcp::resolver resolver(io_ctx_);
@@ -90,32 +95,71 @@ SendResult TcpSocket::send(const RawPacket& packet,
         return result;
     }
 
-    close_outgoing_socket();
-    outgoing_socket_.connect(*endpoints.begin(), ec);
-    if (ec) {
-        result.success = false;
-        result.error_value = ec.value();
-        result.error_category = ec.category().name();
-        result.error_message = ec.message();
+    const bool target_changed =
+        !outgoing_target_host_.has_value() ||
+        !outgoing_target_port_.has_value() ||
+        *outgoing_target_host_ != target_host ||
+        *outgoing_target_port_ != target_port;
+
+    if (target_changed) {
+        close_outgoing_socket();
+    }
+
+    auto ensure_connected = [&]() -> bool {
+        if (outgoing_socket_.is_open()) {
+            return true;
+        }
+
+        ec.clear();
+        outgoing_socket_.connect(*endpoints.begin(), ec);
+        if (ec) {
+            result.success = false;
+            result.error_value = ec.value();
+            result.error_category = ec.category().name();
+            result.error_message = ec.message();
+            close_outgoing_socket();
+            return false;
+        }
+
+        outgoing_target_host_ = target_host;
+        outgoing_target_port_ = target_port;
+        return true;
+    };
+
+    if (!ensure_connected()) {
         return result;
     }
 
+    ec.clear();
     boost::asio::write(outgoing_socket_, boost::asio::buffer(packet.data), ec);
     if (ec) {
-        result.success = false;
-        result.error_value = ec.value();
-        result.error_category = ec.category().name();
-        result.error_message = ec.message();
+        // Retry once after reconnect in case peer closed the persistent socket.
         close_outgoing_socket();
-        return result;
+
+        if (!ensure_connected()) {
+            return result;
+        }
+
+        ec.clear();
+        boost::asio::write(outgoing_socket_, boost::asio::buffer(packet.data), ec);
+        if (ec) {
+            result.success = false;
+            result.error_value = ec.value();
+            result.error_category = ec.category().name();
+            result.error_message = ec.message();
+            close_outgoing_socket();
+            return result;
+        }
     }
 
-    close_outgoing_socket();
     result.success = true;
     return result;
 }
 
 void TcpSocket::close_outgoing_socket() {
+    outgoing_target_host_.reset();
+    outgoing_target_port_.reset();
+
     if (!outgoing_socket_.is_open()) {
         return;
     }

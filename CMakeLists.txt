@@ -18,7 +18,6 @@ set(SOURCES
     # Shared
     src/AppConfig.cpp
     src/main.cpp
-    src/ProxyEngine.cpp
     src/TcpSocket.cpp
     src/UdpSocket.cpp
     # CMS

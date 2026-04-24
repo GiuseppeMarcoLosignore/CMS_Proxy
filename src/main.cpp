@@ -3,27 +3,19 @@
 #include <thread>
 #include <string>
 #include <chrono>
-#include <boost/asio.hpp>
 
 #include "AcsEntity.hpp"
 #include "AppConfig.hpp"
 #include "CmsEntity.hpp"
 #include "EventBus.hpp"
 #include "NavsEntity.hpp"
-#include "ProxyEngine.hpp"
-#include "TcpSocket.hpp"
-#include "UdpSocket.hpp"
 
 int main(int argc, char* argv[]) {
     try {
         const std::string config_path = (argc > 1) ? argv[1] : "config/network_config.ini";
         const AppConfig config = loadAppConfig(config_path);
 
-        boost::asio::io_context delivery_io_ctx;
         auto event_bus = std::make_shared<EventBus>();
-        
-        auto acs_tcp_sender = std::make_shared<TcpSocket>(delivery_io_ctx);
-        auto acs_multicast_sender = std::make_shared<UdpSocket>(delivery_io_ctx);
 
         auto cms_entity = std::make_shared<CmsEntity>(
             config.cms, 
@@ -31,9 +23,7 @@ int main(int argc, char* argv[]) {
             
         auto acs_entity = std::make_shared<AcsEntity>(
             config.acs,
-            event_bus,
-            acs_tcp_sender,
-            acs_multicast_sender
+            event_bus
         );
 
         auto navs_entity = std::make_shared<NavsEntity>(
@@ -41,10 +31,9 @@ int main(int argc, char* argv[]) {
             event_bus
         );
 
-        ProxyEngine engine(
-            { cms_entity, acs_entity, navs_entity }
-        );
-        engine.run();
+        cms_entity->start();
+        acs_entity->start();
+        navs_entity->start();
 
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "
                   << config_path << std::endl;

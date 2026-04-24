@@ -8,6 +8,8 @@
 #include <iostream>
 
 #include <nlohmann/json.hpp>
+#include <boost/property_tree/ini_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 namespace {
 
@@ -49,13 +51,11 @@ std::optional<uint16_t> extract_header(const nlohmann::json& payload) {
 } // namespace
 
 AcsEntity::AcsEntity(const AcsConfig& config,
-                                         std::shared_ptr<EventBus> eventBus,
-                             std::shared_ptr<ISender> tcpSender,
-                             std::shared_ptr<ISender> multicastSender)
+                                         std::shared_ptr<EventBus> eventBus)
     : config_(config),
       eventBus_(std::move(eventBus)),
-    tcpSender_(std::move(tcpSender)),
-    multicastSender_(std::move(multicastSender)),
+    tcpSocket_(nullptr),
+    udpSocket_(nullptr),
     destinations_(config_.destinations),
       rxIoContext_(),
       rxWorkGuard_(std::nullopt) {
@@ -70,33 +70,29 @@ void AcsEntity::start() {
         startupConfig = config_;
     }
 
-    auto multicast_receiver = std::make_shared<UdpSocket>(
+    udpSocket_ = std::make_shared<UdpSocket>(
         rxIoContext_,
         kAnyListenIp,
         startupConfig.multicast_group,
         startupConfig.multicast_port
     );
 
-    auto tcp_receiver = std::make_shared<TcpSocket>(
+    tcpSocket_ = std::make_shared<TcpSocket>(
         rxIoContext_,
         startupConfig.tcp_listen_ip,
         startupConfig.tcp_listen_port
     );
 
-    multicast_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+    udpSocket_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
         onPacketReceived(packet, sourceInfo);
     });
 
-    tcp_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
+    tcpSocket_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
         onPacketReceived(packet, sourceInfo);
     });
 
-    receivers_.clear();
-    receivers_.push_back(multicast_receiver);
-    receivers_.push_back(tcp_receiver);
-    for (const auto& receiver : receivers_) {
-        receiver->start();
-    }
+    udpSocket_->start();
+    tcpSocket_->start();
 
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {
@@ -111,10 +107,12 @@ void AcsEntity::start() {
 }
 
 void AcsEntity::stop() {
-    for (const auto& receiver : receivers_) {
-        receiver->stop();
+    if (udpSocket_) {
+        udpSocket_->stop();
     }
-    receivers_.clear();
+    if (tcpSocket_) {
+        tcpSocket_->stop();
+    }
 
     if (rxWorkGuard_.has_value()) {
         rxWorkGuard_->reset();
@@ -173,71 +171,44 @@ void AcsEntity::handleConfigChanged(const EventBus::EventPtr& event) {
     }
 
     const AcsConfig newConfig = configEvent->acs;
-    AcsConfig oldConfig;
-    {
-        std::lock_guard<std::mutex> lock(configMutex_);
-        oldConfig = config_;
-    }
 
-    const bool receiverChanged =
-        (oldConfig.multicast_group != newConfig.multicast_group) ||
-        (oldConfig.multicast_port != newConfig.multicast_port) ||
-        (oldConfig.tcp_listen_ip != newConfig.tcp_listen_ip) ||
-        (oldConfig.tcp_listen_port != newConfig.tcp_listen_port);
-
-    {
-        std::lock_guard<std::mutex> lock(configMutex_);
-        config_ = newConfig;
-    }
+    std::map<uint16_t, AcsDestination> updatedDestinations;
     {
         std::lock_guard<std::mutex> lock(destinationsMutex_);
-        destinations_ = newConfig.destinations;
-    }
+        updatedDestinations = destinations_;
 
-    if (!receiverChanged) {
-        return;
-    }
-
-    try {
-        for (const auto& receiver : receivers_) {
-            receiver->stop();
-        }
-        receivers_.clear();
-
-        auto multicast_receiver = std::make_shared<UdpSocket>(
-            rxIoContext_,
-            kAnyListenIp,
-            newConfig.multicast_group,
-            newConfig.multicast_port
-        );
-
-        auto tcp_receiver = std::make_shared<TcpSocket>(
-            rxIoContext_,
-            newConfig.tcp_listen_ip,
-            newConfig.tcp_listen_port
-        );
-
-        multicast_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
-            onPacketReceived(packet, sourceInfo);
-        });
-
-        tcp_receiver->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
-            onPacketReceived(packet, sourceInfo);
-        });
-
-        receivers_.push_back(multicast_receiver);
-        receivers_.push_back(tcp_receiver);
-        for (const auto& receiver : receivers_) {
-            receiver->start();
+        const auto lrad1 = newConfig.destinations.find(1);
+        if (lrad1 != newConfig.destinations.end()) {
+            updatedDestinations[1] = lrad1->second;
         }
 
-        std::cout << "[ACS Entity] Config aggiornata: RX UDP "
-                  << newConfig.multicast_group << ":" << newConfig.multicast_port
-                  << ", RX TCP "
-                  << newConfig.tcp_listen_ip << ":" << newConfig.tcp_listen_port << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] Errore hot reload config: " << e.what() << std::endl;
+        const auto lrad2 = newConfig.destinations.find(2);
+        if (lrad2 != newConfig.destinations.end()) {
+            updatedDestinations[2] = lrad2->second;
+        }
+
+        destinations_ = updatedDestinations;
     }
+
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        config_.destinations = updatedDestinations;
+    }
+
+    auto describeDestination = [&updatedDestinations](uint16_t id) {
+        const auto it = updatedDestinations.find(id);
+        if (it == updatedDestinations.end()) {
+            return std::string("n/a");
+        }
+
+        return it->second.ip_address + ":" + std::to_string(it->second.port);
+    };
+
+    std::cout << "[ACS Entity] Config aggiornata: TCP unicast LRAD1 "
+              << describeDestination(1)
+              << ", LRAD2 "
+              << describeDestination(2)
+              << std::endl;
 }
 
 std::optional<AcsDestination> AcsEntity::findDestination(uint16_t id) const {
@@ -354,36 +325,30 @@ void AcsEntity::parseALIVE(const EventBus::EventPtr& event) {
             return;
         }
 
-        const char* configPath = "config/network_config.json";
-        std::ifstream configInput(configPath);
-        if (!configInput.is_open()) {
+        const char* configPath = "config/network_config.ini";
+
+        namespace pt = boost::property_tree;
+        pt::ptree tree;
+        try {
+            pt::ini_parser::read_ini(configPath, tree);
+        } catch (const pt::ini_parser::ini_parser_error& e) {
             std::cerr << "[ACS Entity] Impossibile aprire il file di configurazione: "
-                      << configPath << std::endl;
-            return;
-        }
-
-        nlohmann::json configJson;
-        configInput >> configJson;
-
-        if (!configJson.contains("acs") || !configJson.at("acs").is_object() ||
-            !configJson.at("acs").contains("destinations") || !configJson.at("acs").at("destinations").is_array()) {
-            std::cerr << "[ACS Entity] Struttura 'acs.destinations' non valida in "
-                      << configPath << std::endl;
+                      << e.what() << std::endl;
             return;
         }
 
         bool updated = false;
-        for (auto& destination : configJson["acs"]["destinations"]) {
-            if (!destination.is_object() || !destination.contains("id") || !destination.at("id").is_number_unsigned()) {
-                continue;
-            }
-
-            const auto idValue = static_cast<uint16_t>(destination.at("id").get<uint32_t>());
-            if (idValue == lradId) {
-                destination["name"] = sideName;
-                destination["ip"] = ip;
-                updated = true;
-                break;
+        if (const auto dests = tree.get_child_optional("acs.destination")) {
+            for (auto& [key, dest_node] : *dests) {
+                const auto idOpt = dest_node.get_optional<int>("id");
+                if (!idOpt.has_value()) {
+                    continue;
+                }
+                if (static_cast<uint16_t>(*idOpt) == lradId) {
+                    dest_node.put("ip", ip);
+                    updated = true;
+                    break;
+                }
             }
         }
 
@@ -393,13 +358,13 @@ void AcsEntity::parseALIVE(const EventBus::EventPtr& event) {
             return;
         }
 
-        std::ofstream configOutput(configPath, std::ios::trunc);
-        if (!configOutput.is_open()) {
+        try {
+            pt::ini_parser::write_ini(configPath, tree);
+        } catch (const std::exception& e) {
             std::cerr << "[ACS Entity] Impossibile scrivere il file di configurazione: "
-                      << configPath << std::endl;
+                      << e.what() << std::endl;
             return;
         }
-        configOutput << configJson.dump(2);
 
         std::lock_guard<std::mutex> lock(destinationsMutex_);
         const auto destinationIt = destinations_.find(lradId);
@@ -967,11 +932,11 @@ void AcsEntity::createTRACKING(const EventBus::EventPtr& event) {
 
 
 void AcsEntity::sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination) {
-    if (!tcpSender_) {
+    if (!tcpSocket_) {
         return;
     }
 
-    const SendResult result = tcpSender_->send(
+    const SendResult result = tcpSocket_->send(
         packet,
         destination.ip_address,
         destination.port
@@ -985,7 +950,7 @@ void AcsEntity::sendToTcpDestination(const RawPacket& packet, const AcsDestinati
 }
 
 void AcsEntity::sendToMulticast(const RawPacket& packet) {
-    if (!multicastSender_) {
+    if (!udpSocket_) {
         return;
     }
 
@@ -997,7 +962,7 @@ void AcsEntity::sendToMulticast(const RawPacket& packet) {
         txPort = config_.tx_multicast_port;
     }
 
-    const SendResult result = multicastSender_->send(
+    const SendResult result = udpSocket_->send(
         packet,
         txGroup,
         txPort
