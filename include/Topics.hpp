@@ -4,24 +4,24 @@ namespace Topics {
 
 // ACS
 inline constexpr const char* AcsOutgoingJson = "acs.outgoing_json";
-inline constexpr const char* AcsAlive = "ALIVE";
-inline constexpr const char* AcsDiagnostic = "DIAGNOSTIC";
-inline constexpr const char* AcsError = "ERROR";
-inline constexpr const char* AcsContext = "CONTEXT";
-inline constexpr const char* AcsSet = "SET";
-inline constexpr const char* AcsService = "SERVICE";
-inline constexpr const char* AcsAlert = "ALERT";
-inline constexpr const char* AcsMeteo = "METEO";
-inline constexpr const char* AcsPower = "POWER";
-inline constexpr const char* AcsReboot = "REBOOT";
-inline constexpr const char* AcsAudio = "AUDIO";
-inline constexpr const char* AcsLad = "LAD";
-inline constexpr const char* AcsSearchlight = "SEARCHLIGHT";
-inline constexpr const char* AcsLrf = "LRF";
-inline constexpr const char* AcsShadow = "SHADOW";
-inline constexpr const char* AcsZoom = "ZOOM";
-inline constexpr const char* AcsMaster = "MASTER";
-inline constexpr const char* AcsPosition = "POSITION";
+inline constexpr const char* AcsAlive = "ALIVE_";
+inline constexpr const char* AcsDiagnostic = "DIAGNOSTIC_";
+inline constexpr const char* AcsError = "ERROR_";
+inline constexpr const char* AcsContext = "CONTEXT_";
+inline constexpr const char* AcsSet = "SET_";
+inline constexpr const char* AcsService = "SERVICE_";
+inline constexpr const char* AcsAlert = "ALERT_";
+inline constexpr const char* AcsMeteo = "METEO_";
+inline constexpr const char* AcsPower = "POWER_";
+inline constexpr const char* AcsReboot = "REBOOT_";
+inline constexpr const char* AcsAudio = "AUDIO_";
+inline constexpr const char* AcsLad = "LAD_";
+inline constexpr const char* AcsSearchlight = "SEARCHLIGHT_";
+inline constexpr const char* AcsLrf = "LRF_";
+inline constexpr const char* AcsShadow = "SHADOW_";
+inline constexpr const char* AcsZoom = "ZOOM_";
+inline constexpr const char* AcsMaster = "MASTER_";
+inline constexpr const char* AcsPosition = "POSITION_";
 
 // CC - ATOM
 inline constexpr const char* CcAtomAudio = "AUDIO";

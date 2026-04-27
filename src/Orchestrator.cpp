@@ -52,8 +52,10 @@ void Orchestrator::subscribeTopics() {
         return;
     }
 
-    // CMS topics
+
+    //ACS topics
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
+        acsEntity_.createMASTER(event);
         cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
@@ -61,31 +63,10 @@ void Orchestrator::subscribeTopics() {
         cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_INS, [this](const EventBus::EventPtr& event) {
+
+        start_cueing();
         cmsEntity_.sendLRAS_CS_ack_INS(event);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const EventBus::EventPtr& event) {
-        cmsEntity_.sendLRAS_CS_lrad_1_status_INS(event);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_CS_lrad_2_status_INS, [this](const EventBus::EventPtr& event) {
-        cmsEntity_.sendLRAS_CS_lrad_2_status_INS(event);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_MULTI_full_status_v2_INS, [this](const EventBus::EventPtr& event) {
-        cmsEntity_.sendLRAS_MULTI_full_status_v2_INS(event);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_MULTI_health_status_INS, [this](const EventBus::EventPtr& event) {
-        cmsEntity_.sendLRAS_MULTI_health_status_INS(event);
-    });
-
-
-
-    //ACS topics
-    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
-        acsEntity_.createMASTER(event);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const EventBus::EventPtr& event) {
@@ -95,18 +76,68 @@ void Orchestrator::subscribeTopics() {
         acsEntity_.createLRF(event);
         acsEntity_.createZOOM(event);
         acsEntity_.createLRF(event);
-    });   
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+    });  
+    
+    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const EventBus::EventPtr& event) {
+
+        const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
+        if (!dispatchEvent) {
+            return;
+        }
+
+        const RawPacket& packet = dispatchEvent->packet;
+
+
+        nlohmann::json payload;
+        try {
+            payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+
+            
+
+            if (payload.contains("Audio Enable")) {
+                enablePayload(PayoladType::AUDIO, payload.at("Audio Enable"));
+            }
+
+            if (payload.contains("Laser Enable")) {
+                enablePayload(PayoladType::LAD, payload.at("Laser Enable"));
+            }
+
+            if (payload.contains("Light Enable")) {
+                enablePayload(PayoladType::SEARCHLIGHT, payload.at("Light Enable"));
+            }
+
+            if (payload.contains("Laser Range Finder Enable")) {
+                enablePayload(PayoladType::LRF, payload.at("Laser Range Finder Enable"));
+            }
+
+        } catch (const std::exception& e) {
+            std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+            return;
+        }
+
+
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+    }); 
 
     eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const EventBus::EventPtr& event) {
         acsEntity_.createSHADOW(event);
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const EventBus::EventPtr& event) {
         acsEntity_.createDELTA(event);
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const EventBus::EventPtr& event) {
         acsEntity_.createDELTA(event);
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
     

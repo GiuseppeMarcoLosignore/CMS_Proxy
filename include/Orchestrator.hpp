@@ -61,6 +61,11 @@ struct Lrad_full {
 
     float gain = 0.0F;
     bool mute = false;
+
+    bool audioEnabled = false;
+    bool ladEnabled = false;
+    bool searchlightEnabled = false;
+    bool lrfEnabled = false;
     
 
     bool cmsControl = false; // Indicates if CMS is currently controlling this LRAD
@@ -100,6 +105,8 @@ public:
     bool isPayloadEnabled(PayoladType type) const;
     bool isShadowEnabled() const;
 
+    void enablePayload(PayoladType type, std::string enable);
+
     void setLradFullStatus(Lrad_full status, std::string name_);
     void setLrasFullStatus(Lras_full status);
     Lrad_full getLradFullStatus(const std::string& name_) const;
@@ -115,6 +122,8 @@ public:
     void extractZOOMdata(const nlohmann::json& payload);
     void extractMASTERdata(const nlohmann::json& payload);
     void extractPOSITIONdata(const nlohmann::json& payload);
+
+    void start_cueing();
 
 
 private:
