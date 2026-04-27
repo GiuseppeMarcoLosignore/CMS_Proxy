@@ -30,7 +30,7 @@ public:
     void start() override;
     void stop() override;
 
-private:
+
     struct ParsedHeader {
         uint32_t messageId = 0;
         uint16_t messageLength = 0;
@@ -76,6 +76,7 @@ private:
     void sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const;
     void sendMulticastPacket(const RawPacket& packet, const char* messageName) const;
 
+private:
     CmsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
 

@@ -14,6 +14,14 @@ inline constexpr const char* AcsAlert = "ALERT";
 inline constexpr const char* AcsMeteo = "METEO";
 inline constexpr const char* AcsPower = "POWER";
 inline constexpr const char* AcsReboot = "REBOOT";
+inline constexpr const char* AcsAudio = "AUDIO";
+inline constexpr const char* AcsLad = "LAD";
+inline constexpr const char* AcsSearchlight = "SEARCHLIGHT";
+inline constexpr const char* AcsLrf = "LRF";
+inline constexpr const char* AcsShadow = "SHADOW";
+inline constexpr const char* AcsZoom = "ZOOM";
+inline constexpr const char* AcsMaster = "MASTER";
+inline constexpr const char* AcsPosition = "POSITION";
 
 // CC - ATOM
 inline constexpr const char* CcAtomAudio = "AUDIO";

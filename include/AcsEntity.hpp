@@ -36,7 +36,7 @@ public:
     void start() override;
     void stop() override;
 
-private:
+
     void subscribeTopics();
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void handleOutgoingJsonEvent(const EventBus::EventPtr& event);
@@ -44,6 +44,7 @@ private:
     void sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination);
     void sendToMulticast(const RawPacket& packet);
     std::optional<AcsDestination> findDestination(uint16_t id) const;
+    std::optional<AcsDestination> findDestination(const std::string& ip) const;
 
     void createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload);
 
@@ -60,7 +61,7 @@ private:
     void createDELTA(const EventBus::EventPtr& event);
     void createTRACKING(const EventBus::EventPtr& event);
 
-
+private:
     AcsConfig config_;
     std::shared_ptr<EventBus> eventBus_;
     std::shared_ptr<TcpSocket> tcpSocket_;

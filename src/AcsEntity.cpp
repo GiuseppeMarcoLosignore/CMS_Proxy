@@ -223,6 +223,17 @@ std::optional<AcsDestination> AcsEntity::findDestination(uint16_t id) const {
     return destinationIt->second;
 }
 
+std::optional<AcsDestination> AcsEntity::findDestination(const std::string& ip) const {
+    std::lock_guard<std::mutex> lock(destinationsMutex_);
+    for (const auto& [_, destination] : destinations_) {
+        if (destination.ip_address == ip) {
+            return destination;
+        }
+    }
+
+    return std::nullopt;
+}
+
 void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
     const auto outgoing = std::dynamic_pointer_cast<const AcsOutgoingJsonEvent>(event);
     if (!outgoing) {
@@ -240,7 +251,7 @@ void AcsEntity::handleOutgoingJsonEvent(const EventBus::EventPtr& event) {
     sendToMulticast(outgoing->packet);
 }
 
-void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
+void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
     if (!eventBus_) {
         return;
     }
@@ -256,6 +267,20 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     }
 
     const auto destinationId = extract_header(payload);
+
+    if(payload["sender"] == "ACS") {
+        const auto destination = findDestination(sourceInfo.source_ip);
+        if (destination.has_value()) {
+            if(destination->id == 1) {
+                payload["sender"] = "LRAD1";
+            }
+            else if(destination->id == 2) {
+                payload["sender"] = "LRAD2";
+            }
+        }
+    }
+    
+
     if (destinationId.has_value()) {
         auto outgoingEvent = std::make_shared<AcsOutgoingJsonEvent>();
         outgoingEvent->Topic = sendTopic;
