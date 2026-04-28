@@ -26,6 +26,23 @@ using json = nlohmann::json;
 
 constexpr std::size_t HeaderSize = 16;
 constexpr uint32_t MessageId_LRAS_CS_ack_INS = 576978945;
+constexpr uint32_t MessageId_LRAS_CS_change_configuration_request_INS = 576978946;
+constexpr uint32_t MessageLength_LRAS_CS_change_configuration_request_INS = 4; // LRAD ID(2) + Configuration(2)
+constexpr uint32_t MessageId_LRAS_CS_emission_mode_feedback_INS = 576978955;
+constexpr uint32_t MessageLength_LRAS_CS_emission_mode_feedback_INS = 32; // ActionId(4)+LRAD ID(2)+AudioEnable(2)+Levels(12)+LaserEnable(2)+LaserMinDist(4)+LightEnable(2)+LightMaxW(2)+LRFEnable(2)
+constexpr uint32_t MessageId_LRAS_CS_engagement_capability_INS = 576978947;
+constexpr uint32_t MessageLength_LRAS_CS_engagement_capability_INS = 80; // ActionId(4)+CSTN(4)+LRAD1(36)+LRAD2(36)
+constexpr uint32_t MessageId_LRAS_CS_hw_limit_warning_INS = 576978948;
+constexpr uint32_t MessageLength_LRAS_CS_hw_limit_warning_INS = 6; // LRAD ID(2) + Limit(4)
+constexpr uint32_t MessageId_LRAS_CS_installation_data_INS = 576978956;
+constexpr uint32_t MessageLength_LRAS_CS_installation_data_INS = 44; // ActionId(4)+LRAD1(20)+LRAD2(20)
+constexpr uint32_t MessageId_LRAS_CS_message_table_INS = 576978951;
+constexpr uint32_t MessageId_LRAS_CS_software_version_INS = 576978952;
+constexpr uint32_t MessageLength_LRAS_CS_software_version_INS = 288; // 18 fixed strings x 16 bytes
+constexpr uint32_t MessageId_LRAS_CS_thresholds_INS = 576978953;
+constexpr uint32_t MessageLength_LRAS_CS_thresholds_INS = 60; // ActionId(4)+LRAD1(28)+LRAD2(28)
+constexpr uint32_t MessageId_LRAS_CS_translation_INS = 576978954;
+constexpr uint32_t MessageLength_LRAS_CS_translation_INS = 780; // ActionId(4)+LRAD ID(2)+Status(2)+FreeText(772)
 constexpr uint32_t MessageId_LRAS_CS_lrad_1_status_INS = 576978949;
 constexpr uint32_t MessageId_LRAS_CS_lrad_2_status_INS = 576978950;
 constexpr uint32_t MessageId_CS_LRAS_change_configuration_order_INS = 1679949825;
@@ -553,6 +570,10 @@ void CmsEntity::subscribeTopics() {
 
     eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const EventBus::EventPtr& event) {
         sendLRAS_CS_ack_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::LRAS_CS_change_configuration_request_INS, [this](const EventBus::EventPtr& event) {
+        sendLRAS_CS_change_configuration_request_INS(event);
     });
 
     eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const EventBus::EventPtr& event) {
@@ -1843,11 +1864,402 @@ void CmsEntity::periodicMessages() {
             auto eventHealthStatus = std::make_shared<CmsDispatchTopicPacketEvent>();
             eventHealthStatus->dispatchTopic = Topics::LRAS_MULTI_health_status_INS;
             eventHealthStatus->packet = make_empty_packet();
-            eventBus_->publish(eventHealthStatus);            
+            eventBus_->publish(eventHealthStatus);
 
             periodicMessages();
         }
     });
+}
+
+void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_change_configuration_request_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_change_configuration_request_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_change_configuration_request_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
+    const uint16_t lradId = 1; // TODO: retrieve from system
+    append_u16_be(packet.data, lradId);
+
+    // Configuration: 0 = Local, 1 = Integrated
+    const uint16_t configuration = 0; // TODO: retrieve from system
+    append_u16_be(packet.data, configuration);
+
+    sendMulticastPacket(packet, "LRAS_CS_change_configuration_request_INS");
+}
+
+void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_emission_mode_feedback_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_emission_mode_feedback_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_emission_mode_feedback_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // Action Id
+    const uint32_t actionId = 0; // TODO: retrieve from system
+    append_u32_be(packet.data, actionId);
+
+    // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
+    const uint16_t lradId = 1; // TODO: retrieve from system
+    append_u16_be(packet.data, lradId);
+
+    // Audio Enable: 0 = Disable, 1 = Enable
+    const uint16_t audioEnable = 0; // TODO: retrieve from system
+    append_u16_be(packet.data, audioEnable);
+
+    // Audio Volume levels (3 x float, dB, [-128..0])
+    const float audioLevel1 = -128.0f; // TODO: retrieve from system
+    const float audioLevel2 = -128.0f; // TODO: retrieve from system
+    const float audioLevel3 = -128.0f; // TODO: retrieve from system
+    append_f32_be(packet.data, audioLevel1);
+    append_f32_be(packet.data, audioLevel2);
+    append_f32_be(packet.data, audioLevel3);
+
+    // Laser Enable: 0 = Disable, 1 = Enable
+    const uint16_t laserEnable = 0; // TODO: retrieve from system
+    append_u16_be(packet.data, laserEnable);
+
+    // Laser Min Distance [100..6000] m
+    const int32_t laserMinDistance = 100; // TODO: retrieve from system
+    append_u32_be(packet.data, static_cast<uint32_t>(laserMinDistance));
+
+    // Light Enable: 0 = Disable, 1 = Enable
+    const uint16_t lightEnable = 0; // TODO: retrieve from system
+    append_u16_be(packet.data, lightEnable);
+
+    // Light Max W: 0 = Off, 1 = 35W, 2 = 45W, 3 = 85W
+    const uint16_t lightMaxW = 0; // TODO: retrieve from system
+    append_u16_be(packet.data, lightMaxW);
+
+    // Laser Range Finder Enable: 0 = Disable, 1 = Enable
+    const uint16_t lrfEnable = 0; // TODO: retrieve from system
+    append_u16_be(packet.data, lrfEnable);
+
+    sendMulticastPacket(packet, "LRAS_CS_emission_mode_feedback_INS");
+}
+
+void CmsEntity::sendLRAS_CS_engagement_capability_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    // Helper lambda: appends one 36-byte LRAD capability block
+    auto append_lrad_capability = [this](std::vector<uint8_t>& buf) {
+        // Engagement possible: 0=unknown,1=not attainable,2=LRAD not available,3=CST in blind arc,4=engagement possible
+        append_u16_be(buf, 0); // TODO: retrieve from system
+
+        // Searchlight capability: 0=FALSE, 1=TRUE
+        append_u16_be(buf, 0); // TODO: retrieve from system
+
+        // Warning capability (10 bytes): capability(2) + min db(4) + max db(4)
+        append_u16_be(buf, 0);      // capability: TODO: retrieve from system
+        append_f32_be(buf, -128.0f); // min db: TODO: retrieve from system
+        append_f32_be(buf, -128.0f); // max db: TODO: retrieve from system
+
+        // Dissuasion capability (10 bytes): capability(2) + min db(4) + max db(4)
+        append_u16_be(buf, 0);      // capability: TODO: retrieve from system
+        append_f32_be(buf, -128.0f); // min db: TODO: retrieve from system
+        append_f32_be(buf, -128.0f); // max db: TODO: retrieve from system
+
+        // Persuasion capability (10 bytes): capability(2) + min db(4) + max db(4)
+        append_u16_be(buf, 0);      // capability: TODO: retrieve from system
+        append_f32_be(buf, -128.0f); // min db: TODO: retrieve from system
+        append_f32_be(buf, -128.0f); // max db: TODO: retrieve from system
+
+        // Laser dazzler capability: 0=FALSE, 1=TRUE
+        append_u16_be(buf, 0); // TODO: retrieve from system
+    };
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_engagement_capability_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_engagement_capability_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_engagement_capability_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // Action Id
+    const uint32_t actionId = 0; // TODO: retrieve from system
+    append_u32_be(packet.data, actionId);
+
+    // CSTN - Combat System Track Number [1..9999]
+    const int32_t cstn = 1; // TODO: retrieve from system
+    append_u32_be(packet.data, static_cast<uint32_t>(cstn));
+
+    // LRAD 1 capability block (36 bytes)
+    append_lrad_capability(packet.data);
+
+    // LRAD 2 capability block (36 bytes)
+    append_lrad_capability(packet.data);
+
+    sendMulticastPacket(packet, "LRAS_CS_engagement_capability_INS");
+}
+
+void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_hw_limit_warning_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_hw_limit_warning_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_hw_limit_warning_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
+    const uint16_t lradId = 1; // TODO: retrieve from system
+    append_u16_be(packet.data, lradId);
+
+    // Limit: bordo al quale ci si sta' avvicinando [-180..180] deg
+    const int32_t limit = 0; // TODO: retrieve from system
+    append_u32_be(packet.data, static_cast<uint32_t>(limit));
+
+    sendMulticastPacket(packet, "LRAS_CS_hw_limit_warning_INS");
+}
+
+void CmsEntity::sendLRAS_CS_installation_data_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    // Helper lambda: appends one 20-byte LRAD installation data block
+    auto append_lrad_inst_data = [this](std::vector<uint8_t>& buf) {
+        // HW active arc: start and stop [-180..180] deg
+        append_f32_be(buf, 0.0f); // arc start: TODO: retrieve from system
+        append_f32_be(buf, 0.0f); // arc stop:  TODO: retrieve from system
+
+        // Pos_crp: X, Y [-400000..400000] m; Z [-5000..40000] m
+        append_f32_be(buf, 0.0f); // X: TODO: retrieve from system
+        append_f32_be(buf, 0.0f); // Y: TODO: retrieve from system
+        append_f32_be(buf, 0.0f); // Z: TODO: retrieve from system
+    };
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_installation_data_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_installation_data_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_installation_data_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // Action Id
+    const uint32_t actionId = 0; // TODO: retrieve from system
+    append_u32_be(packet.data, actionId);
+
+    // LRAD 1 installation data (20 bytes)
+    append_lrad_inst_data(packet.data);
+
+    // LRAD 2 installation data (20 bytes)
+    append_lrad_inst_data(packet.data);
+
+    sendMulticastPacket(packet, "LRAS_CS_installation_data_INS");
+}
+
+void CmsEntity::sendLRAS_CS_message_table_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    constexpr uint16_t totalMessagesNumber = 1; // TODO: retrieve from system
+    constexpr uint16_t messageNumber = 1;       // TODO: retrieve from system
+    constexpr uint16_t dbItemsNumber = 1;       // TODO: retrieve from system
+
+    // One placeholder DB item with one language to keep binary layout valid.
+    constexpr uint32_t messageId = 1;           // TODO: retrieve from system
+    constexpr uint16_t numberOfLanguages = 1;   // TODO: retrieve from system
+    constexpr uint32_t recordId = 1;            // TODO: retrieve from system
+    constexpr uint16_t language = 1;            // TODO: retrieve from system (0=IT,1=EN,2=AR,99=Tone)
+    constexpr uint8_t associatedAudio = 1;      // TODO: retrieve from system
+
+    const std::string summaryText = "placeholder"; // TODO: retrieve from system
+    const std::string messageText = "placeholder"; // TODO: retrieve from system
+
+    const uint32_t payloadLength = 6u + 4u + 32u + 2u +
+                                   static_cast<uint32_t>(numberOfLanguages) * (4u + 2u + 1u + 768u);
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + payloadLength);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_message_table_INS);
+    append_u32_be(packet.data, payloadLength + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // Frame-level fields
+    append_u16_be(packet.data, totalMessagesNumber);
+    append_u16_be(packet.data, messageNumber);
+    append_u16_be(packet.data, dbItemsNumber);
+
+    // DB item
+    append_u32_be(packet.data, messageId);
+
+    std::vector<uint8_t> summary(32, 0);
+    const std::size_t summaryLen = std::min<std::size_t>(summaryText.size(), summary.size());
+    std::memcpy(summary.data(), summaryText.data(), summaryLen);
+    packet.data.insert(packet.data.end(), summary.begin(), summary.end());
+
+    append_u16_be(packet.data, numberOfLanguages);
+
+    // Text block (1 language placeholder)
+    append_u32_be(packet.data, recordId);
+    append_u16_be(packet.data, language);
+    packet.data.push_back(associatedAudio);
+
+    std::vector<uint8_t> text(768, 0);
+    const std::size_t textLen = std::min<std::size_t>(messageText.size(), text.size());
+    std::memcpy(text.data(), messageText.data(), textLen);
+    packet.data.insert(packet.data.end(), text.begin(), text.end());
+
+    sendMulticastPacket(packet, "LRAS_CS_message_table_INS");
+}
+
+void CmsEntity::sendLRAS_CS_software_version_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    auto append_fixed_string_16 = [](std::vector<uint8_t>& buffer, const std::string& value) {
+        std::vector<uint8_t> field(16, 0);
+        const std::size_t copyLen = (value.size() < field.size()) ? value.size() : field.size();
+        std::memcpy(field.data(), value.data(), copyLen);
+        buffer.insert(buffer.end(), field.begin(), field.end());
+    };
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_software_version_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_software_version_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_software_version_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // LRAS Server (2 x 16 bytes)
+    append_fixed_string_16(packet.data, "LRAS-SW");      // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+
+    // LRAD 1 / CPU Master
+    append_fixed_string_16(packet.data, "LRAD1-M-SW");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    // LRAD 1 / CPU Slave
+    append_fixed_string_16(packet.data, "LRAD1-S-SW");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    // LRAD 1 / CPU Tracking
+    append_fixed_string_16(packet.data, "LRAD1-T-SW");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+
+    // LRAD 2 / CPU Master
+    append_fixed_string_16(packet.data, "LRAD2-M-SW");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    // LRAD 2 / CPU Slave
+    append_fixed_string_16(packet.data, "LRAD2-S-SW");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    // LRAD 2 / CPU Tracking
+    append_fixed_string_16(packet.data, "LRAD2-T-SW");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+
+    // LRAS Console 1
+    append_fixed_string_16(packet.data, "CONSOLE1-SW");  // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+
+    // LRAS Console 2
+    append_fixed_string_16(packet.data, "CONSOLE2-SW");  // TODO: retrieve from system
+    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+
+    sendMulticastPacket(packet, "LRAS_CS_software_version_INS");
+}
+
+void CmsEntity::sendLRAS_CS_thresholds_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    auto append_lrad_thresholds = [this](std::vector<uint8_t>& buffer) {
+        // Distances are in meters; placeholder values until system integration is available.
+        const int32_t warningDistance = 1;        // TODO: retrieve from system [1..10000]
+        const int32_t dissuasionDistance = 1;     // TODO: retrieve from system [1..10000]
+        const int32_t persuasionDistance = 1;     // TODO: retrieve from system [1..10000]
+        const int32_t nohdDistance = 1;           // TODO: retrieve from system [1..1000]
+        const int32_t acousticDamageDistance = 1; // TODO: retrieve from system [1..1000]
+        const int32_t maxDazzlerDistance = 1;     // TODO: retrieve from system [1..10000]
+        const int32_t maxLightDistance = 1;       // TODO: retrieve from system [1..10000]
+
+        append_u32_be(buffer, static_cast<uint32_t>(warningDistance));
+        append_u32_be(buffer, static_cast<uint32_t>(dissuasionDistance));
+        append_u32_be(buffer, static_cast<uint32_t>(persuasionDistance));
+        append_u32_be(buffer, static_cast<uint32_t>(nohdDistance));
+        append_u32_be(buffer, static_cast<uint32_t>(acousticDamageDistance));
+        append_u32_be(buffer, static_cast<uint32_t>(maxDazzlerDistance));
+        append_u32_be(buffer, static_cast<uint32_t>(maxLightDistance));
+    };
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_thresholds_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_thresholds_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_thresholds_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // Action Id
+    const uint32_t actionId = 0; // TODO: retrieve from system
+    append_u32_be(packet.data, actionId);
+
+    // LRAD 1 thresholds (28 bytes)
+    append_lrad_thresholds(packet.data);
+
+    // LRAD 2 thresholds (28 bytes)
+    append_lrad_thresholds(packet.data);
+
+    sendMulticastPacket(packet, "LRAS_CS_thresholds_INS");
+}
+
+void CmsEntity::sendLRAS_CS_translation_INS(const EventBus::EventPtr& event) const {
+    (void)event;
+
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_translation_INS);
+
+    // Header
+    append_u32_be(packet.data, MessageId_LRAS_CS_translation_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_translation_INS + HeaderSize);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    // Action Id
+    const uint32_t actionId = 0; // TODO: retrieve from system
+    append_u32_be(packet.data, actionId);
+
+    // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
+    const uint16_t lradId = 1; // TODO: retrieve from system
+    append_u16_be(packet.data, lradId);
+
+    // Status: 1=Wait, 2=Ok, 3=Refused, 4=Timeout, 5=Unsolicited
+    const uint16_t status = 2; // TODO: retrieve from system
+    append_u16_be(packet.data, status);
+
+    // Free text block (valid when status is Ok or Unsolicited)
+    // Language in: 0=Italian, 1=English, 2=Arabic-Egypt, 99=Tone
+    const uint16_t languageIn = 1; // TODO: retrieve from system
+    append_u16_be(packet.data, languageIn);
+
+    // Language out: 0=Italian, 1=English, 2=Arabic-Egypt, 99=Tone
+    const uint16_t languageOut = 0; // TODO: retrieve from system
+    append_u16_be(packet.data, languageOut);
+
+    const std::string messageText = "placeholder"; // TODO: retrieve from system
+    std::vector<uint8_t> text(768, 0);
+    const std::size_t textLen = std::min<std::size_t>(messageText.size(), text.size());
+    std::memcpy(text.data(), messageText.data(), textLen);
+    packet.data.insert(packet.data.end(), text.begin(), text.end());
+
+    sendMulticastPacket(packet, "LRAS_CS_translation_INS");
 }
 
 void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const {

@@ -60,6 +60,7 @@ void Orchestrator::subscribeTopics() {
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const EventBus::EventPtr& event) {
+        stop_cueing();
         cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
@@ -70,12 +71,17 @@ void Orchestrator::subscribeTopics() {
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const EventBus::EventPtr& event) {
-        acsEntity_.createSEARCHLIGHT(event);
-        acsEntity_.createAUDIO(event);
-        acsEntity_.createLAD(event);
-        acsEntity_.createLRF(event);
+
+        if(isPayloadEnabled(PayoladType::SEARCHLIGHT))
+            acsEntity_.createSEARCHLIGHT(event);
+        if(isPayloadEnabled(PayoladType::AUDIO))
+            acsEntity_.createAUDIO(event);
+        if(isPayloadEnabled(PayoladType::LAD))
+            acsEntity_.createLAD(event);
+        if(isPayloadEnabled(PayoladType::LRF))
+            acsEntity_.createLRF(event);
+
         acsEntity_.createZOOM(event);
-        acsEntity_.createLRF(event);
 
         cmsEntity_.sendLRAS_CS_ack_INS(event);
     });  
@@ -123,21 +129,79 @@ void Orchestrator::subscribeTopics() {
     }); 
 
     eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const EventBus::EventPtr& event) {
+
         acsEntity_.createSHADOW(event);
 
         cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const EventBus::EventPtr& event) {
+
         acsEntity_.createDELTA(event);
 
         cmsEntity_.sendLRAS_CS_ack_INS(event);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const EventBus::EventPtr& event) {
+
         acsEntity_.createDELTA(event);
 
         cmsEntity_.sendLRAS_CS_ack_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_recording_command_INS, [this](const EventBus::EventPtr& event) {
+        
+        manage_recording();
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_emission_mode_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_emission_mode_feedback_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_engagement_capability_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_engagement_capability_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_full_status_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_MULTI_full_status_v2_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_installation_data_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_installation_data_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_software_version_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_software_version_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_message_table_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_message_table_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_thresholds_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_thresholds_INS(event);
+    });
+
+    eventBus_->subscribe(Topics::CS_LRAS_request_translation_INS, [this](const EventBus::EventPtr& event) {
+
+        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_translation_INS(event);
     });
 
     

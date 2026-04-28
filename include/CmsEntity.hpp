@@ -70,10 +70,20 @@ public:
     RawPacket parse_NAVS_MULTI_ships_admin_force_time_INS(const RawPacket& packet) const;
 
     void sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_change_configuration_request_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_emission_mode_feedback_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_engagement_capability_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_hw_limit_warning_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_installation_data_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_message_table_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_software_version_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_thresholds_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_translation_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const;
     void sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const;
+    
     void sendMulticastPacket(const RawPacket& packet, const char* messageName) const;
 
 private:

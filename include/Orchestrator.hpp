@@ -101,7 +101,7 @@ public:
     bool isDataUpdated() const;
     bool isAcsConnected() const;
     bool isCmsConnected() const;
-    bool isLradControlledByCms() const;
+    bool isLradControlledByCms(int lradIndex) const;
     bool isPayloadEnabled(PayoladType type) const;
     bool isShadowEnabled() const;
 
@@ -124,6 +124,9 @@ public:
     void extractPOSITIONdata(const nlohmann::json& payload);
 
     void start_cueing();
+    void stop_cueing();
+    void manage_recording();
+
 
 
 private:
