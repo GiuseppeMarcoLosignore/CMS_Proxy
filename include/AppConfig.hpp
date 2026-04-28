@@ -29,26 +29,11 @@ struct CmsConfig {
     std::string multicast_group;
     std::vector<std::string> multicast_groups;
     uint16_t multicast_port = 0;
-    std::vector<MulticastEndpoint> navs_multicast_endpoints;
-};
-
-struct NavsTopicBinding {
-    uint32_t message_id = 0;
-    std::string topic;
-};
-
-struct NavsConfig {
-    bool enabled = false;
-    std::string multicast_group;
-    std::vector<std::string> multicast_groups;
-    uint16_t multicast_port = 0;
-    std::vector<NavsTopicBinding> topic_bindings;
 };
 
 struct AppConfig {
     CmsConfig cms;
     AcsConfig acs;
-    NavsConfig navs;
 };
 
 struct NetworkConfigChangedEvent : public IEvent {

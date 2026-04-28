@@ -19,15 +19,6 @@
 class TcpSocket;
 class UdpSocket;
 
-struct AcsOutgoingJsonEvent : public IEvent {
-    std::string Topic;
-    RawPacket packet;
-    nlohmann::json payload;
-    uint16_t destinationId = 0;
-    int nackreason = 0;
-    const std::string& topic() const override { return Topic; }
-};
-
 class AcsEntity : public IEntity {
 public:
     AcsEntity(const AcsConfig& config,
@@ -39,8 +30,8 @@ public:
 
     void subscribeTopics();
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
-    void handleOutgoingJsonEvent(const EventBus::EventPtr& event);
-    void handleConfigChanged(const EventBus::EventPtr& event);
+    void handleOutgoingJsonEvent(const std::string& topic, const nlohmann::json& message);
+    void handleConfigChanged(const std::string& topic, const nlohmann::json& message);
     void sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination);
     void sendToMulticast(const RawPacket& packet);
     std::optional<AcsDestination> findDestination(uint16_t id) const;
@@ -50,16 +41,16 @@ public:
 
 
 
-    void createAUDIO(const EventBus::EventPtr& event);
-    void createLAD(const EventBus::EventPtr& event);
-    void createSEARCHLIGHT(const EventBus::EventPtr& event);
-    void createLRF(const EventBus::EventPtr& event);
-    void createSHADOW(const EventBus::EventPtr& event);
-    void createZOOM(const EventBus::EventPtr& event);
-    void createMASTER(const EventBus::EventPtr& event);
-    void createPOSITION(const EventBus::EventPtr& event);
-    void createDELTA(const EventBus::EventPtr& event);
-    void createTRACKING(const EventBus::EventPtr& event);
+    void createAUDIO(const nlohmann::json& message);
+    void createLAD(const nlohmann::json& message);
+    void createSEARCHLIGHT(const nlohmann::json& message);
+    void createLRF(const nlohmann::json& message);
+    void createSHADOW(const nlohmann::json& message);
+    void createZOOM(const nlohmann::json& message);
+    void createMASTER(const nlohmann::json& message);
+    void createPOSITION(const nlohmann::json& message);
+    void createDELTA(const nlohmann::json& message);
+    void createTRACKING(const nlohmann::json& message);
 
 private:
     AcsConfig config_;

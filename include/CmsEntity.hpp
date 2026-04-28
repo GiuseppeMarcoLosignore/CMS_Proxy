@@ -6,13 +6,6 @@
 
 #include "Topics.hpp"
 
-struct CmsDispatchTopicPacketEvent : public IEvent {
-    std::string dispatchTopic;
-    RawPacket packet;
-    uint16_t nackreason = 0;
-    const std::string& topic() const override { return dispatchTopic; }
-};
-
 #include <boost/asio.hpp>
 #include <chrono>
 #include <memory>
@@ -40,49 +33,51 @@ public:
     void subscribeTopics();
     void periodicMessages();
 
-    ConversionResult convertIncomingPacket(const RawPacket& packet) const;
+    bool convertIncomingPacket(const RawPacket& packet,
+                               std::string& outTopic,
+                               nlohmann::json& outMessage) const;
     bool parseHeader(const RawPacket& packet, ParsedHeader& out) const;
 
-    RawPacket parse_CS_LRAS_change_configuration_order_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_cueing_order_cancellation_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_cueing_order_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_emission_control_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_emission_mode_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_inhibition_sectors_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_joystick_control_lrad_1_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_joystick_control_lrad_2_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_recording_command_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_emission_mode_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_engagement_capability_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_full_status_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_installation_data_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_message_table_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_software_version_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_thresholds_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_request_translation_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_LRAS_video_tracking_command_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_MULTI_health_status_INS(const RawPacket& packet) const;
-    RawPacket parse_CS_MULTI_update_cst_kinematics_INS(const RawPacket& packet) const;
+    nlohmann::json parse_CS_LRAS_change_configuration_order_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_cueing_order_cancellation_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_cueing_order_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_emission_control_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_emission_mode_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_inhibition_sectors_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_joystick_control_lrad_1_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_joystick_control_lrad_2_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_recording_command_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_emission_mode_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_engagement_capability_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_full_status_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_installation_data_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_message_table_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_software_version_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_thresholds_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_request_translation_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_LRAS_video_tracking_command_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_MULTI_health_status_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_CS_MULTI_update_cst_kinematics_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
 
-    RawPacket parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(const RawPacket& packet) const;
-    RawPacket parse_NAVS_MULTI_health_status_INS(const RawPacket& packet) const;
-    RawPacket parse_NAVS_MULTI_nav_data_100ms_INS(const RawPacket& packet) const;
-    RawPacket parse_NAVS_MULTI_ships_admin_force_time_INS(const RawPacket& packet) const;
+    nlohmann::json parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_NAVS_MULTI_health_status_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_NAVS_MULTI_nav_data_100ms_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
+    nlohmann::json parse_NAVS_MULTI_ships_admin_force_time_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
 
-    void sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_change_configuration_request_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_emission_mode_feedback_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_engagement_capability_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_hw_limit_warning_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_installation_data_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_message_table_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_software_version_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_thresholds_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_translation_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const;
-    void sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const;
+    void sendLRAS_CS_ack_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_change_configuration_request_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_engagement_capability_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_hw_limit_warning_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_installation_data_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_message_table_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_software_version_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_thresholds_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_translation_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_lrad_1_status_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_lrad_2_status_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_MULTI_full_status_v2_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_MULTI_health_status_INS(const std::string& topic, const nlohmann::json& message) const;
     
     void sendMulticastPacket(const RawPacket& packet, const char* messageName) const;
 

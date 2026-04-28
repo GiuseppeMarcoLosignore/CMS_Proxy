@@ -1,4 +1,4 @@
-#include "CmsEntity.hpp"
+﻿#include "CmsEntity.hpp"
 
 #include "AcsEntity.hpp"
 #include "Topics.hpp"
@@ -474,8 +474,8 @@ std::string bytes_to_hex(const std::vector<uint8_t>& data, std::size_t offset) {
     return stream.str();
 }
 
-RawPacket make_empty_packet() {
-    return RawPacket{};
+json make_empty_payload() {
+    return json();
 }
 
 // Helper function: assume LRAD 1 and 2 are always known
@@ -501,12 +501,9 @@ void CmsEntity::start() {
     }
 
     std::vector<MulticastEndpoint> multicastEndpoints;
-    multicastEndpoints.reserve(config_.multicast_groups.size() + config_.navs_multicast_endpoints.size());
+    multicastEndpoints.reserve(config_.multicast_groups.size());
     for (const auto& group : config_.multicast_groups) {
         multicastEndpoints.push_back(MulticastEndpoint{group, config_.multicast_port});
-    }
-    for (const auto& ep : config_.navs_multicast_endpoints) {
-        multicastEndpoints.push_back(ep);
     }
 
     udpSocket_ = std::make_shared<UdpSocket>(
@@ -560,36 +557,36 @@ void CmsEntity::subscribeTopics() {
         return;
     }
 
-    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_CS_ack_INS(event);
+    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_CS_ack_INS(event);
+    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_CS_ack_INS(event);
+    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::LRAS_CS_change_configuration_request_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_CS_change_configuration_request_INS(event);
+    eventBus_->subscribe(Topics::LRAS_CS_change_configuration_request_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_CS_change_configuration_request_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_CS_lrad_1_status_INS(event);
+    eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_CS_lrad_1_status_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::LRAS_CS_lrad_2_status_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_CS_lrad_2_status_INS(event);
+    eventBus_->subscribe(Topics::LRAS_CS_lrad_2_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_CS_lrad_2_status_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::LRAS_MULTI_full_status_v2_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_MULTI_full_status_v2_INS(event);
+    eventBus_->subscribe(Topics::LRAS_MULTI_full_status_v2_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_MULTI_full_status_v2_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::LRAS_MULTI_health_status_INS, [this](const EventBus::EventPtr& event) {
-        sendLRAS_MULTI_health_status_INS(event);
+    eventBus_->subscribe(Topics::LRAS_MULTI_health_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        sendLRAS_MULTI_health_status_INS(topic, message);
     });
 }
 
@@ -599,22 +596,15 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     }
 
     const uint32_t sourceMessageId = extract_message_id_from_header(packet);
-    const ConversionResult result = convertIncomingPacket(packet);
-
-    if (!result.packet.has_value()) {
+    std::string publishTopic;
+    nlohmann::json publishMessage;
+    if (!convertIncomingPacket(packet, publishTopic, publishMessage)) {
         std::cerr << "[CMS Entity] Messaggio ignorato: source_id=" << sourceMessageId << std::endl;
         return;
     }
 
-    const RawPacket& packetToSend = *result.packet;
-
-
-    if (!result.packet_topic.empty()) {
-        auto dispatchTopicEvent = std::make_shared<CmsDispatchTopicPacketEvent>();
-        dispatchTopicEvent->dispatchTopic = result.packet_topic;
-        dispatchTopicEvent->packet = packetToSend;
-        dispatchTopicEvent->nackreason = packetToSend.nackreason;
-        eventBus_->publish(dispatchTopicEvent);
+    if (!publishTopic.empty()) {
+        eventBus_->publish(publishTopic, publishMessage);
     }
 }
 
@@ -650,8 +640,10 @@ bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
     return false;
 }
 
-ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet) const {
-    using ParserFn = RawPacket (CmsEntity::*)(const RawPacket&) const;
+bool CmsEntity::convertIncomingPacket(const RawPacket& packet,
+                                      std::string& outTopic,
+                                      nlohmann::json& outMessage) const {
+    using ParserFn = json (CmsEntity::*)(const RawPacket&, uint16_t&, uint16_t&) const;
 
     struct ParserBinding {
         ParserFn parser;
@@ -683,49 +675,58 @@ ConversionResult CmsEntity::convertIncomingPacket(const RawPacket& packet) const
 
     ParsedHeader header;
     if (!parseHeader(packet, header)) {
-        return {};
+        return false;
     }
 
-    ConversionResult result;
+    uint16_t destinationLradId = 0;
+    uint16_t nackreason = 0;
+    nlohmann::json payload;
 
     switch (header.messageId) {
         case MessageId_CS_LRAS_change_configuration_order_INS:
-            result.packet = parse_CS_LRAS_change_configuration_order_INS(packet);
-            result.packet_topic = Topics::CS_LRAS_change_configuration_order_INS;
+            payload = parse_CS_LRAS_change_configuration_order_INS(packet, destinationLradId, nackreason);
+            outTopic = Topics::CS_LRAS_change_configuration_order_INS;
             break;
         case MessageId_CS_LRAS_cueing_order_cancellation_INS:
-            result.packet = parse_CS_LRAS_cueing_order_cancellation_INS(packet);
-            result.packet_topic = Topics::CS_LRAS_cueing_order_cancellation_INS;
+            payload = parse_CS_LRAS_cueing_order_cancellation_INS(packet, destinationLradId, nackreason);
+            outTopic = Topics::CS_LRAS_cueing_order_cancellation_INS;
             break;
         case MessageId_CS_LRAS_cueing_order_INS:
-            result.packet = parse_CS_LRAS_cueing_order_INS(packet);
-            result.packet_topic = Topics::CS_LRAS_cueing_order_INS;
+            payload = parse_CS_LRAS_cueing_order_INS(packet, destinationLradId, nackreason);
+            outTopic = Topics::CS_LRAS_cueing_order_INS;
             break;
         case MessageId_CS_LRAS_emission_control_INS:
-            result.packet = parse_CS_LRAS_emission_control_INS(packet);
-            result.packet_topic = Topics::CS_LRAS_emission_control_INS;
+            payload = parse_CS_LRAS_emission_control_INS(packet, destinationLradId, nackreason);
+            outTopic = Topics::CS_LRAS_emission_control_INS;
             break;
         default:
             {
                 const auto bindingIt = additionalParserBindings.find(header.messageId);
                 if (bindingIt != additionalParserBindings.end()) {
-                    result.packet = (this->*(bindingIt->second.parser))(packet);
-                    result.packet_topic = bindingIt->second.topic;
+                    payload = (this->*(bindingIt->second.parser))(packet, destinationLradId, nackreason);
+                    outTopic = bindingIt->second.topic;
                 }
             }
             break;
     }
 
-    return result;
+    if (payload.is_null()) {
+        return false;
+    }
+
+    payload["destinationLradId"] = destinationLradId;
+    payload["nackreason"] = nackreason;
+    outMessage = std::move(payload);
+    return true;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     constexpr std::size_t offset = 16;
     constexpr std::size_t blockSize = 8;
 
     if (offset + blockSize > packet.data.size()) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint16_t actionId = read_u16_be(packet.data, offset);
@@ -737,27 +738,24 @@ RawPacket CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     payload["LRAD ID"] = std::to_string(lradId);
     payload["Configuration"] = std::to_string(rawConfig);
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
     if (rawConfig != 0 && rawConfig != 1) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
     // Assume LRAD is operativefor LRAD 1 and 2
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     constexpr std::size_t offset = 16;
     constexpr std::size_t blockSize = 6;
     if (offset + blockSize > packet.data.size()) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, offset);
@@ -767,25 +765,20 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
     payload["Action Id"] = actionId;
     payload["LRAD ID"] = std::to_string(lradId);
 
-    
-
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
     // Assume LRAD is operativefor LRAD 1 and 2
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_cueing_order_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     constexpr std::size_t minPayloadSize = 22;
     if (packet.data.size() < HeaderSize + minPayloadSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -857,22 +850,19 @@ RawPacket CmsEntity::parse_CS_LRAS_cueing_order_INS(
         {"kinematics_type", kinematicsType}
     };
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
     // Assume LRAD is operative for LRAD 1 and 2
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_emission_control_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_emission_control_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     if (packet.data.size() < 838) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -938,29 +928,29 @@ RawPacket CmsEntity::parse_CS_LRAS_emission_control_INS(
     payload["horizontalReferenceValidity"] = horizontalReferenceValidity;
     payload["horizontalReference"] = horizontalReference;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_emission_mode_INS(
-    const RawPacket&) const {
-    return make_empty_packet();
+json CmsEntity::parse_CS_LRAS_emission_mode_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
+    (void)packet;
+    (void)destinationLradId;
+    (void)nackreason;
+    return json::object();
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 42 bytes):
     // Header(16) + ActionId(4) + LRAD ID(2) + Sector1(10) + Sector2(10)
     constexpr std::size_t minPacketSize = 42;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -988,28 +978,25 @@ RawPacket CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
         {"stop", sector2Stop}
     };
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
 
     if ((sector1OnOff != 0 && sector1OnOff != 1) || (sector2OnOff != 0 && sector2OnOff != 1)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 20 bytes): Header(16) + X(2) + Y(2)
     constexpr std::size_t minPacketSize = 20;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const int16_t xPosition = read_i16_be(packet.data, 16);
@@ -1020,24 +1007,21 @@ RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
     payload["xPosition"] = xPosition;
     payload["yPosition"] = yPosition;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = 1;
+    destinationLradId = 1;
 
     if (!has_known_lrad(1)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 20 bytes): Header(16) + X(2) + Y(2)
     constexpr std::size_t minPacketSize = 20;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const int16_t xPosition = read_i16_be(packet.data, 16);
@@ -1048,26 +1032,23 @@ RawPacket CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
     payload["xPosition"] = xPosition;
     payload["yPosition"] = yPosition;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = 2;
+    destinationLradId = 2;
 
     if (!has_known_lrad(2)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_recording_command_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_recording_command_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 36 bytes):
     // Header(16) + ActionId(4) + LRAD ID(2) + Video source(2) + Video profile(2)
     // + Recording mode(2) + Elapsed seconds(4) + Elapsed micro seconds(4)
     constexpr std::size_t minPacketSize = 36;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -1087,46 +1068,46 @@ RawPacket CmsEntity::parse_CS_LRAS_recording_command_INS(
     payload["elapsedSeconds"] = elapsedSeconds;
     payload["elapsedMicroseconds"] = elapsedMicroseconds;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
 
     if (videoSource != 1 ||
         (videoProfile < 1 || videoProfile > 4) ||
         (recordingMode > 2) ||
         (elapsedSeconds > 2147483647U) ||
         (elapsedMicroseconds > 999999U)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
-    const RawPacket&) const {
-    
+json CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
+    (void)packet;
+    (void)nackreason;
+
     json payload;
     payload["Action Id"] = 1234;
     payload["LRAD ID"] = 1; 
 
-    
-    
-    return make_empty_packet();
+    destinationLradId = 1;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 60 bytes):
     // Header(16) + ActionId(4) + CSTN(4) + CST Kinematics(36)
     constexpr std::size_t minPacketSize = 60;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
     const uint32_t cstn = read_u32_be(packet.data, 20);
@@ -1213,62 +1194,69 @@ RawPacket CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
 
     payload["kinematics"] = kinematics;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     if ((cstn < 1 || cstn > 9999) ||
         (validitySeconds > 2147483647U) ||
         (validityMicroseconds > 999999U) ||
         (kinematicsType < 1 || kinematicsType > 11)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_full_status_INS(
-    const RawPacket&) const {
-    return make_empty_packet();
+json CmsEntity::parse_CS_LRAS_request_full_status_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
+    (void)packet;
+    (void)destinationLradId;
+    (void)nackreason;
+    return json::object();
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_installation_data_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_request_installation_data_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 20 bytes): Header(16) + ActionId(4)
     constexpr std::size_t minPacketSize = 20;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
+    (void)nackreason;
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
 
     json payload;
     payload["Action Id"] = actionId;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_message_table_INS(
-    const RawPacket&) const {
-    return make_empty_packet();
+json CmsEntity::parse_CS_LRAS_request_message_table_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
+    (void)packet;
+    (void)destinationLradId;
+    (void)nackreason;
+    return json::object();
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_software_version_INS(
-    const RawPacket&) const {
-    return make_empty_packet();
+json CmsEntity::parse_CS_LRAS_request_software_version_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
+    (void)packet;
+    (void)destinationLradId;
+    (void)nackreason;
+    return json::object();
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_thresholds_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_request_thresholds_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 28 bytes):
     // Header(16) + ActionId(4) + Volume selector(2) + Audio Volume dB(4) + Scenario(2)
     constexpr std::size_t minPacketSize = 28;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
     const uint16_t volumeSelector = read_u16_be(packet.data, 20);
@@ -1281,27 +1269,23 @@ RawPacket CmsEntity::parse_CS_LRAS_request_thresholds_INS(
     payload["audioVolumeDb"] = audioVolumeDb;
     payload["scenario"] = scenario;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     if ((volumeSelector > 1) ||
         (scenario > 2) ||
         (volumeSelector == 1 && (audioVolumeDb < -128.0f || audioVolumeDb > 0.0f))) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_request_translation_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_request_translation_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 794 bytes):
     // Header(16) + ActionId(4) + LRAD ID(2) + FreeText(772)
     // FreeText = LanguageIn(2) + LanguageOut(2) + MessageText(768)
     constexpr std::size_t minPacketSize = 794;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -1326,32 +1310,29 @@ RawPacket CmsEntity::parse_CS_LRAS_request_translation_INS(
     payload["languageOut"] = languageOut;
     payload["messageText"] = messageText;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
 
     // Spec notes: LanguageIn valid only Italian/English, LanguageOut tone not valid.
     if ((lradId != 1 && lradId != 2) ||
         (languageIn != 0 && languageIn != 1) ||
         (languageOut != 0 && languageOut != 1 && languageOut != 2)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 24 bytes):
     // Header(16) + ActionId(4) + LRAD ID(2) + Auto tracking(2)
     constexpr std::size_t minPacketSize = 24;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
@@ -1363,30 +1344,29 @@ RawPacket CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
     payload["LRAD ID"] = lradId;
     payload["autoTracking"] = autoTracking;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-    converted.destinationLradId = lradId;
+    destinationLradId = lradId;
 
     if ((lradId != 1 && lradId != 2) || (autoTracking != 0 && autoTracking != 1)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
     if (!has_known_lrad(lradId)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_MULTI_health_status_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_MULTI_health_status_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 24 bytes):
     // Header(16) + CS status(2) + DRMU status(2) + Spare(2) + CSS status(2)
     constexpr std::size_t minPacketSize = 24;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     const uint16_t csStatus = read_u16_be(packet.data, 16);
     const uint16_t drmuStatus = read_u16_be(packet.data, 18);
@@ -1399,28 +1379,26 @@ RawPacket CmsEntity::parse_CS_MULTI_health_status_INS(
     payload["spare"] = spare;
     payload["cssStatus"] = cssStatus;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     if ((csStatus < 1 || csStatus > 3) ||
         (drmuStatus < 1 || drmuStatus > 3) ||
         (cssStatus < 1 || cssStatus > 2)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     // Message layout (total 56 bytes):
     // Header(16) + CSTN(4) + TimeOfValidity(8) + Kinematics(28)
     // Kinematics = KinematicsType(2) + union data (up to 26 bytes)
     constexpr std::size_t minPacketSize = 56;
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     const uint32_t cstn = read_u32_be(packet.data, 16);
     const uint32_t validitySeconds = read_u32_be(packet.data, 20);
@@ -1504,26 +1482,24 @@ RawPacket CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS(
 
     payload["kinematics"] = kinematics;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     if ((cstn < 1 || cstn > 9999) ||
         (validitySeconds > 2147483647U) ||
         (validityMicroseconds > 999999U) ||
         (kinematicsType < 1 || kinematicsType > 11)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     constexpr std::size_t minPacketSize = 66; // Header(16) + payload(50)
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     const uint16_t sensorReference = read_u16_be(packet.data, 16);
     const uint16_t gyroReadinessState = read_u16_be(packet.data, 18);
@@ -1561,25 +1537,23 @@ RawPacket CmsEntity::parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(
         {"vertical_velocity_m_s", verticalVelocity}
     };
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     if ((sensorReference > 1) ||
         (gyroReadinessState > 2) ||
         (gyroAvailability > 2)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_NAVS_MULTI_health_status_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_NAVS_MULTI_health_status_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     constexpr std::size_t minPacketSize = 20; // Header(16) + Readiness State(2) + Availability(2)
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     const uint16_t readinessState = read_u16_be(packet.data, 16);
     const uint16_t availability = read_u16_be(packet.data, 18);
@@ -1588,24 +1562,22 @@ RawPacket CmsEntity::parse_NAVS_MULTI_health_status_INS(
     payload["readiness_state"] = readinessState;
     payload["availability"] = availability;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     if ((readinessState > 1) ||
         (availability > 2)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_NAVS_MULTI_nav_data_100ms_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_NAVS_MULTI_nav_data_100ms_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     constexpr std::size_t minPacketSize = 116; // Header(16) + payload(100)
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     const uint32_t timeSeconds = read_u32_be(packet.data, 16);
     const uint32_t timeMicroseconds = read_u32_be(packet.data, 20);
@@ -1680,10 +1652,6 @@ RawPacket CmsEntity::parse_NAVS_MULTI_nav_data_100ms_INS(
         {"water_depth", waterDepthValidity}
     };
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     // Validate all enum fields (0-2 range)
     if ((attitudeVelocitiesValidity > 2) ||
         (headingValidity > 2) ||
@@ -1691,18 +1659,20 @@ RawPacket CmsEntity::parse_NAVS_MULTI_nav_data_100ms_INS(
         (positionValidity > 2) ||
         (setDriftValidity > 2) ||
         (waterDepthValidity > 2)) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-RawPacket CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS(
-    const RawPacket& packet) const {
+json CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS(
+    const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
     constexpr std::size_t minPacketSize = 62; // Header(16) + payload(46)
     if (packet.data.size() < minPacketSize) {
-        return make_empty_packet();
+        return make_empty_payload();
     }
+
+    (void)destinationLradId;
 
     // Helper lambda to read 2-byte ASCII string
     auto read_ascii_2 = [&packet](std::size_t offset) -> std::string {
@@ -1773,36 +1743,25 @@ RawPacket CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS(
     };
     payload["time_source"] = timeSource;
 
-    const std::string jsonString = payload.dump();
-    RawPacket converted;
-    converted.data.assign(jsonString.begin(), jsonString.end());
-
     if (timeSource > 1) {
-        converted.nackreason = 2;
+        nackreason = 2;
     }
 
-    return converted;
+    return payload;
 }
 
-void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
-    const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-    if (!dispatchEvent) {
-        return;
-    }
-
-    const uint32_t sourceMessageId = source_message_id_from_topic(dispatchEvent->dispatchTopic);
+void CmsEntity::sendLRAS_CS_ack_INS(const std::string& topic, const nlohmann::json& message) const {
+    const uint32_t sourceMessageId = source_message_id_from_topic(topic);
     if (sourceMessageId == 0) {
         std::cerr << "[CMS Entity] Impossibile determinare source_message_id per ACK: topic="
-                  << dispatchEvent->dispatchTopic << std::endl;
+                  << topic << std::endl;
         return;
     }
 
-    json payload;
-    try {
-        payload = json::parse(dispatchEvent->packet.data.begin(), dispatchEvent->packet.data.end());
-    } catch (const std::exception& e) {
-        std::cerr << "[CMS Entity] Payload non valido per ACK LRAS_CS_ack_INS: "
-                  << e.what() << std::endl;
+    const json& payload = message;
+    if (payload.is_null()) {
+        std::cerr << "[CMS Entity] Payload mancante per ACK LRAS_CS_ack_INS"
+                  << std::endl;
         return;
     }
 
@@ -1814,7 +1773,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const EventBus::EventPtr& event) const {
     }
 
     uint16_t ackNackAccepted = 1; // ACK accepted, no NACK reason
-    const uint16_t nackReason = static_cast<uint16_t>(dispatchEvent->nackreason);
+    const uint16_t nackReason = static_cast<uint16_t>(payload.value("nackreason", 0));
     if (nackReason != 0) {
         ackNackAccepted = 2; // ACK with NACK reason
     }
@@ -1846,33 +1805,19 @@ void CmsEntity::periodicMessages() {
     periodicTimer_->expires_after(std::chrono::milliseconds(100));
     periodicTimer_->async_wait([this](const boost::system::error_code& ec) {
         if (!ec) {
-            auto eventLrad1 = std::make_shared<CmsDispatchTopicPacketEvent>();
-            eventLrad1->dispatchTopic = Topics::LRAS_CS_lrad_1_status_INS;
-            eventLrad1->packet = make_empty_packet();
-            eventBus_->publish(eventLrad1);
-
-            auto eventLrad2 = std::make_shared<CmsDispatchTopicPacketEvent>();
-            eventLrad2->dispatchTopic = Topics::LRAS_CS_lrad_2_status_INS;
-            eventLrad2->packet = make_empty_packet();
-            eventBus_->publish(eventLrad2);
-
-            auto eventFullStatus = std::make_shared<CmsDispatchTopicPacketEvent>();
-            eventFullStatus->dispatchTopic = Topics::LRAS_MULTI_full_status_v2_INS;
-            eventFullStatus->packet = make_empty_packet();
-            eventBus_->publish(eventFullStatus);
-
-            auto eventHealthStatus = std::make_shared<CmsDispatchTopicPacketEvent>();
-            eventHealthStatus->dispatchTopic = Topics::LRAS_MULTI_health_status_INS;
-            eventHealthStatus->packet = make_empty_packet();
-            eventBus_->publish(eventHealthStatus);
+            eventBus_->publish(Topics::LRAS_CS_lrad_1_status_INS, nlohmann::json::object());
+            eventBus_->publish(Topics::LRAS_CS_lrad_2_status_INS, nlohmann::json::object());
+            eventBus_->publish(Topics::LRAS_MULTI_full_status_v2_INS, nlohmann::json::object());
+            eventBus_->publish(Topics::LRAS_MULTI_health_status_INS, nlohmann::json::object());
 
             periodicMessages();
         }
     });
 }
 
-void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_change_configuration_request_INS);
@@ -1894,8 +1839,9 @@ void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const EventBus::Eve
     sendMulticastPacket(packet, "LRAS_CS_change_configuration_request_INS");
 }
 
-void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_emission_mode_feedback_INS);
@@ -1949,8 +1895,9 @@ void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const EventBus::EventPtr&
     sendMulticastPacket(packet, "LRAS_CS_emission_mode_feedback_INS");
 }
 
-void CmsEntity::sendLRAS_CS_engagement_capability_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     // Helper lambda: appends one 36-byte LRAD capability block
     auto append_lrad_capability = [this](std::vector<uint8_t>& buf) {
@@ -2005,8 +1952,9 @@ void CmsEntity::sendLRAS_CS_engagement_capability_INS(const EventBus::EventPtr& 
     sendMulticastPacket(packet, "LRAS_CS_engagement_capability_INS");
 }
 
-void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_hw_limit_warning_INS);
@@ -2028,8 +1976,9 @@ void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const EventBus::EventPtr& event
     sendMulticastPacket(packet, "LRAS_CS_hw_limit_warning_INS");
 }
 
-void CmsEntity::sendLRAS_CS_installation_data_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     // Helper lambda: appends one 20-byte LRAD installation data block
     auto append_lrad_inst_data = [this](std::vector<uint8_t>& buf) {
@@ -2065,8 +2014,9 @@ void CmsEntity::sendLRAS_CS_installation_data_INS(const EventBus::EventPtr& even
     sendMulticastPacket(packet, "LRAS_CS_installation_data_INS");
 }
 
-void CmsEntity::sendLRAS_CS_message_table_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_message_table_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     constexpr uint16_t totalMessagesNumber = 1; // TODO: retrieve from system
     constexpr uint16_t messageNumber = 1;       // TODO: retrieve from system
@@ -2122,8 +2072,9 @@ void CmsEntity::sendLRAS_CS_message_table_INS(const EventBus::EventPtr& event) c
     sendMulticastPacket(packet, "LRAS_CS_message_table_INS");
 }
 
-void CmsEntity::sendLRAS_CS_software_version_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     auto append_fixed_string_16 = [](std::vector<uint8_t>& buffer, const std::string& value) {
         std::vector<uint8_t> field(16, 0);
@@ -2176,8 +2127,9 @@ void CmsEntity::sendLRAS_CS_software_version_INS(const EventBus::EventPtr& event
     sendMulticastPacket(packet, "LRAS_CS_software_version_INS");
 }
 
-void CmsEntity::sendLRAS_CS_thresholds_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     auto append_lrad_thresholds = [this](std::vector<uint8_t>& buffer) {
         // Distances are in meters; placeholder values until system integration is available.
@@ -2220,8 +2172,9 @@ void CmsEntity::sendLRAS_CS_thresholds_INS(const EventBus::EventPtr& event) cons
     sendMulticastPacket(packet, "LRAS_CS_thresholds_INS");
 }
 
-void CmsEntity::sendLRAS_CS_translation_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_translation_INS);
@@ -2262,22 +2215,25 @@ void CmsEntity::sendLRAS_CS_translation_INS(const EventBus::EventPtr& event) con
     sendMulticastPacket(packet, "LRAS_CS_translation_INS");
 }
 
-void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     const RawPacket packet = build_lrad_status_packet(MessageId_LRAS_CS_lrad_1_status_INS);
     sendMulticastPacket(packet, "LRAS_CS_lrad_1_status_INS");
 }  
 
-void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     const RawPacket packet = build_lrad_status_packet(MessageId_LRAS_CS_lrad_2_status_INS);
     sendMulticastPacket(packet, "LRAS_CS_lrad_2_status_INS");
 }
 
-void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_full_status_v2_INS);
@@ -2296,8 +2252,9 @@ void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const EventBus::EventPtr& even
     sendMulticastPacket(packet, "LRAS_MULTI_full_status_v2_INS");
 }
 
-void CmsEntity::sendLRAS_MULTI_health_status_INS(const EventBus::EventPtr& event) const {
-    (void)event;
+void CmsEntity::sendLRAS_MULTI_health_status_INS(const std::string& topic, const nlohmann::json& message) const {
+    (void)topic;
+    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_health_status_INS);
@@ -2342,4 +2299,9 @@ void CmsEntity::sendMulticastPacket(const RawPacket& packet, const char* message
                   << " -> " << result.error_message << std::endl;
     }
 }
+
+
+
+
+
 

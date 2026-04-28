@@ -24,8 +24,6 @@ set(SOURCES
     src/CmsEntity.cpp
     # ACS
     src/AcsEntity.cpp
-    # NAVS
-    src/NavsEntity.cpp
 )
 
 

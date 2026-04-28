@@ -8,7 +8,6 @@
 #include "AppConfig.hpp"
 #include "CmsEntity.hpp"
 #include "EventBus.hpp"
-#include "NavsEntity.hpp"
 
 int main(int argc, char* argv[]) {
     try {
@@ -26,14 +25,8 @@ int main(int argc, char* argv[]) {
             event_bus
         );
 
-        auto navs_entity = std::make_shared<NavsEntity>(
-            config.navs,
-            event_bus
-        );
-
         cms_entity->start();
         acs_entity->start();
-        navs_entity->start();
 
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "
                   << config_path << std::endl;
@@ -57,17 +50,6 @@ int main(int argc, char* argv[]) {
                                     << config.acs.tcp_listen_ip << ":" << config.acs.tcp_listen_port << std::endl;
                 std::cout << "[SYSTEM] ACS multicast in invio su: "
                                     << config.acs.tx_multicast_group << ":" << config.acs.tx_multicast_port << std::endl;
-        if (config.navs.enabled) {
-            std::cout << "[SYSTEM] NAVS multicast in ascolto su: ";
-            for (std::size_t i = 0; i < config.navs.multicast_groups.size(); ++i) {
-                if (i > 0) {
-                    std::cout << ", ";
-                }
-                std::cout << config.navs.multicast_groups[i] << ":" << config.navs.multicast_port;
-            }
-            std::cout << std::endl;
-        }
-
         for (;;) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }

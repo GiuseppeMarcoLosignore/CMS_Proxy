@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <optional>
+#include <nlohmann/json.hpp>
 
 struct MulticastEndpoint {
     std::string ip;
@@ -50,11 +51,6 @@ struct SendResult {
     int error_value = 0;
     std::string error_category;
     std::string error_message;
-};
-
-struct ConversionResult {
-    std::optional<RawPacket> packet;
-    std::string packet_topic;
 };
 
 enum class TransportProtocol {

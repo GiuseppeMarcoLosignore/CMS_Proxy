@@ -1,4 +1,4 @@
-#include "Orchestrator.hpp"
+﻿#include "Orchestrator.hpp"
 
 #include "AcsEntity.hpp"
 #include "EventBus.hpp"
@@ -8,6 +8,7 @@
 #include <cctype>
 #include <iostream>
 #include <mutex>
+#include <nlohmann/json.hpp>
 
 namespace {
 bool isKnownLradSender(const std::string& sender) {
@@ -54,226 +55,182 @@ void Orchestrator::subscribeTopics() {
 
 
     //ACS topics
-    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const EventBus::EventPtr& event) {
-        acsEntity_.createMASTER(event);
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
+        acsEntity_.createMASTER(message);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const std::string& topic, const nlohmann::json& message) {
         stop_cueing();
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
         start_cueing();
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
         if(isPayloadEnabled(PayoladType::SEARCHLIGHT))
-            acsEntity_.createSEARCHLIGHT(event);
+            acsEntity_.createSEARCHLIGHT(message);
         if(isPayloadEnabled(PayoladType::AUDIO))
-            acsEntity_.createAUDIO(event);
+            acsEntity_.createAUDIO(message);
         if(isPayloadEnabled(PayoladType::LAD))
-            acsEntity_.createLAD(event);
+            acsEntity_.createLAD(message);
         if(isPayloadEnabled(PayoladType::LRF))
-            acsEntity_.createLRF(event);
+            acsEntity_.createLRF(message);
 
-        acsEntity_.createZOOM(event);
+        acsEntity_.createZOOM(message);
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });  
     
-    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        const auto dispatchEvent = std::dynamic_pointer_cast<const CmsDispatchTopicPacketEvent>(event);
-        if (!dispatchEvent) {
+        const nlohmann::json& payload = message;
+        if (payload.is_null()) {
             return;
         }
 
-        const RawPacket& packet = dispatchEvent->packet;
+        if (payload.contains("Audio Enable")) {
+            enablePayload(PayoladType::AUDIO, payload.at("Audio Enable"));
+        }
 
+        if (payload.contains("Laser Enable")) {
+            enablePayload(PayoladType::LAD, payload.at("Laser Enable"));
+        }
 
-        nlohmann::json payload;
-        try {
-            payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
+        if (payload.contains("Light Enable")) {
+            enablePayload(PayoladType::SEARCHLIGHT, payload.at("Light Enable"));
+        }
 
-            
-
-            if (payload.contains("Audio Enable")) {
-                enablePayload(PayoladType::AUDIO, payload.at("Audio Enable"));
-            }
-
-            if (payload.contains("Laser Enable")) {
-                enablePayload(PayoladType::LAD, payload.at("Laser Enable"));
-            }
-
-            if (payload.contains("Light Enable")) {
-                enablePayload(PayoladType::SEARCHLIGHT, payload.at("Light Enable"));
-            }
-
-            if (payload.contains("Laser Range Finder Enable")) {
-                enablePayload(PayoladType::LRF, payload.at("Laser Range Finder Enable"));
-            }
-
-        } catch (const std::exception& e) {
-            std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
-            return;
+        if (payload.contains("Laser Range Finder Enable")) {
+            enablePayload(PayoladType::LRF, payload.at("Laser Range Finder Enable"));
         }
 
 
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     }); 
 
-    eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        acsEntity_.createSHADOW(event);
+        acsEntity_.createSHADOW(message);
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        acsEntity_.createDELTA(event);
+        acsEntity_.createDELTA(message);
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        acsEntity_.createDELTA(event);
+        acsEntity_.createDELTA(message);
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_recording_command_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_recording_command_INS, [this](const std::string& topic, const nlohmann::json& message) {
         
         manage_recording();
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_emission_mode_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_CS_emission_mode_feedback_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_CS_emission_mode_feedback_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_engagement_capability_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_engagement_capability_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_CS_engagement_capability_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_CS_engagement_capability_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_full_status_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_full_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_MULTI_full_status_v2_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_MULTI_full_status_v2_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_installation_data_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_installation_data_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_CS_installation_data_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_CS_installation_data_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_software_version_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_software_version_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_CS_software_version_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_CS_software_version_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_message_table_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_message_table_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_CS_message_table_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_CS_message_table_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_thresholds_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_thresholds_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_CS_thresholds_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_CS_thresholds_INS(topic, message);
     });
 
-    eventBus_->subscribe(Topics::CS_LRAS_request_translation_INS, [this](const EventBus::EventPtr& event) {
+    eventBus_->subscribe(Topics::CS_LRAS_request_translation_INS, [this](const std::string& topic, const nlohmann::json& message) {
 
-        cmsEntity_.sendLRAS_CS_ack_INS(event);
-        cmsEntity_.sendLRAS_CS_translation_INS(event);
+        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        cmsEntity_.sendLRAS_CS_translation_INS(topic, message);
     });
 
     
     // From ACS to Orchestrator topics
-    eventBus_->subscribe(Topics::AcsAlive, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractALIVEdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsAlive, [this](const std::string& topic, const nlohmann::json& message) {
+        extractALIVEdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsDiagnostic, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractDIAGNOSTICdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsDiagnostic, [this](const std::string& topic, const nlohmann::json& message) {
+        extractDIAGNOSTICdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsAudio, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractAUDIOdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsAudio, [this](const std::string& topic, const nlohmann::json& message) {
+        extractAUDIOdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsLad, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractLADdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsLad, [this](const std::string& topic, const nlohmann::json& message) {
+        extractLADdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsSearchlight, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractSEARCHLIGHTdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsSearchlight, [this](const std::string& topic, const nlohmann::json& message) {
+        extractSEARCHLIGHTdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsLrf, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractLRFdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsLrf, [this](const std::string& topic, const nlohmann::json& message) {
+        extractLRFdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsShadow, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractSHADOWdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsShadow, [this](const std::string& topic, const nlohmann::json& message) {
+        extractSHADOWdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsZoom, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractZOOMdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsZoom, [this](const std::string& topic, const nlohmann::json& message) {
+        extractZOOMdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsMaster, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractMASTERdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsMaster, [this](const std::string& topic, const nlohmann::json& message) {
+        extractMASTERdata(message);
     });
 
-    eventBus_->subscribe(Topics::AcsPosition, [this](const EventBus::EventPtr& event) {
-        const auto* acsEvent = dynamic_cast<const AcsOutgoingJsonEvent*>(event.get());
-        if (acsEvent) {
-            extractPOSITIONdata(acsEvent->payload);
-        }
+    eventBus_->subscribe(Topics::AcsPosition, [this](const std::string& topic, const nlohmann::json& message) {
+        extractPOSITIONdata(message);
     });
 
 
@@ -852,3 +809,6 @@ void Orchestrator::extractPOSITIONdata(const nlohmann::json& payload) {
 
     setLradFullStatus(std::move(lradStatus), name);
 }
+
+
+
