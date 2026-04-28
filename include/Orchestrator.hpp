@@ -10,7 +10,7 @@
 
 #include "CmsEntity.hpp"
 #include "AcsEntity.hpp"
-#include "NavsEntity.hpp"
+
 
 struct Lrad_full {
     std::string name;
@@ -91,7 +91,7 @@ enum class PayoladType {
 
 class Orchestrator {
 public:
-    Orchestrator(CmsEntity &cmsEntity, AcsEntity &acsEntity, NavsEntity &navsEntity, std::shared_ptr<EventBus> eventBus);
+    Orchestrator(CmsEntity &cmsEntity, AcsEntity &acsEntity, std::shared_ptr<EventBus> eventBus);
 
     void start();
     void stop();
@@ -136,7 +136,6 @@ private:
     mutable std::mutex lrasMutex_;
     CmsEntity &cmsEntity_;
     AcsEntity &acsEntity_;
-    NavsEntity &navsEntity_;
     std::thread updateThread_;
     std::shared_ptr<EventBus> eventBus_;
 };

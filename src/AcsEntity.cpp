@@ -61,16 +61,17 @@ AcsEntity::AcsEntity(const AcsConfig& config,
 }
 
 void AcsEntity::start() {
-    subscribeTopics();
+    subscribeTopics(); //non lo farà più
 
     AcsConfig startupConfig;
     {
         std::lock_guard<std::mutex> lock(configMutex_);
         startupConfig = config_;
-    }
+    } //graffe per limitare la durata della lock
 
     std::vector<MulticastEndpoint> multicastEndpoints;
     multicastEndpoints.reserve(startupConfig.multicast_groups.size());
+    
     for (const auto& group : startupConfig.multicast_groups) {
         multicastEndpoints.push_back(MulticastEndpoint{group, startupConfig.multicast_port});
     }
@@ -289,32 +290,26 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     std::string sendTopic;
     try {
         payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
-        sendTopic = payload["sender"];
+        sendTopic = payload["header"];
     } catch (const std::exception& e) {
         std::cerr << "[ACS Entity] JSON non valido: " << e.what() << std::endl;
         return;
     }
 
-    const auto destinationId = extract_header(payload);
 
     if(payload["sender"] == "ACS") {
         const auto destination = findDestination(sourceInfo.source_ip);
         if (destination.has_value()) {
             if(destination->id == 1) {
-                payload["sender"] = "LRAD1";
+                payload["destinationLradId"] = 1;
             }
             else if(destination->id == 2) {
-                payload["sender"] = "LRAD2";
+                payload["destinationLradId"] = 2;
             }
         }
     }
-    
+    eventBus_->publish(sendTopic, payload);
 
-    if (destinationId.has_value()) {
-            payload["destinationLradId"] = *destinationId;
-            payload["nackreason"] = packet.nackreason;
-            eventBus_->publish(sendTopic, payload);
-    }
 }
 
 void AcsEntity::createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload) {

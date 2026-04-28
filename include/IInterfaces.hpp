@@ -33,13 +33,6 @@ public:
     virtual void stop() = 0;
 };
 
-class IEventHandler {
-public:
-    virtual ~IEventHandler() = default;
-    virtual void start() = 0;
-    virtual void stop() = 0;
-};
-
 class IEvent {
 public:
     virtual ~IEvent() = default;

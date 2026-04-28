@@ -16,10 +16,9 @@ bool isKnownLradSender(const std::string& sender) {
 }
 }
 
-Orchestrator::Orchestrator(CmsEntity &cmsEntity, AcsEntity &acsEntity, NavsEntity &navsEntity, std::shared_ptr<EventBus> eventBus)
+Orchestrator::Orchestrator(CmsEntity &cmsEntity, AcsEntity &acsEntity, std::shared_ptr<EventBus> eventBus)
     : cmsEntity_(cmsEntity),
       acsEntity_(acsEntity),
-      navsEntity_(navsEntity),
       eventBus_(std::move(eventBus)) {
 
         Lras_full initialLras{};
