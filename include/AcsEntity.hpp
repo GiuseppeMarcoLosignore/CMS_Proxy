@@ -41,16 +41,16 @@ public:
 
 
 
-    void createAUDIO(const nlohmann::json& message);
-    void createLAD(const nlohmann::json& message);
-    void createSEARCHLIGHT(const nlohmann::json& message);
-    void createLRF(const nlohmann::json& message);
-    void createSHADOW(const nlohmann::json& message);
-    void createZOOM(const nlohmann::json& message);
-    void createMASTER(const nlohmann::json& message);
-    void createPOSITION(const nlohmann::json& message);
-    void createDELTA(const nlohmann::json& message);
-    void createTRACKING(const nlohmann::json& message);
+    void createAUDIO(uint16_t destinationLradId, float gain, bool mute);
+    void createLAD(uint16_t destinationLradId, const std::string& mode, bool overrideMode);
+    void createSEARCHLIGHT(uint16_t destinationLradId, const std::string& power, float focus, const std::string& mode);
+    void createLRF(uint16_t destinationLradId, const std::string& mode);
+    void createSHADOW(uint16_t destinationLradId, float az1, float el1, float az2, float el2);
+    void createZOOM(uint16_t destinationLradId, float values);
+    void createMASTER(uint16_t destinationLradId, const std::string& mode);
+    void createPOSITION(uint16_t destinationLradId, float az, float el, int goTo);
+    void createDELTA(uint16_t destinationLradId, float az, float el);
+    void createTRACKING(uint16_t destinationLradId, bool autoTracking);
 
 private:
     AcsConfig config_;

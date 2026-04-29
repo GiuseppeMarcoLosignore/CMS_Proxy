@@ -558,15 +558,18 @@ void CmsEntity::subscribeTopics() {
     }
 
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_CS_ack_INS(topic, message);
+        const uint16_t nackreason = static_cast<uint16_t>(message.value("nackreason", 0));
+        sendLRAS_CS_ack_INS(topic, nackreason, message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_CS_ack_INS(topic, message);
+        const uint16_t nackreason = static_cast<uint16_t>(message.value("nackreason", 0));
+        sendLRAS_CS_ack_INS(topic, nackreason, message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_CS_ack_INS(topic, message);
+        const uint16_t nackreason = static_cast<uint16_t>(message.value("nackreason", 0));
+        sendLRAS_CS_ack_INS(topic, nackreason, message);
     });
 
     eventBus_->subscribe(Topics::LRAS_CS_change_configuration_request_INS, [this](const std::string& topic, const nlohmann::json& message) {
@@ -738,15 +741,7 @@ json CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     payload["LRAD ID"] = std::to_string(lradId);
     payload["Configuration"] = std::to_string(rawConfig);
 
-    destinationLradId = lradId;
-    if (rawConfig != 0 && rawConfig != 1) {
-        nackreason = 2;
-    }
 
-    if (!has_known_lrad(lradId)) {
-        nackreason = 2;
-    }
-    // Assume LRAD is operativefor LRAD 1 and 2
     return payload;
 }
 
@@ -903,7 +898,7 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
 
     json payload;
     payload["actionId"] = actionId;
-    payload["lradId"] = lradId;
+    payload["LRAD ID"] = lradId;
     payload["audioModeValidity"] = audioModeValidity;
     payload["volumeLevel"] = volumeLevel;
     payload["Audio Volume dB"] = audioVolumeDb;
@@ -917,16 +912,16 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
     payload["freeTextMessage"] = freeTextMessage;
     payload["freeTextLoop"] = freeTextLoop;
     payload["laserModeValidity"] = laserModeValidity;
-    payload["laserMode"] = laserMode;
+    payload["Laser Mode"] = laserMode;
     payload["lightModeValidity"] = lightModeValidity;
-    payload["lightPower"] = lightPower;
-    payload["lightZoom"] = lightZoom;
+    payload["Light Power"] = lightPower;
+    payload["Light Zoom"] = lightZoom;
     payload["lrfModeValidity"] = lrfModeValidity;
-    payload["lrfOnOff"] = lrfOnOff;
+    payload["LRF On Off"] = lrfOnOff;
     payload["cameraZoomValidity"] = cameraZoomValidity;
-    payload["cameraZoom"] = cameraZoom;
+    payload["Camera Zoom"] = cameraZoom;
     payload["horizontalReferenceValidity"] = horizontalReferenceValidity;
-    payload["horizontalReference"] = horizontalReference;
+    payload["Horizontal Reference"] = horizontalReference;
 
     destinationLradId = lradId;
 
@@ -1750,7 +1745,7 @@ json CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS(
     return payload;
 }
 
-void CmsEntity::sendLRAS_CS_ack_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_ack_INS(const std::string& topic, uint16_t nackreason, const nlohmann::json& message) const {
     const uint32_t sourceMessageId = source_message_id_from_topic(topic);
     if (sourceMessageId == 0) {
         std::cerr << "[CMS Entity] Impossibile determinare source_message_id per ACK: topic="
@@ -1773,7 +1768,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const std::string& topic, const nlohmann::js
     }
 
     uint16_t ackNackAccepted = 1; // ACK accepted, no NACK reason
-    const uint16_t nackReason = static_cast<uint16_t>(payload.value("nackreason", 0));
+    const uint16_t nackReason = nackreason;
     if (nackReason != 0) {
         ackNackAccepted = 2; // ACK with NACK reason
     }

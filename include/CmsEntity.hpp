@@ -64,7 +64,7 @@ public:
     nlohmann::json parse_NAVS_MULTI_nav_data_100ms_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
     nlohmann::json parse_NAVS_MULTI_ships_admin_force_time_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;
 
-    void sendLRAS_CS_ack_INS(const std::string& topic, const nlohmann::json& message) const;
+    void sendLRAS_CS_ack_INS(const std::string& topic, uint16_t nackreason, const nlohmann::json& message) const;
     void sendLRAS_CS_change_configuration_request_INS(const std::string& topic, const nlohmann::json& message) const;
     void sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic, const nlohmann::json& message) const;
     void sendLRAS_CS_engagement_capability_INS(const std::string& topic, const nlohmann::json& message) const;

@@ -47,6 +47,26 @@ std::optional<uint16_t> extract_header(const nlohmann::json& payload) {
     return std::nullopt;
 }
 
+std::optional<uint16_t> extract_destination_lrad_id(const nlohmann::json& payload) {
+    if (!payload.contains("destinationLradId")) {
+        return std::nullopt;
+    }
+
+    const auto& value = payload.at("destinationLradId");
+    if (value.is_number_unsigned()) {
+        return static_cast<uint16_t>(value.get<uint32_t>());
+    }
+
+    if (value.is_number_integer()) {
+        const int32_t signedValue = value.get<int32_t>();
+        if (signedValue >= 0) {
+            return static_cast<uint16_t>(signedValue);
+        }
+    }
+
+    return std::nullopt;
+}
+
 } // namespace
 
 AcsEntity::AcsEntity(const AcsConfig& config,
@@ -136,28 +156,112 @@ void AcsEntity::subscribeTopics() {
 
 
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        createMASTER(message);
+            (void)topic;
+            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(0);
+            if (destinationLradId == 0 || !message.contains("Configuration")) {
+                std::cerr << "[ACS Entity] Parametri mancanti per MASTER: " << message.dump() << std::endl;
+                return;
+            }
+
+            const auto& configValue = message.at("Configuration");
+            const bool releaseMode =
+                (configValue.is_number_integer() && configValue.get<int32_t>() == 0) ||
+                (configValue.is_string() && configValue.get<std::string>() == "0");
+
+            createMASTER(destinationLradId, releaseMode ? "RELEASE" : "REQ");
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        createSEARCHLIGHT(message);
-        createAUDIO(message);
-        createLAD(message);
-        createLRF(message);
-        createZOOM(message);
-        createLRF(message);
+            (void)topic;
+            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(0);
+            if (destinationLradId == 0) {
+                std::cerr << "[ACS Entity] destinationLradId mancante per emission control: " << message.dump() << std::endl;
+                return;
+            }
+
+            if (message.contains("Light Power") && message.contains("Light Zoom")) {
+                const float lightPower = message.at("Light Power").get<float>();
+                const float lightZoom = message.at("Light Zoom").get<float>();
+                const std::string power = lightPower == 1.0f ? "35W" : lightPower == 2.0f ? "45W" : lightPower == 3.0f ? "85W" : "35W";
+                const std::string mode = lightPower == 0.0f ? "OFF" : "ON";
+                createSEARCHLIGHT(destinationLradId, power, lightZoom, mode);
+            }
+
+            if (message.contains("Audio Volume dB") && message.contains("Mute")) {
+                const float audioVolume = message.at("Audio Volume dB").get<float>();
+                const bool mute = message.at("Mute").get<int32_t>() == 1;
+                createAUDIO(destinationLradId, audioVolume / 2.0f, mute);
+            }
+
+            if (message.contains("Laser Mode")) {
+                const float laserMode = message.at("Laser Mode").get<float>();
+                const std::string mode = laserMode == 0.0f ? "OFF" : laserMode == 1.0f ? "ON" : "STROBE";
+                createLAD(destinationLradId, mode, false);
+            }
+
+
+
+
     });   
 
     eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        createSHADOW(message);
+            (void)topic;
+            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(0);
+            if (destinationLradId == 0) {
+                std::cerr << "[ACS Entity] destinationLradId mancante per SHADOW: " << message.dump() << std::endl;
+                return;
+            }
+
+            nlohmann::json sectors = nlohmann::json::array();
+            if (message.contains("Sector 1") && message.at("Sector 1").is_object()) {
+                const auto& s1 = message.at("Sector 1");
+                if (s1.contains("On Off") && s1.at("On Off") == 1) {
+                    nlohmann::json sector;
+                    sector["target"] = "AZ";
+                    sector["start"] = s1.value("start", 0);
+                    sector["stop"] = s1.value("stop", 0);
+                    sectors.push_back(sector);
+                }
+            }
+
+            if (message.contains("Sector 2") && message.at("Sector 2").is_object()) {
+                const auto& s2 = message.at("Sector 2");
+                if (s2.contains("On Off") && s2.at("On Off") == 1) {
+                    nlohmann::json sector;
+                    sector["target"] = "AZ";
+                    sector["start"] = s2.value("start", 0);
+                    sector["stop"] = s2.value("stop", 0);
+                    sectors.push_back(sector);
+                }
+            }
+
+            createSHADOW(destinationLradId, sectors);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        createDELTA(message);
+            (void)topic;
+            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(1);
+            if (!message.contains("X position") || !message.contains("Y position")) {
+                std::cerr << "[ACS Entity] Parametri mancanti per DELTA LRAD1: " << message.dump() << std::endl;
+                return;
+            }
+
+            const float x = message.at("X position").get<float>();
+            const float y = message.at("Y position").get<float>();
+            createDELTA(destinationLradId, x * 0.1f, y * 0.1f);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        createDELTA(message);
+            (void)topic;
+            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(2);
+            if (!message.contains("X position") || !message.contains("Y position")) {
+                std::cerr << "[ACS Entity] Parametri mancanti per DELTA LRAD2: " << message.dump() << std::endl;
+                return;
+            }
+
+            const float x = message.at("X position").get<float>();
+            const float y = message.at("Y position").get<float>();
+            createDELTA(destinationLradId, x * 0.1f, y * 0.1f);
     });
 
     eventBus_->subscribe(Topics::NetworkConfigChanged, [this](const std::string& topic, const nlohmann::json& message) {
@@ -324,523 +428,279 @@ void AcsEntity::createHeader(std::string header, std::string type, std::string s
 
 
 
-void AcsEntity::createMASTER(const nlohmann::json& message) {
+void AcsEntity::createMASTER(uint16_t destinationLradId, const std::string& mode) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
 
-        std::string mode = "";
+    param["mode"] = mode;
+    createHeader("MASTER", "CMD", "CMS", param, payload);
 
-
-        inputPayload["Configuration"] == "0" ? param["mode"] = "RELEASE": param["mode"] = "REQ";
-        createHeader("MASTER", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per MASTER: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
 
 
-void AcsEntity::createAUDIO(const nlohmann::json& message) {
+void AcsEntity::createAUDIO(uint16_t destinationLradId, float gain, bool mute) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("Audio Volume dB") && 
-            inputPayload.contains("Mute") ) {
-            const float& inputParam = inputPayload.at("Audio Volume dB");
-            const auto& inputMute = inputPayload.at("Mute");
+    param["gain"] = gain;
+    param["mute"] = mute;
+    createHeader("AUDIO", "CMD", "CMS", param, payload);
 
-            param["gain"] = inputParam/2;
-            param["mute"] = inputMute == 1 ? true : false;
-           
-        }
-        else {
-            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        createHeader("AUDIO", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per AUDIO: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
-void AcsEntity::createLAD(const nlohmann::json& message) {
+void AcsEntity::createLAD(uint16_t destinationLradId, const std::string& mode, bool overrideMode) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("Laser Mode") ) {
-            const float& inputParam = inputPayload.at("Laser Mode");
+    param["mode"] = mode;
+    param["override"] = overrideMode;
+    createHeader("LAD", "CMD", "CMS", param, payload);
 
-            param["mode"] = inputParam == 0 ? "OFF" : inputParam == 1 ? "ON" : "STROBE";
-            param["override"] = false; //feature non prevista per LAD, sempre false
-
-
-        }
-        else {
-            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        createHeader("LAD", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per LAD: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
-void AcsEntity::createSEARCHLIGHT(const nlohmann::json& message) {
+void AcsEntity::createSEARCHLIGHT(uint16_t destinationLradId, const std::string& power, float focus, const std::string& mode) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("Light Power") && inputPayload.contains("Light Zoom")) {
-            const float& inputParam = inputPayload.at("Light Power");
-            const float& inputParam2 = inputPayload.at("Light Zoom");
+    param["power"] = power;
+    param["focus"] = focus;
+    param["mode"] = mode;
+    createHeader("SEARCHLIGHT", "CMD", "CMS", param, payload);
 
-            param["power"] = inputParam == 1 ? "35W" : inputParam == 2 ? "45W" : inputParam == 3 ? "85W" : "35W";
-            param["focus"] = inputParam2;
-            param["mode"] = inputParam == 0 ? "OFF" : "ON"; 
-
-
-        }
-        else {
-            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        createHeader("SEARCHLIGHT", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per SEARCHLIGHT: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
-void AcsEntity::createLRF(const nlohmann::json& message) {
+void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("LRF on off") ) {
-            const float& inputParam = inputPayload.at("LRF on off");
+    param["mode"] = mode;
+    createHeader("LRF", "CMD", "CMS", param, payload);
 
-            param["mode"] = inputParam == 0 ? "OFF" : "ON" ;
-            param["value"] = -1; //TODO : mappare opportunamente il parametro di potenza del LRF, se previsto 
-
-
-        }
-        else {
-            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        createHeader("LRF", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per LRF: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
 //TODO: implementare le altre createXXX per gli altri tipi di comando previsti (es. ZOOM, SHADOW, etc.) mappando opportunamente i parametri in ingresso e quelli richiesti dall'ACS, e gestendo eventuali errori di formato o di parametri mancanti
-void AcsEntity::createSHADOW(const nlohmann::json& message) {
+void AcsEntity::createSHADOW(uint16_t destinationLradId, float az1, float el1, float az2, float el2) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    nlohmann::json sectors;
-    bool hasSectors = false;
+    const bool hasSectors = sectors.is_array() && !sectors.empty();
+    param["sectors"] = sectors;
+    createHeader("SHADOW", "CMD", "CMS", param, payload);
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("Sector 1") ) {
-            const auto& inputParam = inputPayload.at("Sector 1");
-            if(inputParam["On Off"] == 1) {
-                hasSectors = true;
-                nlohmann::json sector;
-                sector["target"] = "AZ";
-                sector["start"] = inputParam["start"];
-                sector["stop"] = inputParam["stop"];
-                sectors.push_back(sector);
-            }
-        }
-        if (inputPayload.contains("Sector 2") ) {
-            const auto& inputParam = inputPayload.at("Sector 2");
-            if(inputParam["On Off"] == 1) {
-                hasSectors = true;
-                nlohmann::json sector;
-                sector["target"] = "AZ";
-                sector["start"] = inputParam["start"];
-                sector["stop"] = inputParam["stop"];
-                sectors.push_back(sector);
-            }
-        }
-
-        param["sectors"] = sectors;
-        
-
-        createHeader("LRF", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        if (hasSectors) {
-            sendToTcpDestination(outPacket, *destination);
-        } else {
-            std::cout << "[ACS Entity] Nessun settore di ombreggiamento attivo, non invio comando shadow" << std::endl;
-        }
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per LRF: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
+    }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    if (hasSectors) {
+        sendToTcpDestination(outPacket, *destination);
+    } else {
+        std::cout << "[ACS Entity] Nessun settore di ombreggiamento attivo, non invio comando shadow" << std::endl;
     }
 }
 
-void AcsEntity::createZOOM(const nlohmann::json& message) {
+void AcsEntity::createZOOM(uint16_t destinationLradId, const std::string& id) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("Camera Zoom") ) {
-            const auto& inputParam = inputPayload.at("Camera Zoom");
+    param["id"] = id;
+    createHeader("ZOOM", "CMD", "CMS", param, payload);
 
-            param["id"] = "HD"; 
-            param["value"] = inputParam*0.3; //conversione da step in trentesimi da centesimi
-
-        }
-        else {
-            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        createHeader("ZOOM", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per ZOOM: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
 
-void AcsEntity::createPOSITION(const nlohmann::json& message) {
+void AcsEntity::createPOSITION(uint16_t destinationLradId, float az, float el, int goTo) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("az") && inputPayload.contains("el") ) {
+    param["az"] = az;
+    param["el"] = el;
+    param["goTo"] = goTo;
+    createHeader("POSITION", "CMD", "CMS", param, payload);
 
-            param["az"] = inputPayload.at("az");
-            param["el"] = inputPayload.at("el");
-            param["goTo"] = 2;
-
-        }
-
-        else {
-            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per POSITION: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        createHeader("POSITION", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per POSITION: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
-void AcsEntity::createDELTA(const nlohmann::json& message) {
+void AcsEntity::createDELTA(uint16_t destinationLradId, float az, float el) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
 
-        if (inputPayload.contains("X position") && inputPayload.contains("Y position")) {
-            const auto& X = inputPayload.at("X position");
-            const auto& Y = inputPayload.at("Y position");
-            
-            param["az"] = X*0.1; //TODO: verificare se Ã¨ necessario scalare i comandi di delta (es. 0.1) per adattarli alla sensibilitÃ  richiesta dall'ACS, e se questa scala Ã¨ la stessa per azimuth e elevazione
-            param["el"] = Y*0.1;
-        }
-        //TODO:gestire anche il caso del cueing status (es. "cueing_status": "ON") per determinare se inviare comandi di delta o di posizione assoluta
-        
+    param["az"] = az;
+    param["el"] = el;
+    createHeader("DELTA", "CMD", "CMS", param, payload);
 
-        createHeader("DELTA", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per DELTA: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
-void AcsEntity::createTRACKING(const nlohmann::json& message) {
+void AcsEntity::createTRACKING(uint16_t destinationLradId, bool autoTracking) {
     if (!eventBus_) {
         return;
     }
 
-    
-    nlohmann::json inputPayload;
     nlohmann::json param;
     nlohmann::json payload;
 
-    try {
-        inputPayload = message;
-        if (inputPayload.is_null()) {
-            throw std::runtime_error("payload mancante");
-        }
-        if (inputPayload.contains("Auto tracking") ) {
-            const auto& inputParam = inputPayload.at("Auto tracking");
+    param["auto"] = autoTracking;
+    createHeader("TRACKING", "CMD", "CMS", param, payload);
 
-            param["auto"] = inputParam == 0 ? false : true; 
-            
-
-        }
-        else {
-            std::cerr << "[ACS Entity] Parametri mancanti o di tipo errato per AUDIO: "
-                      << inputPayload.dump() << std::endl;
-            return;
-        }
-
-        createHeader("TRACKING", "CMD", "CMS", param, payload);
-
-        const auto destination = findDestination(static_cast<uint16_t>(message.value("destinationLradId", 0)));
-        if (!destination.has_value()) {
-            std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
-                      << static_cast<uint16_t>(message.value("destinationLradId", 0)) << std::endl;
-            return;
-        }
-
-        const std::string payloadStr = payload.dump();
-        RawPacket outPacket;
-        outPacket.data.assign(payloadStr.begin(), payloadStr.end());
-        outPacket.destinationLradId = static_cast<uint16_t>(message.value("destinationLradId", 0));
-
-        sendToTcpDestination(outPacket, *destination);
-        //sendToMulticast(outPacket);
-    } catch (const std::exception& e) {
-        std::cerr << "[ACS Entity] JSON non valido per TRACKING: " << e.what() << std::endl;
+    const auto destination = findDestination(destinationLradId);
+    if (!destination.has_value()) {
+        std::cerr << "[ACS Entity] Destinazione non configurata per LRAD ID: "
+                  << destinationLradId << std::endl;
         return;
     }
+
+    const std::string payloadStr = payload.dump();
+    RawPacket outPacket;
+    outPacket.data.assign(payloadStr.begin(), payloadStr.end());
+    outPacket.destinationLradId = destinationLradId;
+
+    sendToTcpDestination(outPacket, *destination);
 }
 
 

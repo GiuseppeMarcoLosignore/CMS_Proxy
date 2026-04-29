@@ -7,6 +7,7 @@
 #include "AcsEntity.hpp"
 #include "AppConfig.hpp"
 #include "CmsEntity.hpp"
+#include "Orchestrator.hpp"
 #include "EventBus.hpp"
 
 int main(int argc, char* argv[]) {
@@ -27,6 +28,9 @@ int main(int argc, char* argv[]) {
 
         cms_entity->start();
         acs_entity->start();
+
+        // auto orchestrator = std::make_shared<Orchestrator>(*cms_entity, *acs_entity, event_bus);
+        // orchestrator->start();
 
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "
                   << config_path << std::endl;

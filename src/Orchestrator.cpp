@@ -55,140 +55,73 @@ void Orchestrator::subscribeTopics() {
 
     //ACS topics
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        acsEntity_.createMASTER(message);
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_change_configuration_order_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        stop_cueing();
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_cueing_order_cancellation_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_cueing_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        start_cueing();
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_cueing_order_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        if(isPayloadEnabled(PayoladType::SEARCHLIGHT))
-            acsEntity_.createSEARCHLIGHT(message);
-        if(isPayloadEnabled(PayoladType::AUDIO))
-            acsEntity_.createAUDIO(message);
-        if(isPayloadEnabled(PayoladType::LAD))
-            acsEntity_.createLAD(message);
-        if(isPayloadEnabled(PayoladType::LRF))
-            acsEntity_.createLRF(message);
-
-        acsEntity_.createZOOM(message);
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_emission_control_INS(message);
     });  
     
     eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        const nlohmann::json& payload = message;
-        if (payload.is_null()) {
-            return;
-        }
-
-        if (payload.contains("Audio Enable")) {
-            enablePayload(PayoladType::AUDIO, payload.at("Audio Enable"));
-        }
-
-        if (payload.contains("Laser Enable")) {
-            enablePayload(PayoladType::LAD, payload.at("Laser Enable"));
-        }
-
-        if (payload.contains("Light Enable")) {
-            enablePayload(PayoladType::SEARCHLIGHT, payload.at("Light Enable"));
-        }
-
-        if (payload.contains("Laser Range Finder Enable")) {
-            enablePayload(PayoladType::LRF, payload.at("Laser Range Finder Enable"));
-        }
-
-
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_emission_mode_INS(message);
     }); 
 
     eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        acsEntity_.createSHADOW(message);
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_inhibition_sectors_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        acsEntity_.createDELTA(message);
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_joystick_control_lrad_1_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        acsEntity_.createDELTA(message);
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_joystick_control_lrad_2_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_recording_command_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        
-        manage_recording();
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
+        handleCS_LRAS_recording_command_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_CS_emission_mode_feedback_INS(topic, message);
+        handleCS_LRAS_request_emission_mode_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_engagement_capability_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_CS_engagement_capability_INS(topic, message);
+        handleCS_LRAS_request_engagement_capability_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_full_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_MULTI_full_status_v2_INS(topic, message);
+        handleCS_LRAS_request_full_status_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_installation_data_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_CS_installation_data_INS(topic, message);
+        handleCS_LRAS_request_installation_data_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_software_version_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_CS_software_version_INS(topic, message);
+        handleCS_LRAS_request_software_version_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_message_table_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_CS_message_table_INS(topic, message);
+        handleCS_LRAS_request_message_table_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_thresholds_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_CS_thresholds_INS(topic, message);
+        handleCS_LRAS_request_thresholds_INS(message);
     });
 
     eventBus_->subscribe(Topics::CS_LRAS_request_translation_INS, [this](const std::string& topic, const nlohmann::json& message) {
-
-        cmsEntity_.sendLRAS_CS_ack_INS(topic, message);
-        cmsEntity_.sendLRAS_CS_translation_INS(topic, message);
+        handleCS_LRAS_request_translation_INS(message);
     });
+
 
     
     // From ACS to Orchestrator topics
@@ -315,6 +248,192 @@ Lras_full Orchestrator::getLrasFullStatus() const {
     }
 
     return Lras_full{};
+}
+
+
+void Orchestrator::handleCS_LRAS_change_configuration_order_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_change_configuration_order_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_change_configuration_order_INS, nackreason, message);
+        return;
+    }
+    if(message.contains("LRAD ID") && message.contains("Configuration")) {
+        const uint16_t lradId = message.at("LRAD ID").get<uint16_t>();
+        const uint16_t rawConfig = message.at("Configuration").get<uint16_t>();
+
+        if(!isLradControlledByCms(lradId) && rawConfig == 1) {
+            acsEntity_.createMASTER(lradId, "REQ");
+        }
+        if(isLradControlledByCms(lradId) && rawConfig == 1) {
+            acsEntity_.createMASTER(lradId, "REFUSE");
+        }
+        if(isLradControlledByCms(lradId) && rawConfig == 0) {
+            acsEntity_.createMASTER(lradId, "RELEASE");
+            acsEntity_.createMASTER(lradId, "ACCEPT");
+        }
+
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_change_configuration_order_INS, nackreason, message);
+        // Process the configuration change as needed
+        // For example, you might want to update internal state or send a command to the LRAD
+    } else {
+        nackreason = 2; // Invalid parameter
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_change_configuration_order_INS, nackreason, message);
+    }
+}
+
+void Orchestrator::handleCS_LRAS_cueing_order_cancellation_INS(const nlohmann::json& message) {
+
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_cueing_order_cancellation_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_cueing_order_cancellation_INS, nackreason, message);
+        return;
+    }
+    stop_cueing();
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_cueing_order_cancellation_INS, nackreason, message);
+    // Process the cueing order cancellation as needed
+}
+
+void Orchestrator::handleCS_LRAS_cueing_order_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_cueing_order_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_cueing_order_INS, nackreason, message);
+        return;
+    }
+    start_cueing();
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_cueing_order_INS, nackreason, message);
+    // Process the cueing order as needed
+}
+
+void Orchestrator::handleCS_LRAS_emission_control_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_emission_control_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+        return;
+    }
+
+    if(message.contains("LRAD ID")) {
+        const uint16_t lradId = message.at("LRAD ID").get<uint16_t>();
+
+        if(isLradControlledByCms(lradId)) {
+            if(isPayloadEnabled(PayoladType::LAD) && message["Laser Enable Validity"] == 1) {
+                acsEntity_.createLAD(lradId, message["Laser on off"] == 0 ? "OFF" : "ON", false);
+
+            }
+            if(isPayloadEnabled(PayoladType::SEARCHLIGHT) && message["Light Enable Validity"] == 1) {
+                acsEntity_.createSEARCHLIGHT(
+                    lradId, 
+                    message["Light Power"] == 0 ? "OFF" :  message["Light Power"] == 1 ? "ON" : "STROBE",
+                    message["Light Zoom"], 
+                    message["Light Mode"] == 1 ? "35W" : message["Light Mode"] == 2 ? "45W" : "85W"
+                    );
+            }
+            if(isPayloadEnabled(PayoladType::LRF) && message["Laser Range Finder Enable Validity"] == 1) {
+                acsEntity_.createLRF(lradId,
+                    message["LRF on off"] == 0 ? "OFF" :  "ON");
+            }
+            if(isPayloadEnabled(PayoladType::AUDIO) && message["Audio Enable Validity"] == 1) {
+                acsEntity_.createAUDIO(lradId, message["Audio Volume dB"], message["Mute"]);
+            }
+
+        } else {
+            nackreason = 2; 
+            cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+            return;
+        }
+
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+        // Process the configuration change as needed
+        // For example, you might want to update internal state or send a command to the LRAD
+    } else {
+        nackreason = 2; // Invalid parameter
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+    }
+}
+
+void Orchestrator::handleCS_LRAS_emission_mode_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_emission_mode_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+        return;
+    }
+
+    if(message.contains("LRAD ID")) {
+        const uint16_t lradId = message.at("LRAD ID").get<uint16_t>();
+
+        if(isLradControlledByCms(lradId)) {
+            if(message["Laser Enable Validity"] == 1) {
+                lras->ladEnabled = message["Laser on off"] == 0 ? false : true;
+            }
+            if(message["Light Enable Validity"] == 1) {
+                lras->searchlightEnabled = message["Light on off"] == 0 ? false : true;
+            }
+            if(message["Laser Range Finder Enable Validity"] == 1) {
+                lras->lrfEnabled = message["LRF on off"] == 0 ? false : true;
+            }
+            if(message["Audio Enable Validity"] == 1) {
+                lras->audioEnabled = message["Audio on off"] == 0 ? false : true;
+            }
+            if(message["Audio Volume Levels Validity"] == 1) {
+                lras->audioLvl1 = message["Audio Volume Level 1"];
+                lras->audioLvl2 = message["Audio Volume Level 2"];
+                lras->audioLvl3 = message["Audio Volume Level 3"];
+            }
+
+        } else {
+            nackreason = 2; 
+            cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+            return;
+        }
+
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+        // Process the configuration change as needed
+        // For example, you might want to update internal state or send a command to the LRAD
+    } else {
+        nackreason = 2; // Invalid parameter
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_emission_control_INS, nackreason, message);
+    }
+}
+
+void Orchestrator::handleCS_LRAS_inhibition_sectors_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    float az1 = 0;
+    float el1 = 0;
+    float az2 = 0;
+    float el2 = 0;
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_inhibition_sectors_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_inhibition_sectors_INS, nackreason, message);
+        return;
+    }
+    if(message.contains("LRAD ID") ) {
+        const uint16_t lradId = message.at("LRAD ID").get<uint16_t>();
+        if(message.at("Sector 1")["On Off"] == 1) {
+            az1 = message.at("Sector 1")["start"].get<float>();
+            el1 = message.at("Sector 1")["start"].get<float>();
+        }
+        if(message.at("Sector 2")["On Off"] == 1) {
+            az2 = message.at("Sector 2")["start"].get<float>();
+            el2 = message.at("Sector 2")["start"].get<float>();
+        }
+        acsEntity_.createSHADOW(lradId, az1, el1, az2, el2);
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_inhibition_sectors_INS, nackreason, message);
+        // Process the inhibition sectors as needed
+        // For example, you might want to update internal state or send a command to the LRAD
+    } else {
+        nackreason = 2; // Invalid parameter
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_inhibition_sectors_INS, nackreason, message);
+    }
 }
 
 

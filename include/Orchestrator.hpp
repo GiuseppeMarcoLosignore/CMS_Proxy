@@ -62,10 +62,7 @@ struct Lrad_full {
     float gain = 0.0F;
     bool mute = false;
 
-    bool audioEnabled = false;
-    bool ladEnabled = false;
-    bool searchlightEnabled = false;
-    bool lrfEnabled = false;
+
     
 
     bool cmsControl = false; // Indicates if CMS is currently controlling this LRAD
@@ -77,6 +74,15 @@ struct Lras_full {
     uint16_t lras_mode;
 
     std::string swVersion;
+
+    bool audioEnabled = false;
+    bool ladEnabled = false;
+    bool searchlightEnabled = false;
+    bool lrfEnabled = false;
+
+    float audioLvl1;
+    float audioLvl2;
+    float audioLvl3;
 
     std::time_t last_update_time;
 };
@@ -122,6 +128,27 @@ public:
     void extractZOOMdata(const nlohmann::json& payload);
     void extractMASTERdata(const nlohmann::json& payload);
     void extractPOSITIONdata(const nlohmann::json& payload);
+
+    void handleCS_LRAS_change_configuration_order_INS(const nlohmann::json& message);
+    void handleCS_LRAS_cueing_order_cancellation_INS(const nlohmann::json& message);
+    void handleCS_LRAS_cueing_order_INS(const nlohmann::json& message);
+    void handleCS_LRAS_emission_control_INS(const nlohmann::json& message); 
+    void handleCS_LRAS_emission_mode_INS(const nlohmann::json& message);
+    void handleCS_LRAS_inhibition_sectors_INS(const nlohmann::json& message);
+    void handleCS_LRAS_joystick_control_lrad_1_INS(const nlohmann   ::json& message);
+    void handleCS_LRAS_joystick_control_lrad_2_INS(const nlohmann::json& message);
+    void handleCS_LRAS_recording_command_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_emission_mode_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_engagement_capability_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_full_status_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_installation_data_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_message_table_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_software_version_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_thresholds_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_translation_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_version_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_status_INS(const nlohmann::json& message);
+    void handleCS_LRAS_request_control_mode_INS(const nlohmann::json& message);
 
     void start_cueing();
     void stop_cueing();
