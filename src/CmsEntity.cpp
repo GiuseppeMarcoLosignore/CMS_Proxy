@@ -11,6 +11,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#
 
 #include <nlohmann/json.hpp>
 
@@ -572,25 +573,8 @@ void CmsEntity::subscribeTopics() {
         sendLRAS_CS_ack_INS(topic, nackreason, message);
     });
 
-    eventBus_->subscribe(Topics::LRAS_CS_change_configuration_request_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_CS_change_configuration_request_INS(topic, message);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_CS_lrad_1_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_CS_lrad_1_status_INS(topic, message);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_CS_lrad_2_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_CS_lrad_2_status_INS(topic, message);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_MULTI_full_status_v2_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_MULTI_full_status_v2_INS(topic, message);
-    });
-
-    eventBus_->subscribe(Topics::LRAS_MULTI_health_status_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        sendLRAS_MULTI_health_status_INS(topic, message);
-    });
+    // Subscription wiring for outbound send* methods is intentionally omitted.
+    // The caller will invoke send* methods directly with explicit payload parameters.
 }
 
 void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
@@ -1057,11 +1041,11 @@ json CmsEntity::parse_CS_LRAS_recording_command_INS(
     json payload;
     payload["Action Id"] = actionId;
     payload["LRAD ID"] = lradId;
-    payload["videoSource"] = videoSource;
-    payload["videoProfile"] = videoProfile;
-    payload["recordingMode"] = recordingMode;
-    payload["elapsedSeconds"] = elapsedSeconds;
-    payload["elapsedMicroseconds"] = elapsedMicroseconds;
+    payload["Video source"] = videoSource;
+    payload["Video Profile"] = videoProfile;
+    payload["Recording mode"] = recordingMode;
+    payload["Elapsed seconds"] = elapsedSeconds;
+    payload["Elapsed micro seconds"] = elapsedMicroseconds;
 
     destinationLradId = lradId;
 
@@ -1810,7 +1794,14 @@ void CmsEntity::periodicMessages() {
     });
 }
 
-void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::setMessageCallback(MessageCallback cb) {
+    callback_ = std::move(cb);
+}
+
+void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const std::string& topic,
+                                                             const nlohmann::json& message,
+                                                             uint16_t lradId,
+                                                             uint16_t configuration) const {
     (void)topic;
     (void)message;
 
@@ -1823,20 +1814,26 @@ void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const std::string& 
     append_u32_be(packet.data, 0);
     append_u32_be(packet.data, 0);
 
-    // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
-    const uint16_t lradId = 1; // TODO: retrieve from system
     append_u16_be(packet.data, lradId);
 
-    // Configuration: 0 = Local, 1 = Integrated
-    const uint16_t configuration = 0; // TODO: retrieve from system
     append_u16_be(packet.data, configuration);
 
     sendMulticastPacket(packet, "LRAS_CS_change_configuration_request_INS");
 }
 
-void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic,
+                                                       const nlohmann::json& message,
+                                                       uint16_t lradId,
+                                                       uint16_t audioEnable,
+                                                       float audioLevel1,
+                                                       float audioLevel2,
+                                                       float audioLevel3,
+                                                       uint16_t laserEnable,
+                                                       uint32_t laserMinDistance,
+                                                       uint16_t lightEnable,
+                                                       uint16_t lightMaxW,
+                                                       uint16_t lrfEnable) const {
     (void)topic;
-    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_emission_mode_feedback_INS);
@@ -1848,77 +1845,105 @@ void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic,
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = 0; // TODO: retrieve from system
+    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
     append_u32_be(packet.data, actionId);
 
     // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
-    const uint16_t lradId = 1; // TODO: retrieve from system
     append_u16_be(packet.data, lradId);
 
     // Audio Enable: 0 = Disable, 1 = Enable
-    const uint16_t audioEnable = 0; // TODO: retrieve from system
     append_u16_be(packet.data, audioEnable);
 
     // Audio Volume levels (3 x float, dB, [-128..0])
-    const float audioLevel1 = -128.0f; // TODO: retrieve from system
-    const float audioLevel2 = -128.0f; // TODO: retrieve from system
-    const float audioLevel3 = -128.0f; // TODO: retrieve from system
     append_f32_be(packet.data, audioLevel1);
     append_f32_be(packet.data, audioLevel2);
     append_f32_be(packet.data, audioLevel3);
 
     // Laser Enable: 0 = Disable, 1 = Enable
-    const uint16_t laserEnable = 0; // TODO: retrieve from system
     append_u16_be(packet.data, laserEnable);
 
     // Laser Min Distance [100..6000] m
-    const int32_t laserMinDistance = 100; // TODO: retrieve from system
-    append_u32_be(packet.data, static_cast<uint32_t>(laserMinDistance));
+    append_u32_be(packet.data, laserMinDistance);
 
     // Light Enable: 0 = Disable, 1 = Enable
-    const uint16_t lightEnable = 0; // TODO: retrieve from system
     append_u16_be(packet.data, lightEnable);
 
     // Light Max W: 0 = Off, 1 = 35W, 2 = 45W, 3 = 85W
-    const uint16_t lightMaxW = 0; // TODO: retrieve from system
     append_u16_be(packet.data, lightMaxW);
 
     // Laser Range Finder Enable: 0 = Disable, 1 = Enable
-    const uint16_t lrfEnable = 0; // TODO: retrieve from system
     append_u16_be(packet.data, lrfEnable);
 
     sendMulticastPacket(packet, "LRAS_CS_emission_mode_feedback_INS");
 }
 
-void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic,
+                                                      const nlohmann::json& message,
+                                                      uint32_t cstn,
+                                                      uint16_t engagementPossible1,
+                                                      uint16_t searchlightCapability1,
+                                                      uint16_t warningCapability1,
+                                                      float warningMinDb1,
+                                                      float warningMaxDb1,
+                                                      uint16_t dissuasionCapability1,
+                                                      float dissuasionMinDb1,
+                                                      float dissuasionMaxDb1,
+                                                      uint16_t persuasionCapability1,
+                                                      float persuasionMinDb1,
+                                                      float persuasionMaxDb1,
+                                                      uint16_t laserDazzlerCapability1,
+                                                      uint16_t engagementPossible2,
+                                                      uint16_t searchlightCapability2,
+                                                      uint16_t warningCapability2,
+                                                      float warningMinDb2,
+                                                      float warningMaxDb2,
+                                                      uint16_t dissuasionCapability2,
+                                                      float dissuasionMinDb2,
+                                                      float dissuasionMaxDb2,
+                                                      uint16_t persuasionCapability2,
+                                                      float persuasionMinDb2,
+                                                      float persuasionMaxDb2,
+                                                      uint16_t laserDazzlerCapability2) const {
     (void)topic;
     (void)message;
 
     // Helper lambda: appends one 36-byte LRAD capability block
-    auto append_lrad_capability = [this](std::vector<uint8_t>& buf) {
+    auto append_lrad_capability = [this](std::vector<uint8_t>& buf,
+                                         uint16_t engagementPossible,
+                                         uint16_t searchlightCapability,
+                                         uint16_t warningCapability,
+                                         float warningMinDb,
+                                         float warningMaxDb,
+                                         uint16_t dissuasionCapability,
+                                         float dissuasionMinDb,
+                                         float dissuasionMaxDb,
+                                         uint16_t persuasionCapability,
+                                         float persuasionMinDb,
+                                         float persuasionMaxDb,
+                                         uint16_t laserDazzlerCapability) {
         // Engagement possible: 0=unknown,1=not attainable,2=LRAD not available,3=CST in blind arc,4=engagement possible
-        append_u16_be(buf, 0); // TODO: retrieve from system
+        append_u16_be(buf, engagementPossible);
 
         // Searchlight capability: 0=FALSE, 1=TRUE
-        append_u16_be(buf, 0); // TODO: retrieve from system
+        append_u16_be(buf, searchlightCapability);
 
         // Warning capability (10 bytes): capability(2) + min db(4) + max db(4)
-        append_u16_be(buf, 0);      // capability: TODO: retrieve from system
-        append_f32_be(buf, -128.0f); // min db: TODO: retrieve from system
-        append_f32_be(buf, -128.0f); // max db: TODO: retrieve from system
+        append_u16_be(buf, warningCapability);
+        append_f32_be(buf, warningMinDb);
+        append_f32_be(buf, warningMaxDb);
 
         // Dissuasion capability (10 bytes): capability(2) + min db(4) + max db(4)
-        append_u16_be(buf, 0);      // capability: TODO: retrieve from system
-        append_f32_be(buf, -128.0f); // min db: TODO: retrieve from system
-        append_f32_be(buf, -128.0f); // max db: TODO: retrieve from system
+        append_u16_be(buf, dissuasionCapability);
+        append_f32_be(buf, dissuasionMinDb);
+        append_f32_be(buf, dissuasionMaxDb);
 
         // Persuasion capability (10 bytes): capability(2) + min db(4) + max db(4)
-        append_u16_be(buf, 0);      // capability: TODO: retrieve from system
-        append_f32_be(buf, -128.0f); // min db: TODO: retrieve from system
-        append_f32_be(buf, -128.0f); // max db: TODO: retrieve from system
+        append_u16_be(buf, persuasionCapability);
+        append_f32_be(buf, persuasionMinDb);
+        append_f32_be(buf, persuasionMaxDb);
 
         // Laser dazzler capability: 0=FALSE, 1=TRUE
-        append_u16_be(buf, 0); // TODO: retrieve from system
+        append_u16_be(buf, laserDazzlerCapability);
     };
 
     RawPacket packet;
@@ -1931,23 +1956,49 @@ void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic, 
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = 0; // TODO: retrieve from system
+    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
     append_u32_be(packet.data, actionId);
 
     // CSTN - Combat System Track Number [1..9999]
-    const int32_t cstn = 1; // TODO: retrieve from system
-    append_u32_be(packet.data, static_cast<uint32_t>(cstn));
+    append_u32_be(packet.data, cstn);
 
     // LRAD 1 capability block (36 bytes)
-    append_lrad_capability(packet.data);
+    append_lrad_capability(packet.data,
+                           engagementPossible1,
+                           searchlightCapability1,
+                           warningCapability1,
+                           warningMinDb1,
+                           warningMaxDb1,
+                           dissuasionCapability1,
+                           dissuasionMinDb1,
+                           dissuasionMaxDb1,
+                           persuasionCapability1,
+                           persuasionMinDb1,
+                           persuasionMaxDb1,
+                           laserDazzlerCapability1);
 
     // LRAD 2 capability block (36 bytes)
-    append_lrad_capability(packet.data);
+    append_lrad_capability(packet.data,
+                           engagementPossible2,
+                           searchlightCapability2,
+                           warningCapability2,
+                           warningMinDb2,
+                           warningMaxDb2,
+                           dissuasionCapability2,
+                           dissuasionMinDb2,
+                           dissuasionMaxDb2,
+                           persuasionCapability2,
+                           persuasionMinDb2,
+                           persuasionMaxDb2,
+                           laserDazzlerCapability2);
 
     sendMulticastPacket(packet, "LRAS_CS_engagement_capability_INS");
 }
 
-void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const std::string& topic,
+                                                 const nlohmann::json& message,
+                                                 uint16_t lradId,
+                                                 int32_t limit) const {
     (void)topic;
     (void)message;
 
@@ -1960,31 +2011,44 @@ void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const std::string& topic, const
     append_u32_be(packet.data, 0);
     append_u32_be(packet.data, 0);
 
-    // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
-    const uint16_t lradId = 1; // TODO: retrieve from system
     append_u16_be(packet.data, lradId);
 
     // Limit: bordo al quale ci si sta' avvicinando [-180..180] deg
-    const int32_t limit = 0; // TODO: retrieve from system
     append_u32_be(packet.data, static_cast<uint32_t>(limit));
 
     sendMulticastPacket(packet, "LRAS_CS_hw_limit_warning_INS");
 }
 
-void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic,
+                                                  const nlohmann::json& message,
+                                                  float arcStart1,
+                                                  float arcStop1,
+                                                  float x1,
+                                                  float y1,
+                                                  float z1,
+                                                  float arcStart2,
+                                                  float arcStop2,
+                                                  float x2,
+                                                  float y2,
+                                                  float z2) const {
     (void)topic;
     (void)message;
 
     // Helper lambda: appends one 20-byte LRAD installation data block
-    auto append_lrad_inst_data = [this](std::vector<uint8_t>& buf) {
+    auto append_lrad_inst_data = [this](std::vector<uint8_t>& buf,
+                                        float arcStart,
+                                        float arcStop,
+                                        float x,
+                                        float y,
+                                        float z) {
         // HW active arc: start and stop [-180..180] deg
-        append_f32_be(buf, 0.0f); // arc start: TODO: retrieve from system
-        append_f32_be(buf, 0.0f); // arc stop:  TODO: retrieve from system
+        append_f32_be(buf, arcStart);
+        append_f32_be(buf, arcStop);
 
         // Pos_crp: X, Y [-400000..400000] m; Z [-5000..40000] m
-        append_f32_be(buf, 0.0f); // X: TODO: retrieve from system
-        append_f32_be(buf, 0.0f); // Y: TODO: retrieve from system
-        append_f32_be(buf, 0.0f); // Z: TODO: retrieve from system
+        append_f32_be(buf, x);
+        append_f32_be(buf, y);
+        append_f32_be(buf, z);
     };
 
     RawPacket packet;
@@ -1997,35 +2061,32 @@ void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic, cons
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = 0; // TODO: retrieve from system
+    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
     append_u32_be(packet.data, actionId);
 
     // LRAD 1 installation data (20 bytes)
-    append_lrad_inst_data(packet.data);
+    append_lrad_inst_data(packet.data, arcStart1, arcStop1, x1, y1, z1);
 
     // LRAD 2 installation data (20 bytes)
-    append_lrad_inst_data(packet.data);
+    append_lrad_inst_data(packet.data, arcStart2, arcStop2, x2, y2, z2);
 
     sendMulticastPacket(packet, "LRAS_CS_installation_data_INS");
 }
 
-void CmsEntity::sendLRAS_CS_message_table_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_message_table_INS(const std::string& topic,
+                                              const nlohmann::json& message,
+                                              uint16_t totalMessagesNumber,
+                                              uint16_t messageNumber,
+                                              uint16_t dbItemsNumber,
+                                              uint32_t messageId,
+                                              const std::string& summaryText,
+                                              uint16_t numberOfLanguages,
+                                              uint32_t recordId,
+                                              uint16_t language,
+                                              uint8_t associatedAudio,
+                                              const std::string& messageText) const {
     (void)topic;
     (void)message;
-
-    constexpr uint16_t totalMessagesNumber = 1; // TODO: retrieve from system
-    constexpr uint16_t messageNumber = 1;       // TODO: retrieve from system
-    constexpr uint16_t dbItemsNumber = 1;       // TODO: retrieve from system
-
-    // One placeholder DB item with one language to keep binary layout valid.
-    constexpr uint32_t messageId = 1;           // TODO: retrieve from system
-    constexpr uint16_t numberOfLanguages = 1;   // TODO: retrieve from system
-    constexpr uint32_t recordId = 1;            // TODO: retrieve from system
-    constexpr uint16_t language = 1;            // TODO: retrieve from system (0=IT,1=EN,2=AR,99=Tone)
-    constexpr uint8_t associatedAudio = 1;      // TODO: retrieve from system
-
-    const std::string summaryText = "placeholder"; // TODO: retrieve from system
-    const std::string messageText = "placeholder"; // TODO: retrieve from system
 
     const uint32_t payloadLength = 6u + 4u + 32u + 2u +
                                    static_cast<uint32_t>(numberOfLanguages) * (4u + 2u + 1u + 768u);
@@ -2067,7 +2128,26 @@ void CmsEntity::sendLRAS_CS_message_table_INS(const std::string& topic, const nl
     sendMulticastPacket(packet, "LRAS_CS_message_table_INS");
 }
 
-void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& topic,
+                                                 const nlohmann::json& message,
+                                                 const std::string& lrasServerSwName,
+                                                 const std::string& lrasServerSwVersion,
+                                                 const std::string& lrad1MasterSwName,
+                                                 const std::string& lrad1MasterSwVersion,
+                                                 const std::string& lrad1SlaveSwName,
+                                                 const std::string& lrad1SlaveSwVersion,
+                                                 const std::string& lrad1TrackingSwName,
+                                                 const std::string& lrad1TrackingSwVersion,
+                                                 const std::string& lrad2MasterSwName,
+                                                 const std::string& lrad2MasterSwVersion,
+                                                 const std::string& lrad2SlaveSwName,
+                                                 const std::string& lrad2SlaveSwVersion,
+                                                 const std::string& lrad2TrackingSwName,
+                                                 const std::string& lrad2TrackingSwVersion,
+                                                 const std::string& console1SwName,
+                                                 const std::string& console1SwVersion,
+                                                 const std::string& console2SwName,
+                                                 const std::string& console2SwVersion) const {
     (void)topic;
     (void)message;
 
@@ -2088,62 +2168,58 @@ void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& topic, const
     append_u32_be(packet.data, 0);
 
     // LRAS Server (2 x 16 bytes)
-    append_fixed_string_16(packet.data, "LRAS-SW");      // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, lrasServerSwName);
+    append_fixed_string_16(packet.data, lrasServerSwVersion);
 
     // LRAD 1 / CPU Master
-    append_fixed_string_16(packet.data, "LRAD1-M-SW");   // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, lrad1MasterSwName);
+    append_fixed_string_16(packet.data, lrad1MasterSwVersion);
     // LRAD 1 / CPU Slave
-    append_fixed_string_16(packet.data, "LRAD1-S-SW");   // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, lrad1SlaveSwName);
+    append_fixed_string_16(packet.data, lrad1SlaveSwVersion);
     // LRAD 1 / CPU Tracking
-    append_fixed_string_16(packet.data, "LRAD1-T-SW");   // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, lrad1TrackingSwName);
+    append_fixed_string_16(packet.data, lrad1TrackingSwVersion);
 
     // LRAD 2 / CPU Master
-    append_fixed_string_16(packet.data, "LRAD2-M-SW");   // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, lrad2MasterSwName);
+    append_fixed_string_16(packet.data, lrad2MasterSwVersion);
     // LRAD 2 / CPU Slave
-    append_fixed_string_16(packet.data, "LRAD2-S-SW");   // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, lrad2SlaveSwName);
+    append_fixed_string_16(packet.data, lrad2SlaveSwVersion);
     // LRAD 2 / CPU Tracking
-    append_fixed_string_16(packet.data, "LRAD2-T-SW");   // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, lrad2TrackingSwName);
+    append_fixed_string_16(packet.data, lrad2TrackingSwVersion);
 
     // LRAS Console 1
-    append_fixed_string_16(packet.data, "CONSOLE1-SW");  // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, console1SwName);
+    append_fixed_string_16(packet.data, console1SwVersion);
 
     // LRAS Console 2
-    append_fixed_string_16(packet.data, "CONSOLE2-SW");  // TODO: retrieve from system
-    append_fixed_string_16(packet.data, "build-0000");   // TODO: retrieve from system
+    append_fixed_string_16(packet.data, console2SwName);
+    append_fixed_string_16(packet.data, console2SwVersion);
 
     sendMulticastPacket(packet, "LRAS_CS_software_version_INS");
 }
 
-void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic,
+                                           const nlohmann::json& message,
+                                           uint32_t warningDistance1,
+                                           uint32_t dissuasionDistance1,
+                                           uint32_t persuasionDistance1,
+                                           uint32_t nohdDistance1,
+                                           uint32_t acousticDamageDistance1,
+                                           uint32_t maxDazzlerDistance1,
+                                           uint32_t maxLightDistance1,
+                                           uint32_t warningDistance2,
+                                           uint32_t dissuasionDistance2,
+                                           uint32_t persuasionDistance2,
+                                           uint32_t nohdDistance2,
+                                           uint32_t acousticDamageDistance2,
+                                           uint32_t maxDazzlerDistance2,
+                                           uint32_t maxLightDistance2) const {
     (void)topic;
     (void)message;
-
-    auto append_lrad_thresholds = [this](std::vector<uint8_t>& buffer) {
-        // Distances are in meters; placeholder values until system integration is available.
-        const int32_t warningDistance = 1;        // TODO: retrieve from system [1..10000]
-        const int32_t dissuasionDistance = 1;     // TODO: retrieve from system [1..10000]
-        const int32_t persuasionDistance = 1;     // TODO: retrieve from system [1..10000]
-        const int32_t nohdDistance = 1;           // TODO: retrieve from system [1..1000]
-        const int32_t acousticDamageDistance = 1; // TODO: retrieve from system [1..1000]
-        const int32_t maxDazzlerDistance = 1;     // TODO: retrieve from system [1..10000]
-        const int32_t maxLightDistance = 1;       // TODO: retrieve from system [1..10000]
-
-        append_u32_be(buffer, static_cast<uint32_t>(warningDistance));
-        append_u32_be(buffer, static_cast<uint32_t>(dissuasionDistance));
-        append_u32_be(buffer, static_cast<uint32_t>(persuasionDistance));
-        append_u32_be(buffer, static_cast<uint32_t>(nohdDistance));
-        append_u32_be(buffer, static_cast<uint32_t>(acousticDamageDistance));
-        append_u32_be(buffer, static_cast<uint32_t>(maxDazzlerDistance));
-        append_u32_be(buffer, static_cast<uint32_t>(maxLightDistance));
-    };
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_thresholds_INS);
@@ -2155,21 +2231,38 @@ void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic, const nlohm
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = 0; // TODO: retrieve from system
+    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
     append_u32_be(packet.data, actionId);
 
     // LRAD 1 thresholds (28 bytes)
-    append_lrad_thresholds(packet.data);
+    append_u32_be(packet.data, warningDistance1);
+    append_u32_be(packet.data, dissuasionDistance1);
+    append_u32_be(packet.data, persuasionDistance1);
+    append_u32_be(packet.data, nohdDistance1);
+    append_u32_be(packet.data, acousticDamageDistance1);
+    append_u32_be(packet.data, maxDazzlerDistance1);
+    append_u32_be(packet.data, maxLightDistance1);
 
     // LRAD 2 thresholds (28 bytes)
-    append_lrad_thresholds(packet.data);
+    append_u32_be(packet.data, warningDistance2);
+    append_u32_be(packet.data, dissuasionDistance2);
+    append_u32_be(packet.data, persuasionDistance2);
+    append_u32_be(packet.data, nohdDistance2);
+    append_u32_be(packet.data, acousticDamageDistance2);
+    append_u32_be(packet.data, maxDazzlerDistance2);
+    append_u32_be(packet.data, maxLightDistance2);
 
     sendMulticastPacket(packet, "LRAS_CS_thresholds_INS");
 }
 
-void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic,
+                                            const nlohmann::json& message,
+                                            uint16_t lradId,
+                                            uint16_t status,
+                                            uint16_t languageIn,
+                                            uint16_t languageOut,
+                                            const std::string& messageText) const {
     (void)topic;
-    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_translation_INS);
@@ -2181,27 +2274,21 @@ void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic, const nloh
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = 0; // TODO: retrieve from system
+    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
     append_u32_be(packet.data, actionId);
 
     // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
-    const uint16_t lradId = 1; // TODO: retrieve from system
     append_u16_be(packet.data, lradId);
 
     // Status: 1=Wait, 2=Ok, 3=Refused, 4=Timeout, 5=Unsolicited
-    const uint16_t status = 2; // TODO: retrieve from system
     append_u16_be(packet.data, status);
 
     // Free text block (valid when status is Ok or Unsolicited)
     // Language in: 0=Italian, 1=English, 2=Arabic-Egypt, 99=Tone
-    const uint16_t languageIn = 1; // TODO: retrieve from system
     append_u16_be(packet.data, languageIn);
 
     // Language out: 0=Italian, 1=English, 2=Arabic-Egypt, 99=Tone
-    const uint16_t languageOut = 0; // TODO: retrieve from system
     append_u16_be(packet.data, languageOut);
-
-    const std::string messageText = "placeholder"; // TODO: retrieve from system
     std::vector<uint8_t> text(768, 0);
     const std::size_t textLen = std::min<std::size_t>(messageText.size(), text.size());
     std::memcpy(text.data(), messageText.data(), textLen);
@@ -2210,23 +2297,100 @@ void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic, const nloh
     sendMulticastPacket(packet, "LRAS_CS_translation_INS");
 }
 
-void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const std::string& topic,
+                                              const nlohmann::json& message,
+                                              uint16_t lradStatus,
+                                              uint16_t lradMode,
+                                              uint16_t cueingStatus,
+                                              uint16_t videoTrackingStatus,
+                                              float azimuth,
+                                              float elevation,
+                                              int16_t lrfDistance,
+                                              uint16_t inhibitionSectorFlag,
+                                              uint16_t warningStep,
+                                              uint16_t dissuasionStep,
+                                              uint16_t laserDazzlerMode,
+                                              uint16_t persuasionStep,
+                                              uint16_t laserPulseLength,
+                                              uint16_t lightPower) const {
     (void)topic;
     (void)message;
 
-    const RawPacket packet = build_lrad_status_packet(MessageId_LRAS_CS_lrad_1_status_INS);
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_lrad_status_INS);
+
+    append_u32_be(packet.data, MessageId_LRAS_CS_lrad_1_status_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_lrad_status_INS);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    append_u16_be(packet.data, lradStatus);
+    append_u16_be(packet.data, lradMode);
+    append_u16_be(packet.data, cueingStatus);
+    append_u16_be(packet.data, videoTrackingStatus);
+    append_f32_be(packet.data, azimuth);
+    append_f32_be(packet.data, elevation);
+    append_i16_be(packet.data, lrfDistance);
+    append_u16_be(packet.data, inhibitionSectorFlag);
+    append_u16_be(packet.data, warningStep);
+    append_u16_be(packet.data, dissuasionStep);
+    append_u16_be(packet.data, laserDazzlerMode);
+    append_u16_be(packet.data, persuasionStep);
+    append_u16_be(packet.data, laserPulseLength);
+    append_u16_be(packet.data, lightPower);
+
     sendMulticastPacket(packet, "LRAS_CS_lrad_1_status_INS");
 }  
 
-void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const std::string& topic,
+                                              const nlohmann::json& message,
+                                              uint16_t lradStatus,
+                                              uint16_t lradMode,
+                                              uint16_t cueingStatus,
+                                              uint16_t videoTrackingStatus,
+                                              float azimuth,
+                                              float elevation,
+                                              int16_t lrfDistance,
+                                              uint16_t inhibitionSectorFlag,
+                                              uint16_t warningStep,
+                                              uint16_t dissuasionStep,
+                                              uint16_t laserDazzlerMode,
+                                              uint16_t persuasionStep,
+                                              uint16_t laserPulseLength,
+                                              uint16_t lightPower) const {
     (void)topic;
     (void)message;
 
-    const RawPacket packet = build_lrad_status_packet(MessageId_LRAS_CS_lrad_2_status_INS);
+    RawPacket packet;
+    packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_lrad_status_INS);
+
+    append_u32_be(packet.data, MessageId_LRAS_CS_lrad_2_status_INS);
+    append_u32_be(packet.data, MessageLength_LRAS_CS_lrad_status_INS);
+    append_u32_be(packet.data, 0);
+    append_u32_be(packet.data, 0);
+
+    append_u16_be(packet.data, lradStatus);
+    append_u16_be(packet.data, lradMode);
+    append_u16_be(packet.data, cueingStatus);
+    append_u16_be(packet.data, videoTrackingStatus);
+    append_f32_be(packet.data, azimuth);
+    append_f32_be(packet.data, elevation);
+    append_i16_be(packet.data, lrfDistance);
+    append_u16_be(packet.data, inhibitionSectorFlag);
+    append_u16_be(packet.data, warningStep);
+    append_u16_be(packet.data, dissuasionStep);
+    append_u16_be(packet.data, laserDazzlerMode);
+    append_u16_be(packet.data, persuasionStep);
+    append_u16_be(packet.data, laserPulseLength);
+    append_u16_be(packet.data, lightPower);
+
     sendMulticastPacket(packet, "LRAS_CS_lrad_2_status_INS");
 }
 
-void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const std::string& topic,
+                                                  const nlohmann::json& message,
+                                                  const std::vector<uint8_t>& lrad1FullStatusBlock,
+                                                  const std::vector<uint8_t>& lrad2FullStatusBlock) const {
     (void)topic;
     (void)message;
 
@@ -2240,14 +2404,34 @@ void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const std::string& topic, cons
     append_u32_be(packet.data, 0);
 
     // LRAD 1 full status (44 bytes)
-    append_lrad_full_status(packet.data);
+    const std::size_t lrad1FullCopySize = (lrad1FullStatusBlock.size() < 44u) ? lrad1FullStatusBlock.size() : 44u;
+    packet.data.insert(packet.data.end(), lrad1FullStatusBlock.begin(), lrad1FullStatusBlock.begin() + lrad1FullCopySize);
+    if (lrad1FullCopySize < 44u) {
+        packet.data.insert(packet.data.end(), 44u - lrad1FullCopySize, 0u);
+    }
+
     // LRAD 2 full status (44 bytes)
-    append_lrad_full_status(packet.data);
+    const std::size_t lrad2FullCopySize = (lrad2FullStatusBlock.size() < 44u) ? lrad2FullStatusBlock.size() : 44u;
+    packet.data.insert(packet.data.end(), lrad2FullStatusBlock.begin(), lrad2FullStatusBlock.begin() + lrad2FullCopySize);
+    if (lrad2FullCopySize < 44u) {
+        packet.data.insert(packet.data.end(), 44u - lrad2FullCopySize, 0u);
+    }
 
     sendMulticastPacket(packet, "LRAS_MULTI_full_status_v2_INS");
 }
 
-void CmsEntity::sendLRAS_MULTI_health_status_INS(const std::string& topic, const nlohmann::json& message) const {
+void CmsEntity::sendLRAS_MULTI_health_status_INS(const std::string& topic,
+                                                 const nlohmann::json& message,
+                                                 uint16_t systemCondition,
+                                                 uint16_t systemOperativeState,
+                                                 uint16_t systemTemperature,
+                                                 const std::vector<uint8_t>& lrad1HealthBlock,
+                                                 const std::vector<uint8_t>& lrad2HealthBlock,
+                                                 uint16_t serverStatus,
+                                                 uint16_t console1Status,
+                                                 uint16_t console2Status,
+                                                 uint16_t console3Status,
+                                                 uint16_t console4Status) const {
     (void)topic;
     (void)message;
 
@@ -2261,21 +2445,30 @@ void CmsEntity::sendLRAS_MULTI_health_status_INS(const std::string& topic, const
     append_u32_be(packet.data, 0);
 
     // System-level fields (6 bytes)
-    append_u16_be(packet.data, 0);
-    append_u16_be(packet.data, 0);
-    append_u16_be(packet.data, 0);
+    append_u16_be(packet.data, systemCondition);
+    append_u16_be(packet.data, systemOperativeState);
+    append_u16_be(packet.data, systemTemperature);
 
     // LRAD 1 health (856 bytes)
-    append_lrad_health_block(packet.data);
+    const std::size_t lrad1HealthCopySize = (lrad1HealthBlock.size() < 856u) ? lrad1HealthBlock.size() : 856u;
+    packet.data.insert(packet.data.end(), lrad1HealthBlock.begin(), lrad1HealthBlock.begin() + lrad1HealthCopySize);
+    if (lrad1HealthCopySize < 856u) {
+        packet.data.insert(packet.data.end(), 856u - lrad1HealthCopySize, 0u);
+    }
+
     // LRAD 2 health (856 bytes)
-    append_lrad_health_block(packet.data);
+    const std::size_t lrad2HealthCopySize = (lrad2HealthBlock.size() < 856u) ? lrad2HealthBlock.size() : 856u;
+    packet.data.insert(packet.data.end(), lrad2HealthBlock.begin(), lrad2HealthBlock.begin() + lrad2HealthCopySize);
+    if (lrad2HealthCopySize < 856u) {
+        packet.data.insert(packet.data.end(), 856u - lrad2HealthCopySize, 0u);
+    }
 
     // LRAS Server Status + Console statuses (10 bytes)
-    append_u16_be(packet.data, 0);
-    append_u16_be(packet.data, 0);
-    append_u16_be(packet.data, 0);
-    append_u16_be(packet.data, 0);
-    append_u16_be(packet.data, 0);
+    append_u16_be(packet.data, serverStatus);
+    append_u16_be(packet.data, console1Status);
+    append_u16_be(packet.data, console2Status);
+    append_u16_be(packet.data, console3Status);
+    append_u16_be(packet.data, console4Status);
 
     sendMulticastPacket(packet, "LRAS_MULTI_health_status_INS");
 }

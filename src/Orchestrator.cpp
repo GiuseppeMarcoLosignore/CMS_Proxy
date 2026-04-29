@@ -371,23 +371,30 @@ void Orchestrator::handleCS_LRAS_emission_mode_INS(const nlohmann::json& message
         const uint16_t lradId = message.at("LRAD ID").get<uint16_t>();
 
         if(isLradControlledByCms(lradId)) {
+            const std::string lradName = lradId == 1 ? "LRAD 1" : "LRAD 2";
+            Lrad_full lradStatus = getLradFullStatus(lradName);
+
             if(message["Laser Enable Validity"] == 1) {
-                lras->ladEnabled = message["Laser on off"] == 0 ? false : true;
+                lradStatus.ladEnabled = message["Laser on off"] != 0;
             }
             if(message["Light Enable Validity"] == 1) {
-                lras->searchlightEnabled = message["Light on off"] == 0 ? false : true;
+                lradStatus.searchlightEnabled = message["Light on off"] != 0;
             }
             if(message["Laser Range Finder Enable Validity"] == 1) {
-                lras->lrfEnabled = message["LRF on off"] == 0 ? false : true;
+                lradStatus.lrfEnabled = message["LRF on off"] != 0;
             }
             if(message["Audio Enable Validity"] == 1) {
-                lras->audioEnabled = message["Audio on off"] == 0 ? false : true;
+                lradStatus.audioEnabled = message["Audio on off"] != 0;
             }
             if(message["Audio Volume Levels Validity"] == 1) {
-                lras->audioLvl1 = message["Audio Volume Level 1"];
-                lras->audioLvl2 = message["Audio Volume Level 2"];
-                lras->audioLvl3 = message["Audio Volume Level 3"];
+                Lras_full lrasStatus = getLrasFullStatus();
+                lrasStatus.audioLvl1 = message["Audio Volume Level 1"];
+                lrasStatus.audioLvl2 = message["Audio Volume Level 2"];
+                lrasStatus.audioLvl3 = message["Audio Volume Level 3"];
+                setLrasFullStatus(std::move(lrasStatus));
             }
+
+            setLradFullStatus(std::move(lradStatus), lradName);
 
         } else {
             nackreason = 2; 
@@ -435,6 +442,116 @@ void Orchestrator::handleCS_LRAS_inhibition_sectors_INS(const nlohmann::json& me
         cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_inhibition_sectors_INS, nackreason, message);
     }
 }
+
+void Orchestrator::handleCS_LRAS_joystick_control_lrad_1_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_joystick_control_lrad_1_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_1_INS, nackreason, message);
+        return;
+    }
+    
+    if(isLradControlledByCms(1)) {
+        if(message.contains("Azimuth") && message.contains("Elevation")) {
+            const float az = message.at("xPosition").get<float>()*0.5; // TODO: capire che sensibilità usare, per ora 0.5 è un valore di esempio
+            const float el = message.at("yPosition").get<float>()*0.5;
+            acsEntity_.createDELTA(1, az, el);
+        } else {
+            nackreason = 2; // Invalid parameter
+            cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_1_INS, nackreason, message);
+            return;
+        }
+    } else {
+        nackreason = 2; 
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_1_INS, nackreason, message);
+        return;
+    }
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_1_INS, nackreason, message);
+}
+
+void Orchestrator::handleCS_LRAS_joystick_control_lrad_2_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_joystick_control_lrad_2_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_2_INS, nackreason, message);
+        return;
+    }
+    if(isLradControlledByCms(2)) {
+        if(message.contains("Azimuth") && message.contains("Elevation")) {
+            const float az = message.at("xPosition").get<float>()*0.5; // TODO: capire che sensibilità usare, per ora 0.5 è un valore di esempio
+            const float el = message.at("yPosition").get<float>()*0.5;
+            acsEntity_.createDELTA(2, az, el);
+        } else {
+            nackreason = 2; // Invalid parameter
+            cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_2_INS, nackreason, message);
+            return;
+        }
+    } else {
+        nackreason = 2; 
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_2_INS, nackreason, message);
+        return;
+    }
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_joystick_control_lrad_2_INS, nackreason, message);
+}
+
+void Orchestrator::handleCS_LRAS_recording_command_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_recording_command_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_recording_command_INS, nackreason, message);
+        return;
+    }
+    manage_recording(message);
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_recording_command_INS, nackreason, message);
+}
+
+void Orchestrator::handleCS_LRAS_request_emission_mode_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_request_emission_mode_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_emission_mode_INS, nackreason, message);
+        return;
+    }
+
+    const uint16_t lradId = message["LRAD ID"].get<uint16_t>();
+    const std::string lradName = lradId == 1 ? "LRAD 1" : "LRAD 2";
+    const Lrad_full lradStatus = getLradFullStatus(lradName);
+    const Lras_full lrasStatus = getLrasFullStatus();
+
+    cmsEntity_.sendLRAS_CS_emission_mode_feedback_INS(message, Topics::CS_LRAS_request_emission_mode_INS, nackreason,
+        lradId,
+        lradStatus.audioEnabled ? 1 : 0,
+        lrasStatus.audioLvl1,
+        lrasStatus.audioLvl2,
+        lrasStatus.audioLvl3,
+        lradStatus.ladEnabled ? 1 : 0,
+        lrasStatus.ladMinDistance,
+        lradStatus.searchlightEnabled ? 1 : 0,
+        lradStatus.lrfEnabled ? 1 : 0
+    );
+    
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_emission_mode_INS, nackreason, message);
+}
+
+//TODO: implementare logica insieme a cueing
+void Orchestrator::handleCS_LRAS_request_engagement_capability_INS(const nlohmann::json& message) {
+    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle CS_LRAS_request_engagement_capability_INS: ACS not connected" << std::endl;
+        nackreason = 3; // 3 means ACS not connected
+        cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_engagement_capability_INS, nackreason, message);
+        return;
+    }
+
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_engagement_capability_INS, nackreason, message);
+}
+
+
+
 
 
 //TO TEST

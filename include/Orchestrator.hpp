@@ -15,7 +15,7 @@
 struct Lrad_full {
     std::string name;
     uint16_t lrad_status;
-    uint16_t lrad_mode;
+    bool controlledByCms = false;
     uint16_t cueing_status;
     uint16_t video_tracking_status;
     float lrf_value;
@@ -59,6 +59,11 @@ struct Lrad_full {
     bool tempVbox = false;
     bool tempAhd = false;
 
+    bool audioEnabled = false;
+    bool ladEnabled = false;
+    bool searchlightEnabled = false;
+    bool lrfEnabled = false;
+
     float gain = 0.0F;
     bool mute = false;
 
@@ -75,10 +80,9 @@ struct Lras_full {
 
     std::string swVersion;
 
-    bool audioEnabled = false;
-    bool ladEnabled = false;
-    bool searchlightEnabled = false;
-    bool lrfEnabled = false;
+
+
+    uint16_t ladMinDistance;
 
     float audioLvl1;
     float audioLvl2;
@@ -152,7 +156,7 @@ public:
 
     void start_cueing();
     void stop_cueing();
-    void manage_recording();
+    void manage_recording(nlohmann::json message);
 
 
 
