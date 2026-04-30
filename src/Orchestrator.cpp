@@ -1045,5 +1045,126 @@ void Orchestrator::extractPOSITIONdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(lradStatus), name);
 }
 
+bool Orchestrator::isAcsConnected() const {
+    return true;
+}
 
+bool Orchestrator::isCmsConnected() const {
+    return true;
+}
 
+bool Orchestrator::isLradControlledByCms(int lradId) const {
+    const std::string name = (lradId == 1) ? "PORT" : "STARBOARD";
+    const Lrad_full lrad = getLradFullStatus(name);
+    return lrad.cmsControl;
+}
+
+bool Orchestrator::isPayloadEnabled(PayoladType type) const {
+    const std::shared_ptr<std::vector<Lrad_full>> lradListPtr = std::atomic_load(&lradList_);
+    if (!lradListPtr || lradListPtr->empty()) {
+        return false;
+    }
+    for (const auto& lrad : *lradListPtr) {
+        switch (type) {
+            case PayoladType::AUDIO:       if (lrad.audioEnabled)       return true; break;
+            case PayoladType::LAD:         if (lrad.ladEnabled)         return true; break;
+            case PayoladType::SEARCHLIGHT: if (lrad.searchlightEnabled) return true; break;
+            case PayoladType::LRF:         if (lrad.lrfEnabled)         return true; break;
+        }
+    }
+    return false;
+}
+
+bool Orchestrator::isShadowEnabled() const {
+    return false;
+}
+
+void Orchestrator::enablePayload(PayoladType /*type*/, std::string /*enable*/) {
+    // TODO
+}
+
+void Orchestrator::extractMASTERdata(const nlohmann::json& payload) {
+    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
+        return;
+    }
+    const std::string name = payload.at("sender").get<std::string>();
+    if (!isKnownLradSender(name)) {
+        return;
+    }
+    if (!payload.contains("param") || !payload.at("param").is_object()) {
+        return;
+    }
+    const auto& param = payload.at("param");
+    Lrad_full lrad = getLradFullStatus(name);
+    if (param.contains("mode") && param.at("mode").is_string()) {
+        const std::string mode = param.at("mode").get<std::string>();
+        lrad.cmsControl = (mode == "MASTER" || mode == "ACCEPT");
+        lrad.mode = mode;
+    }
+    setLradFullStatus(std::move(lrad), name);
+}
+
+void Orchestrator::handleCS_LRAS_request_full_status_INS(const nlohmann::json& message) {
+    const Lrad_full lrad1 = getLradFullStatus("PORT");
+    const Lrad_full lrad2 = getLradFullStatus("STARBOARD");
+    cmsEntity_.sendLRAS_CS_lrad_1_status_INS(
+        Topics::CS_LRAS_request_full_status_INS, message,
+        lrad1.lrad_status, lrad1.audio_emitter_mode, lrad1.cueing_status,
+        lrad1.video_tracking_status, lrad1.Azimuth_deg, lrad1.Elevation_deg,
+        static_cast<int16_t>(lrad1.lrf_value), lrad1.inhibition_sector_flag,
+        0, 0, lrad1.laser_dazzler_mode, 0, 0, lrad1.searchlight_power_level);
+    cmsEntity_.sendLRAS_CS_lrad_2_status_INS(
+        Topics::CS_LRAS_request_full_status_INS, message,
+        lrad2.lrad_status, lrad2.audio_emitter_mode, lrad2.cueing_status,
+        lrad2.video_tracking_status, lrad2.Azimuth_deg, lrad2.Elevation_deg,
+        static_cast<int16_t>(lrad2.lrf_value), lrad2.inhibition_sector_flag,
+        0, 0, lrad2.laser_dazzler_mode, 0, 0, lrad2.searchlight_power_level);
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_full_status_INS, 0, message);
+}
+
+void Orchestrator::handleCS_LRAS_request_installation_data_INS(const nlohmann::json& message) {
+    cmsEntity_.sendLRAS_CS_installation_data_INS(
+        Topics::CS_LRAS_request_installation_data_INS, message,
+        0.0F, 360.0F, 0.0F, 0.0F, 0.0F,
+        0.0F, 360.0F, 0.0F, 0.0F, 0.0F);
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_installation_data_INS, 0, message);
+}
+
+void Orchestrator::handleCS_LRAS_request_message_table_INS(const nlohmann::json& message) {
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_message_table_INS, 0, message);
+}
+
+void Orchestrator::handleCS_LRAS_request_software_version_INS(const nlohmann::json& message) {
+    const Lras_full lras = getLrasFullStatus();
+    cmsEntity_.sendLRAS_CS_software_version_INS(
+        Topics::CS_LRAS_request_software_version_INS, message,
+        "LRAS Server", lras.swVersion,
+        "LRAD1 Master", "N/A", "LRAD1 Slave", "N/A", "LRAD1 Tracking", "N/A",
+        "LRAD2 Master", "N/A", "LRAD2 Slave", "N/A", "LRAD2 Tracking", "N/A",
+        "Console1", "N/A", "Console2", "N/A");
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_software_version_INS, 0, message);
+}
+
+void Orchestrator::handleCS_LRAS_request_thresholds_INS(const nlohmann::json& message) {
+    cmsEntity_.sendLRAS_CS_thresholds_INS(
+        Topics::CS_LRAS_request_thresholds_INS, message,
+        0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0);
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_thresholds_INS, 0, message);
+}
+
+void Orchestrator::handleCS_LRAS_request_translation_INS(const nlohmann::json& message) {
+    cmsEntity_.sendLRAS_CS_ack_INS(Topics::CS_LRAS_request_translation_INS, 0, message);
+}
+
+void Orchestrator::start_cueing() {
+    std::cout << "[Orchestrator] start_cueing: TODO" << std::endl;
+}
+
+void Orchestrator::stop_cueing() {
+    std::cout << "[Orchestrator] stop_cueing: TODO" << std::endl;
+}
+
+void Orchestrator::manage_recording(nlohmann::json /*message*/) {
+    std::cout << "[Orchestrator] manage_recording: TODO" << std::endl;
+}

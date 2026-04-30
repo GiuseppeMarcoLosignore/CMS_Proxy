@@ -494,6 +494,11 @@ CmsEntity::CmsEntity(const CmsConfig& config)
     udpSocket_(nullptr) {
 }
 
+void CmsEntity::subscribeTopics() {
+    // EventBus removed: publication is now handled via messageCallback_.
+    // Nothing to subscribe to in this entity.
+}
+
 void CmsEntity::start() {
     if (!subscribed_.exchange(true)) {
         subscribeTopics();
@@ -695,9 +700,9 @@ json CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     const uint16_t rawConfig = read_u16_be(packet.data, offset + 6);
 
     json payload;
-    payload["Action Id"] = std::to_string(actionId);
-    payload["LRAD ID"] = std::to_string(lradId);
-    payload["Configuration"] = std::to_string(rawConfig);
+    payload["Action Id"] = actionId;
+    payload["LRAD ID"] = lradId;
+    payload["Configuration"] = rawConfig;
 
 
     return payload;

@@ -77,7 +77,6 @@ AcsEntity::AcsEntity(const AcsConfig& config)
 }
 
 void AcsEntity::start() {
-    subscribeTopics(); //non lo farà più
 
     AcsConfig startupConfig;
     {

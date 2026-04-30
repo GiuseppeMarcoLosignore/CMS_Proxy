@@ -24,6 +24,8 @@ set(SOURCES
     src/CmsEntity.cpp
     # ACS
     src/AcsEntity.cpp
+    # Orchestrator
+    src/Orchestrator.cpp
 )
 
 

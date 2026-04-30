@@ -27,7 +27,6 @@ public:
 
     void setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb);
 
-    void subscribeTopics();
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void handleOutgoingJsonEvent(const std::string& topic, const nlohmann::json& message);
     void handleConfigChanged(const std::string& topic, const nlohmann::json& message);

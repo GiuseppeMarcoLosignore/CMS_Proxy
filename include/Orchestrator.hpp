@@ -10,6 +10,7 @@
 
 #include "CmsEntity.hpp"
 #include "AcsEntity.hpp"
+#include "EventBus.hpp"
 
 
 struct Lrad_full {
