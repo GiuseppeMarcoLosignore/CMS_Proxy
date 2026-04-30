@@ -11,86 +11,10 @@
 #include "CmsEntity.hpp"
 #include "AcsEntity.hpp"
 #include "EventBus.hpp"
-
-
-struct Lrad_full {
-    std::string name;
-    uint16_t lrad_status;
-    bool controlledByCms = false;
-    uint16_t cueing_status;
-    uint16_t video_tracking_status;
-    float lrf_value;
-    bool lrf_on;
-    int16_t lrf_temperature_c;
-    uint16_t inhibition_sector_flag;
-    uint16_t audio_emitter_status;
-    uint16_t audio_emitter_mode;
-    uint16_t searchlight_status;
-    uint16_t searchlight_mode;
-    uint16_t searchlight_power_level;
-    uint16_t searchlight_focus;
-    uint16_t laser_dazzler_status;
-    uint16_t laser_dazzler_mode;
-
-    uint16_t hd_camera_status;
-    uint16_t hd_camera_zoom_level;
-    uint16_t th_camera_status;
-    uint16_t th_camera_zoom_level;
-
-    float Azimuth_deg;
-    float Elevation_deg;
-    float AzShadowStart;
-    float AzShadowEnd;
-    float ElShadowStart;
-    float ElShadowEnd;
-
-    std::string state;
-    std::string mode;
-    std::string ipAddress;
-
-    bool limitError = false;
-    bool lad = false;
-    bool lrf = false;
-    bool dsp = false;
-    bool searchlight = false;
-    bool daq = false;
-    bool psu12 = false;
-    bool psu24 = false;
-    bool psu48 = false;
-    bool tempVbox = false;
-    bool tempAhd = false;
-
-    bool audioEnabled = false;
-    bool ladEnabled = false;
-    bool searchlightEnabled = false;
-    bool lrfEnabled = false;
-
-    float gain = 0.0F;
-    bool mute = false;
-
-
-    
-
-    bool cmsControl = false; // Indicates if CMS is currently controlling this LRAD
-    std::time_t last_update_time;
-};
-
-struct Lras_full {
-    uint16_t lras_status;
-    uint16_t lras_mode;
-
-    std::string swVersion;
+#include "IInterfaces.hpp"
 
 
 
-    uint16_t ladMinDistance;
-
-    float audioLvl1;
-    float audioLvl2;
-    float audioLvl3;
-
-    std::time_t last_update_time;
-};
 
 enum class PayoladType {
     AUDIO,
@@ -98,6 +22,8 @@ enum class PayoladType {
     SEARCHLIGHT,
     LRF
 };
+
+
 
 
 class Orchestrator {
@@ -162,6 +88,8 @@ public:
 
 
 private:
+    void sendAckForTopic(const std::string& topic, uint16_t nackreason, const nlohmann::json& message) const;
+
     std::shared_ptr<std::vector<Lrad_full>> lradList_; //TODO: capire come cestire atomic
     std::shared_ptr<Lras_full> lras;
     mutable std::mutex lradMutex_;

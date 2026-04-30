@@ -148,6 +148,31 @@ uint16_t derive_laser_dazzler_mode() {
     return 0;
 }
 
+uint16_t encode_bool_u16(bool value) {
+    return value ? 1u : 0u;
+}
+
+uint16_t clamp_u16(uint32_t value) {
+    return (value > std::numeric_limits<uint16_t>::max())
+        ? std::numeric_limits<uint16_t>::max()
+        : static_cast<uint16_t>(value);
+}
+
+int16_t clamp_i16_from_float(float value) {
+    if (!std::isfinite(value)) {
+        return 0;
+    }
+    const float minValue = static_cast<float>(std::numeric_limits<int16_t>::min());
+    const float maxValue = static_cast<float>(std::numeric_limits<int16_t>::max());
+    if (value < minValue) {
+        return std::numeric_limits<int16_t>::min();
+    }
+    if (value > maxValue) {
+        return std::numeric_limits<int16_t>::max();
+    }
+    return static_cast<int16_t>(std::lround(value));
+}
+
 RawPacket build_lrad_status_packet(uint32_t messageId) {
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_lrad_status_INS);
@@ -175,37 +200,52 @@ RawPacket build_lrad_status_packet(uint32_t messageId) {
     return packet;
 }
 
-// Appends the 44-byte "LRAD x full status" block (Lrad_full 40-byte struct + IR camera 4 bytes)
-void append_lrad_full_status(std::vector<uint8_t>& buffer) {
-    // Lrad_full (40 bytes)
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    // Audio Emitter
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    // Searchlight
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    // Laser Dazzler
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    // LRF
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    // Remaining Lrad_full fields
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    // Outside Lrad_full but within LRAD x full status block (4 bytes)
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
+// Appends the 44-byte "LRAD x full status" block (20 x u16 fields + IR camera 2 x u16)
+void append_lrad_full_status(std::vector<uint8_t>& buffer,
+                             uint16_t lradStatus,
+                             uint16_t motionAzState,
+                             uint16_t motionElState,
+                             uint16_t audioEmitterMode,
+                             uint16_t audioEmitterStatus,
+                             uint16_t searchlightMode,
+                             uint16_t searchlightStatus,
+                             uint16_t laserDazzlerMode,
+                             uint16_t laserDazzlerStatus,
+                             uint16_t lrfStatus,
+                             uint16_t lrfOnOff,
+                             uint16_t trackingBoardStatus,
+                             uint16_t hdCameraStatus,
+                             uint16_t hdCameraZoomLevel,
+                             uint16_t imuStatus,
+                             uint16_t canBus1Status,
+                             uint16_t canBus2Status,
+                             uint16_t cpuSlaveStatus,
+                             uint16_t electronicBoxTemperature,
+                             uint16_t interfaceBoxTemperature,
+                             uint16_t irCameraStatus,
+                             uint16_t irCameraZoomLevel) {
+    append_u16_be(buffer, lradStatus);
+    append_u16_be(buffer, motionAzState);
+    append_u16_be(buffer, motionElState);
+    append_u16_be(buffer, audioEmitterMode);
+    append_u16_be(buffer, audioEmitterStatus);
+    append_u16_be(buffer, searchlightMode);
+    append_u16_be(buffer, searchlightStatus);
+    append_u16_be(buffer, laserDazzlerMode);
+    append_u16_be(buffer, laserDazzlerStatus);
+    append_u16_be(buffer, lrfStatus);
+    append_u16_be(buffer, lrfOnOff);
+    append_u16_be(buffer, trackingBoardStatus);
+    append_u16_be(buffer, hdCameraStatus);
+    append_u16_be(buffer, hdCameraZoomLevel);
+    append_u16_be(buffer, imuStatus);
+    append_u16_be(buffer, canBus1Status);
+    append_u16_be(buffer, canBus2Status);
+    append_u16_be(buffer, cpuSlaveStatus);
+    append_u16_be(buffer, electronicBoxTemperature);
+    append_u16_be(buffer, interfaceBoxTemperature);
+    append_u16_be(buffer, irCameraStatus);
+    append_u16_be(buffer, irCameraZoomLevel);
 }
 
 // Appends the 856-byte "LRAD x health" block for LRAS_MULTI_health_status_INS.
@@ -235,204 +275,107 @@ void append_lrad_full_status(std::vector<uint8_t>& buffer) {
 // 836  Inhibit Sector 1 (10): OnOff(2)+AzStart(4)+AzStop(4)
 // 846  Inhibit Sector 2 (10): OnOff(2)+AzStart(4)+AzStop(4)
 // Total = 856 bytes
-void append_lrad_health_block(std::vector<uint8_t>& buffer) {
+void append_lrad_health_block(std::vector<uint8_t>& buffer,
+                              uint16_t configuration,
+                              uint16_t condition,
+                              uint16_t operativeState,
+                              uint16_t hwEmissionAuthorization,
+                              uint16_t audioEmitterCondition,
+                              uint16_t volumeLevel,
+                              float audioVolumeDb,
+                              uint16_t mute,
+                              uint16_t audioMode,
+                              uint32_t recordedMessageId,
+                              uint16_t recordedLanguage,
+                              uint16_t recordedLoop,
+                              uint16_t freeTextLanguageIn,
+                              uint16_t freeTextLanguageOut,
+                              const std::string& freeTextMessage,
+                              uint16_t freeTextLoop,
+                              uint16_t searchlightCondition,
+                              uint16_t lightPower,
+                              uint16_t lightZoom,
+                              uint16_t laserDazzlerCondition,
+                              uint16_t laserMode,
+                              uint16_t lrfCondition,
+                              uint16_t lrfOnOff,
+                              uint16_t cameraCondition,
+                              uint16_t cameraZoom,
+                              uint16_t imuCondition,
+                              uint16_t recorderCondition,
+                              uint16_t recorderMode,
+                              uint32_t recorderElapsedSec,
+                              uint32_t recorderElapsedUsec,
+                              uint16_t horizontalReference,
+                              uint16_t inhibitSector1OnOff,
+                              float inhibitSector1AzStart,
+                              float inhibitSector1AzStop,
+                              uint16_t inhibitSector2OnOff,
+                              float inhibitSector2AzStart,
+                              float inhibitSector2AzStop) {
     // Pre-AudioMode fields (10 bytes)
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
+    append_u16_be(buffer, configuration);
+    append_u16_be(buffer, condition);
+    append_u16_be(buffer, operativeState);
+    append_u16_be(buffer, hwEmissionAuthorization);
+    append_u16_be(buffer, audioEmitterCondition);
 
     // Audio Mode struct (792 bytes)
     // Volume Mode (10 bytes)
-    append_u16_be(buffer, 0);
-    append_f32_be(buffer, 0.0f);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
+    append_u16_be(buffer, volumeLevel);
+    append_f32_be(buffer, audioVolumeDb);
+    append_u16_be(buffer, mute);
+    append_u16_be(buffer, audioMode);
     // Recorded Message-Tone (8 bytes)
-    append_u32_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
+    append_u32_be(buffer, recordedMessageId);
+    append_u16_be(buffer, recordedLanguage);
+    append_u16_be(buffer, recordedLoop);
     // Free Text (774 bytes): Language in(2) + Language out(2) + text(768) + Loop(2)
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
+    append_u16_be(buffer, freeTextLanguageIn);
+    append_u16_be(buffer, freeTextLanguageOut);
     {
-        // message text: fixed 768-byte field, zero-padded
         constexpr std::size_t textSize = 768;
-        buffer.insert(buffer.end(), textSize, 0x00);
+        const std::size_t textCopySize = (freeTextMessage.size() < textSize) ? freeTextMessage.size() : textSize;
+        buffer.insert(buffer.end(), freeTextMessage.begin(), freeTextMessage.begin() + textCopySize);
+        if (textCopySize < textSize) {
+            buffer.insert(buffer.end(), textSize - textCopySize, 0x00);
+        }
     }
-    append_u16_be(buffer, 0);
+    append_u16_be(buffer, freeTextLoop);
 
     // Searchlight Condition + Mode (6 bytes)
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);   // Light Power
-    append_u16_be(buffer, 0);   // Light Zoom
+    append_u16_be(buffer, searchlightCondition);
+    append_u16_be(buffer, lightPower);
+    append_u16_be(buffer, lightZoom);
 
-    // Laser Dazzler, LRF, Camera (10 bytes)
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
+    // Laser Dazzler, LRF, Camera (12 bytes)
+    append_u16_be(buffer, laserDazzlerCondition);
+    append_u16_be(buffer, laserMode);
+    append_u16_be(buffer, lrfCondition);
+    append_u16_be(buffer, lrfOnOff);
+    append_u16_be(buffer, cameraCondition);
+    append_u16_be(buffer, cameraZoom);
 
-    // IMU, Recorder (10 bytes + 8 bytes time limit)
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u16_be(buffer, 0);
-    append_u32_be(buffer, 0);
-    append_u32_be(buffer, 0);
+    // IMU, Recorder (6 bytes + 8 bytes time limit)
+    append_u16_be(buffer, imuCondition);
+    append_u16_be(buffer, recorderCondition);
+    append_u16_be(buffer, recorderMode);
+    append_u32_be(buffer, recorderElapsedSec);
+    append_u32_be(buffer, recorderElapsedUsec);
 
     // Horizontal Reference (2 bytes)
-    append_u16_be(buffer, 0);
+    append_u16_be(buffer, horizontalReference);
 
     // Inhibit Sector 1 (10 bytes)
-    append_u16_be(buffer, 0);
-    append_f32_be(buffer, 0.0f);
-    append_f32_be(buffer, 0.0f);
+    append_u16_be(buffer, inhibitSector1OnOff);
+    append_f32_be(buffer, inhibitSector1AzStart);
+    append_f32_be(buffer, inhibitSector1AzStop);
 
     // Inhibit Sector 2 (10 bytes)
-    append_u16_be(buffer, 0);
-    append_f32_be(buffer, 0.0f);
-    append_f32_be(buffer, 0.0f);
+    append_u16_be(buffer, inhibitSector2OnOff);
+    append_f32_be(buffer, inhibitSector2AzStart);
+    append_f32_be(buffer, inhibitSector2AzStop);
 }
-
-uint32_t source_message_id_from_topic(const std::string& topic) {
-    if (topic == Topics::CS_LRAS_change_configuration_order_INS) {
-        return MessageId_CS_LRAS_change_configuration_order_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_cueing_order_cancellation_INS) {
-        return MessageId_CS_LRAS_cueing_order_cancellation_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_cueing_order_INS) {
-        return MessageId_CS_LRAS_cueing_order_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_emission_control_INS) {
-        return MessageId_CS_LRAS_emission_control_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_emission_mode_INS) {
-        return MessageId_CS_LRAS_emission_mode_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_inhibition_sectors_INS) {
-        return MessageId_CS_LRAS_inhibition_sectors_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_joystick_control_lrad_1_INS) {
-        return MessageId_CS_LRAS_joystick_control_lrad_1_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_joystick_control_lrad_2_INS) {
-        return MessageId_CS_LRAS_joystick_control_lrad_2_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_recording_command_INS) {
-        return MessageId_CS_LRAS_recording_command_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_engagement_capability_INS) {
-        return MessageId_CS_LRAS_request_engagement_capability_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_full_status_INS) {
-        return MessageId_CS_LRAS_request_full_status_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_message_table_INS) {
-        return MessageId_CS_LRAS_request_message_table_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_software_version_INS) {
-        return MessageId_CS_LRAS_request_software_version_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_thresholds_INS) {
-        return MessageId_CS_LRAS_request_thresholds_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_translation_INS) {
-        return MessageId_CS_LRAS_request_translation_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_video_tracking_command_INS) {
-        return MessageId_CS_LRAS_video_tracking_command_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_emission_mode_INS) {
-        return MessageId_CS_LRAS_request_emission_mode_INS;
-    }
-
-    if (topic == Topics::CS_LRAS_request_installation_data_INS) {
-        return MessageId_CS_LRAS_request_installation_data_INS;
-    }
-
-    if (topic == Topics::CS_MULTI_health_status_INS) {
-        return MessageId_CS_MULTI_health_status_INS;
-    }
-
-    if (topic == Topics::CS_MULTI_update_cst_kinematics_INS) {
-        return MessageId_CS_MULTI_update_cst_kinematics_INS;
-    }
-
-    return 0;
-}
-
-std::optional<uint32_t> json_u32_value(const json& value) {
-    if (value.is_number_unsigned()) {
-        return value.get<uint32_t>();
-    }
-
-    if (value.is_number_integer()) {
-        const auto signedValue = value.get<int64_t>();
-        if (signedValue >= 0 && signedValue <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-            return static_cast<uint32_t>(signedValue);
-        }
-        return std::nullopt;
-    }
-
-    if (value.is_string()) {
-        try {
-            return static_cast<uint32_t>(std::stoul(value.get<std::string>()));
-        } catch (const std::exception&) {
-            return std::nullopt;
-        }
-    }
-
-    return std::nullopt;
-}
-
-std::optional<uint32_t> extract_action_id(const json& payload) {
-    if (payload.contains("Action Id")) {
-        if (const auto actionId = json_u32_value(payload.at("Action Id")); actionId.has_value()) {
-            return actionId;
-        }
-    }
-
-    if (payload.contains("action_id")) {
-        if (const auto actionId = json_u32_value(payload.at("action_id")); actionId.has_value()) {
-            return actionId;
-        }
-    }
-
-    if (payload.contains("meta") && payload.at("meta").is_object() && payload.at("meta").contains("action_id")) {
-        if (const auto actionId = json_u32_value(payload.at("meta").at("action_id")); actionId.has_value()) {
-            return actionId;
-        }
-    }
-
-    if (payload.contains("param") && payload.at("param").is_object() && payload.at("param").contains("action_id")) {
-        if (const auto actionId = json_u32_value(payload.at("param").at("action_id")); actionId.has_value()) {
-            return actionId;
-        }
-    }
-
-    return std::nullopt;
-}
-
 
 uint32_t read_u32_be(const std::vector<uint8_t>& data, std::size_t offset) {
     if (data.size() < offset + sizeof(uint32_t)) {
@@ -1708,33 +1651,10 @@ json CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS(
     return payload;
 }
 
-void CmsEntity::sendLRAS_CS_ack_INS(const std::string& topic, uint16_t nackreason, const nlohmann::json& message) const {
-    const uint32_t sourceMessageId = source_message_id_from_topic(topic);
-    if (sourceMessageId == 0) {
-        std::cerr << "[CMS Entity] Impossibile determinare source_message_id per ACK: topic="
-                  << topic << std::endl;
-        return;
-    }
-
-    const json& payload = message;
-    if (payload.is_null()) {
-        std::cerr << "[CMS Entity] Payload mancante per ACK LRAS_CS_ack_INS"
-                  << std::endl;
-        return;
-    }
-
-    const auto actionId = extract_action_id(payload);
-    if (!actionId.has_value()) {
-        std::cerr << "[CMS Entity] Action Id mancante nel payload per ACK LRAS_CS_ack_INS"
-                  << std::endl;
-        return;
-    }
-
-    uint16_t ackNackAccepted = 1; // ACK accepted, no NACK reason
-    const uint16_t nackReason = nackreason;
-    if (nackReason != 0) {
-        ackNackAccepted = 2; // ACK with NACK reason
-    }
+void CmsEntity::sendLRAS_CS_ack_INS(uint32_t actionId,
+                                    uint32_t sourceMessageId,
+                                    uint16_t ackNackAccepted,
+                                    uint16_t nackReason) const {
     constexpr uint32_t payloadLength = 12;
 
     RawPacket ackPacket;
@@ -1743,7 +1663,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const std::string& topic, uint16_t nackreaso
     append_u32_be(ackPacket.data, payloadLength + HeaderSize);
     append_u32_be(ackPacket.data, 0);
     append_u32_be(ackPacket.data, 0);
-    append_u32_be(ackPacket.data, *actionId);
+    append_u32_be(ackPacket.data, actionId);
     append_u32_be(ackPacket.data, sourceMessageId);
     append_u16_be(ackPacket.data, ackNackAccepted);
     append_u16_be(ackPacket.data, nackReason);
@@ -1777,12 +1697,8 @@ void CmsEntity::setMessageCallback(std::function<void(const std::string&, const 
     messageCallback_ = std::move(cb);
 }
 
-void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const std::string& topic,
-                                                             const nlohmann::json& message,
-                                                             uint16_t lradId,
+void CmsEntity::sendLRAS_CS_change_configuration_request_INS(uint16_t lradId,
                                                              uint16_t configuration) const {
-    (void)topic;
-    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_change_configuration_request_INS);
@@ -1800,9 +1716,7 @@ void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const std::string& 
     sendMulticastPacket(packet, "LRAS_CS_change_configuration_request_INS");
 }
 
-void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic,
-                                                       const nlohmann::json& message,
-                                                       uint16_t lradId,
+void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(uint16_t lradId,
                                                        uint16_t audioEnable,
                                                        float audioLevel1,
                                                        float audioLevel2,
@@ -1812,7 +1726,6 @@ void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic,
                                                        uint16_t lightEnable,
                                                        uint16_t lightMaxW,
                                                        uint16_t lrfEnable) const {
-    (void)topic;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_emission_mode_feedback_INS);
@@ -1824,8 +1737,7 @@ void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic,
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
-    append_u32_be(packet.data, actionId);
+    append_u32_be(packet.data, 0u);
 
     // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
     append_u16_be(packet.data, lradId);
@@ -1856,9 +1768,7 @@ void CmsEntity::sendLRAS_CS_emission_mode_feedback_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_emission_mode_feedback_INS");
 }
 
-void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic,
-                                                      const nlohmann::json& message,
-                                                      uint32_t cstn,
+void CmsEntity::sendLRAS_CS_engagement_capability_INS(uint32_t cstn,
                                                       uint16_t engagementPossible1,
                                                       uint16_t searchlightCapability1,
                                                       uint16_t warningCapability1,
@@ -1883,9 +1793,6 @@ void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic,
                                                       float persuasionMinDb2,
                                                       float persuasionMaxDb2,
                                                       uint16_t laserDazzlerCapability2) const {
-    (void)topic;
-    (void)message;
-
     // Helper lambda: appends one 36-byte LRAD capability block
     auto append_lrad_capability = [this](std::vector<uint8_t>& buf,
                                          uint16_t engagementPossible,
@@ -1935,8 +1842,7 @@ void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic,
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
-    append_u32_be(packet.data, actionId);
+    append_u32_be(packet.data, 0u);
 
     // CSTN - Combat System Track Number [1..9999]
     append_u32_be(packet.data, cstn);
@@ -1974,12 +1880,8 @@ void CmsEntity::sendLRAS_CS_engagement_capability_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_engagement_capability_INS");
 }
 
-void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const std::string& topic,
-                                                 const nlohmann::json& message,
-                                                 uint16_t lradId,
+void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(uint16_t lradId,
                                                  int32_t limit) const {
-    (void)topic;
-    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_hw_limit_warning_INS);
@@ -1998,9 +1900,7 @@ void CmsEntity::sendLRAS_CS_hw_limit_warning_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_hw_limit_warning_INS");
 }
 
-void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic,
-                                                  const nlohmann::json& message,
-                                                  float arcStart1,
+void CmsEntity::sendLRAS_CS_installation_data_INS(float arcStart1,
                                                   float arcStop1,
                                                   float x1,
                                                   float y1,
@@ -2010,9 +1910,6 @@ void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic,
                                                   float x2,
                                                   float y2,
                                                   float z2) const {
-    (void)topic;
-    (void)message;
-
     // Helper lambda: appends one 20-byte LRAD installation data block
     auto append_lrad_inst_data = [this](std::vector<uint8_t>& buf,
                                         float arcStart,
@@ -2040,8 +1937,7 @@ void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic,
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
-    append_u32_be(packet.data, actionId);
+    append_u32_be(packet.data, 0u);
 
     // LRAD 1 installation data (20 bytes)
     append_lrad_inst_data(packet.data, arcStart1, arcStop1, x1, y1, z1);
@@ -2052,9 +1948,7 @@ void CmsEntity::sendLRAS_CS_installation_data_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_installation_data_INS");
 }
 
-void CmsEntity::sendLRAS_CS_message_table_INS(const std::string& topic,
-                                              const nlohmann::json& message,
-                                              uint16_t totalMessagesNumber,
+void CmsEntity::sendLRAS_CS_message_table_INS(uint16_t totalMessagesNumber,
                                               uint16_t messageNumber,
                                               uint16_t dbItemsNumber,
                                               uint32_t messageId,
@@ -2064,9 +1958,6 @@ void CmsEntity::sendLRAS_CS_message_table_INS(const std::string& topic,
                                               uint16_t language,
                                               uint8_t associatedAudio,
                                               const std::string& messageText) const {
-    (void)topic;
-    (void)message;
-
     const uint32_t payloadLength = 6u + 4u + 32u + 2u +
                                    static_cast<uint32_t>(numberOfLanguages) * (4u + 2u + 1u + 768u);
 
@@ -2107,9 +1998,7 @@ void CmsEntity::sendLRAS_CS_message_table_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_message_table_INS");
 }
 
-void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& topic,
-                                                 const nlohmann::json& message,
-                                                 const std::string& lrasServerSwName,
+void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& lrasServerSwName,
                                                  const std::string& lrasServerSwVersion,
                                                  const std::string& lrad1MasterSwName,
                                                  const std::string& lrad1MasterSwVersion,
@@ -2127,9 +2016,6 @@ void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& topic,
                                                  const std::string& console1SwVersion,
                                                  const std::string& console2SwName,
                                                  const std::string& console2SwVersion) const {
-    (void)topic;
-    (void)message;
-
     auto append_fixed_string_16 = [](std::vector<uint8_t>& buffer, const std::string& value) {
         std::vector<uint8_t> field(16, 0);
         const std::size_t copyLen = (value.size() < field.size()) ? value.size() : field.size();
@@ -2181,9 +2067,7 @@ void CmsEntity::sendLRAS_CS_software_version_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_software_version_INS");
 }
 
-void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic,
-                                           const nlohmann::json& message,
-                                           uint32_t warningDistance1,
+void CmsEntity::sendLRAS_CS_thresholds_INS(uint32_t warningDistance1,
                                            uint32_t dissuasionDistance1,
                                            uint32_t persuasionDistance1,
                                            uint32_t nohdDistance1,
@@ -2197,9 +2081,6 @@ void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic,
                                            uint32_t acousticDamageDistance2,
                                            uint32_t maxDazzlerDistance2,
                                            uint32_t maxLightDistance2) const {
-    (void)topic;
-    (void)message;
-
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_thresholds_INS);
 
@@ -2210,8 +2091,7 @@ void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic,
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
-    append_u32_be(packet.data, actionId);
+    append_u32_be(packet.data, 0u);
 
     // LRAD 1 thresholds (28 bytes)
     append_u32_be(packet.data, warningDistance1);
@@ -2234,15 +2114,11 @@ void CmsEntity::sendLRAS_CS_thresholds_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_thresholds_INS");
 }
 
-void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic,
-                                            const nlohmann::json& message,
-                                            uint16_t lradId,
+void CmsEntity::sendLRAS_CS_translation_INS(uint16_t lradId,
                                             uint16_t status,
                                             uint16_t languageIn,
                                             uint16_t languageOut,
                                             const std::string& messageText) const {
-    (void)topic;
-
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_translation_INS);
 
@@ -2253,8 +2129,7 @@ void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic,
     append_u32_be(packet.data, 0);
 
     // Action Id
-    const uint32_t actionId = static_cast<uint32_t>(message.value("action_id", 0));
-    append_u32_be(packet.data, actionId);
+    append_u32_be(packet.data, 0u);
 
     // LRAD ID: 1 = LRAD 1 Port, 2 = LRAD 2 Starboard
     append_u16_be(packet.data, lradId);
@@ -2276,9 +2151,7 @@ void CmsEntity::sendLRAS_CS_translation_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_translation_INS");
 }
 
-void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const std::string& topic,
-                                              const nlohmann::json& message,
-                                              uint16_t lradStatus,
+void CmsEntity::sendLRAS_CS_lrad_1_status_INS(uint16_t lradStatus,
                                               uint16_t lradMode,
                                               uint16_t cueingStatus,
                                               uint16_t videoTrackingStatus,
@@ -2292,8 +2165,6 @@ void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const std::string& topic,
                                               uint16_t persuasionStep,
                                               uint16_t laserPulseLength,
                                               uint16_t lightPower) const {
-    (void)topic;
-    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_lrad_status_INS);
@@ -2321,9 +2192,7 @@ void CmsEntity::sendLRAS_CS_lrad_1_status_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_lrad_1_status_INS");
 }  
 
-void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const std::string& topic,
-                                              const nlohmann::json& message,
-                                              uint16_t lradStatus,
+void CmsEntity::sendLRAS_CS_lrad_2_status_INS(uint16_t lradStatus,
                                               uint16_t lradMode,
                                               uint16_t cueingStatus,
                                               uint16_t videoTrackingStatus,
@@ -2337,8 +2206,6 @@ void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const std::string& topic,
                                               uint16_t persuasionStep,
                                               uint16_t laserPulseLength,
                                               uint16_t lightPower) const {
-    (void)topic;
-    (void)message;
 
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_CS_lrad_status_INS);
@@ -2366,13 +2233,50 @@ void CmsEntity::sendLRAS_CS_lrad_2_status_INS(const std::string& topic,
     sendMulticastPacket(packet, "LRAS_CS_lrad_2_status_INS");
 }
 
-void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const std::string& topic,
-                                                  const nlohmann::json& message,
-                                                  const std::vector<uint8_t>& lrad1FullStatusBlock,
-                                                  const std::vector<uint8_t>& lrad2FullStatusBlock) const {
-    (void)topic;
-    (void)message;
-
+void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(uint16_t lrad1Status,
+                                                  uint16_t lrad1MotionAzState,
+                                                  uint16_t lrad1MotionElState,
+                                                  uint16_t lrad1AudioEmitterMode,
+                                                  uint16_t lrad1AudioEmitterStatus,
+                                                  uint16_t lrad1SearchlightMode,
+                                                  uint16_t lrad1SearchlightStatus,
+                                                  uint16_t lrad1LaserDazzlerMode,
+                                                  uint16_t lrad1LaserDazzlerStatus,
+                                                  uint16_t lrad1LrfStatus,
+                                                  uint16_t lrad1LrfOnOff,
+                                                  uint16_t lrad1TrackingBoardStatus,
+                                                  uint16_t lrad1HdCameraStatus,
+                                                  uint16_t lrad1HdCameraZoomLevel,
+                                                  uint16_t lrad1ImuStatus,
+                                                  uint16_t lrad1CanBus1Status,
+                                                  uint16_t lrad1CanBus2Status,
+                                                  uint16_t lrad1CpuSlaveStatus,
+                                                  uint16_t lrad1ElectronicBoxTemperature,
+                                                  uint16_t lrad1InterfaceBoxTemperature,
+                                                  uint16_t lrad1IrCameraStatus,
+                                                  uint16_t lrad1IrCameraZoomLevel,
+                                                  uint16_t lrad2Status,
+                                                  uint16_t lrad2MotionAzState,
+                                                  uint16_t lrad2MotionElState,
+                                                  uint16_t lrad2AudioEmitterMode,
+                                                  uint16_t lrad2AudioEmitterStatus,
+                                                  uint16_t lrad2SearchlightMode,
+                                                  uint16_t lrad2SearchlightStatus,
+                                                  uint16_t lrad2LaserDazzlerMode,
+                                                  uint16_t lrad2LaserDazzlerStatus,
+                                                  uint16_t lrad2LrfStatus,
+                                                  uint16_t lrad2LrfOnOff,
+                                                  uint16_t lrad2TrackingBoardStatus,
+                                                  uint16_t lrad2HdCameraStatus,
+                                                  uint16_t lrad2HdCameraZoomLevel,
+                                                  uint16_t lrad2ImuStatus,
+                                                  uint16_t lrad2CanBus1Status,
+                                                  uint16_t lrad2CanBus2Status,
+                                                  uint16_t lrad2CpuSlaveStatus,
+                                                  uint16_t lrad2ElectronicBoxTemperature,
+                                                  uint16_t lrad2InterfaceBoxTemperature,
+                                                  uint16_t lrad2IrCameraStatus,
+                                                  uint16_t lrad2IrCameraZoomLevel) const {
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_full_status_v2_INS);
 
@@ -2383,37 +2287,140 @@ void CmsEntity::sendLRAS_MULTI_full_status_v2_INS(const std::string& topic,
     append_u32_be(packet.data, 0);
 
     // LRAD 1 full status (44 bytes)
-    const std::size_t lrad1FullCopySize = (lrad1FullStatusBlock.size() < 44u) ? lrad1FullStatusBlock.size() : 44u;
-    packet.data.insert(packet.data.end(), lrad1FullStatusBlock.begin(), lrad1FullStatusBlock.begin() + lrad1FullCopySize);
-    if (lrad1FullCopySize < 44u) {
-        packet.data.insert(packet.data.end(), 44u - lrad1FullCopySize, 0u);
-    }
+    append_lrad_full_status(packet.data,
+                            lrad1Status,
+                            lrad1MotionAzState,
+                            lrad1MotionElState,
+                            lrad1AudioEmitterMode,
+                            lrad1AudioEmitterStatus,
+                            lrad1SearchlightMode,
+                            lrad1SearchlightStatus,
+                            lrad1LaserDazzlerMode,
+                            lrad1LaserDazzlerStatus,
+                            lrad1LrfStatus,
+                            lrad1LrfOnOff,
+                            lrad1TrackingBoardStatus,
+                            lrad1HdCameraStatus,
+                            lrad1HdCameraZoomLevel,
+                            lrad1ImuStatus,
+                            lrad1CanBus1Status,
+                            lrad1CanBus2Status,
+                            lrad1CpuSlaveStatus,
+                            lrad1ElectronicBoxTemperature,
+                            lrad1InterfaceBoxTemperature,
+                            lrad1IrCameraStatus,
+                            lrad1IrCameraZoomLevel);
 
     // LRAD 2 full status (44 bytes)
-    const std::size_t lrad2FullCopySize = (lrad2FullStatusBlock.size() < 44u) ? lrad2FullStatusBlock.size() : 44u;
-    packet.data.insert(packet.data.end(), lrad2FullStatusBlock.begin(), lrad2FullStatusBlock.begin() + lrad2FullCopySize);
-    if (lrad2FullCopySize < 44u) {
-        packet.data.insert(packet.data.end(), 44u - lrad2FullCopySize, 0u);
-    }
+    append_lrad_full_status(packet.data,
+                            lrad2Status,
+                            lrad2MotionAzState,
+                            lrad2MotionElState,
+                            lrad2AudioEmitterMode,
+                            lrad2AudioEmitterStatus,
+                            lrad2SearchlightMode,
+                            lrad2SearchlightStatus,
+                            lrad2LaserDazzlerMode,
+                            lrad2LaserDazzlerStatus,
+                            lrad2LrfStatus,
+                            lrad2LrfOnOff,
+                            lrad2TrackingBoardStatus,
+                            lrad2HdCameraStatus,
+                            lrad2HdCameraZoomLevel,
+                            lrad2ImuStatus,
+                            lrad2CanBus1Status,
+                            lrad2CanBus2Status,
+                            lrad2CpuSlaveStatus,
+                            lrad2ElectronicBoxTemperature,
+                            lrad2InterfaceBoxTemperature,
+                            lrad2IrCameraStatus,
+                            lrad2IrCameraZoomLevel);
 
     sendMulticastPacket(packet, "LRAS_MULTI_full_status_v2_INS");
 }
 
-void CmsEntity::sendLRAS_MULTI_health_status_INS(const std::string& topic,
-                                                 const nlohmann::json& message,
-                                                 uint16_t systemCondition,
+void CmsEntity::sendLRAS_MULTI_health_status_INS(uint16_t systemCondition,
                                                  uint16_t systemOperativeState,
                                                  uint16_t systemTemperature,
-                                                 const std::vector<uint8_t>& lrad1HealthBlock,
-                                                 const std::vector<uint8_t>& lrad2HealthBlock,
+                                                 uint16_t lrad1Configuration,
+                                                 uint16_t lrad1Condition,
+                                                 uint16_t lrad1OperativeState,
+                                                 uint16_t lrad1HwEmissionAuthorization,
+                                                 uint16_t lrad1AudioEmitterCondition,
+                                                 uint16_t lrad1VolumeLevel,
+                                                 float lrad1AudioVolumeDb,
+                                                 uint16_t lrad1Mute,
+                                                 uint16_t lrad1AudioMode,
+                                                 uint32_t lrad1RecordedMessageId,
+                                                 uint16_t lrad1RecordedLanguage,
+                                                 uint16_t lrad1RecordedLoop,
+                                                 uint16_t lrad1FreeTextLanguageIn,
+                                                 uint16_t lrad1FreeTextLanguageOut,
+                                                 const std::string& lrad1FreeTextMessage,
+                                                 uint16_t lrad1FreeTextLoop,
+                                                 uint16_t lrad1SearchlightCondition,
+                                                 uint16_t lrad1LightPower,
+                                                 uint16_t lrad1LightZoom,
+                                                 uint16_t lrad1LaserDazzlerCondition,
+                                                 uint16_t lrad1LaserMode,
+                                                 uint16_t lrad1LrfCondition,
+                                                 uint16_t lrad1LrfOnOff,
+                                                 uint16_t lrad1CameraCondition,
+                                                 uint16_t lrad1CameraZoom,
+                                                 uint16_t lrad1ImuCondition,
+                                                 uint16_t lrad1RecorderCondition,
+                                                 uint16_t lrad1RecorderMode,
+                                                 uint32_t lrad1RecorderElapsedSec,
+                                                 uint32_t lrad1RecorderElapsedUsec,
+                                                 uint16_t lrad1HorizontalReference,
+                                                 uint16_t lrad1InhibitSector1OnOff,
+                                                 float lrad1InhibitSector1AzStart,
+                                                 float lrad1InhibitSector1AzStop,
+                                                 uint16_t lrad1InhibitSector2OnOff,
+                                                 float lrad1InhibitSector2AzStart,
+                                                 float lrad1InhibitSector2AzStop,
+                                                 uint16_t lrad2Configuration,
+                                                 uint16_t lrad2Condition,
+                                                 uint16_t lrad2OperativeState,
+                                                 uint16_t lrad2HwEmissionAuthorization,
+                                                 uint16_t lrad2AudioEmitterCondition,
+                                                 uint16_t lrad2VolumeLevel,
+                                                 float lrad2AudioVolumeDb,
+                                                 uint16_t lrad2Mute,
+                                                 uint16_t lrad2AudioMode,
+                                                 uint32_t lrad2RecordedMessageId,
+                                                 uint16_t lrad2RecordedLanguage,
+                                                 uint16_t lrad2RecordedLoop,
+                                                 uint16_t lrad2FreeTextLanguageIn,
+                                                 uint16_t lrad2FreeTextLanguageOut,
+                                                 const std::string& lrad2FreeTextMessage,
+                                                 uint16_t lrad2FreeTextLoop,
+                                                 uint16_t lrad2SearchlightCondition,
+                                                 uint16_t lrad2LightPower,
+                                                 uint16_t lrad2LightZoom,
+                                                 uint16_t lrad2LaserDazzlerCondition,
+                                                 uint16_t lrad2LaserMode,
+                                                 uint16_t lrad2LrfCondition,
+                                                 uint16_t lrad2LrfOnOff,
+                                                 uint16_t lrad2CameraCondition,
+                                                 uint16_t lrad2CameraZoom,
+                                                 uint16_t lrad2ImuCondition,
+                                                 uint16_t lrad2RecorderCondition,
+                                                 uint16_t lrad2RecorderMode,
+                                                 uint32_t lrad2RecorderElapsedSec,
+                                                 uint32_t lrad2RecorderElapsedUsec,
+                                                 uint16_t lrad2HorizontalReference,
+                                                 uint16_t lrad2InhibitSector1OnOff,
+                                                 float lrad2InhibitSector1AzStart,
+                                                 float lrad2InhibitSector1AzStop,
+                                                 uint16_t lrad2InhibitSector2OnOff,
+                                                 float lrad2InhibitSector2AzStart,
+                                                 float lrad2InhibitSector2AzStop,
                                                  uint16_t serverStatus,
                                                  uint16_t console1Status,
                                                  uint16_t console2Status,
                                                  uint16_t console3Status,
                                                  uint16_t console4Status) const {
-    (void)topic;
-    (void)message;
-
     RawPacket packet;
     packet.data.reserve(HeaderSize + MessageLength_LRAS_MULTI_health_status_INS);
 
@@ -2429,18 +2436,84 @@ void CmsEntity::sendLRAS_MULTI_health_status_INS(const std::string& topic,
     append_u16_be(packet.data, systemTemperature);
 
     // LRAD 1 health (856 bytes)
-    const std::size_t lrad1HealthCopySize = (lrad1HealthBlock.size() < 856u) ? lrad1HealthBlock.size() : 856u;
-    packet.data.insert(packet.data.end(), lrad1HealthBlock.begin(), lrad1HealthBlock.begin() + lrad1HealthCopySize);
-    if (lrad1HealthCopySize < 856u) {
-        packet.data.insert(packet.data.end(), 856u - lrad1HealthCopySize, 0u);
-    }
+    append_lrad_health_block(packet.data,
+                             lrad1Configuration,
+                             lrad1Condition,
+                             lrad1OperativeState,
+                             lrad1HwEmissionAuthorization,
+                             lrad1AudioEmitterCondition,
+                             lrad1VolumeLevel,
+                             lrad1AudioVolumeDb,
+                             lrad1Mute,
+                             lrad1AudioMode,
+                             lrad1RecordedMessageId,
+                             lrad1RecordedLanguage,
+                             lrad1RecordedLoop,
+                             lrad1FreeTextLanguageIn,
+                             lrad1FreeTextLanguageOut,
+                             lrad1FreeTextMessage,
+                             lrad1FreeTextLoop,
+                             lrad1SearchlightCondition,
+                             lrad1LightPower,
+                             lrad1LightZoom,
+                             lrad1LaserDazzlerCondition,
+                             lrad1LaserMode,
+                             lrad1LrfCondition,
+                             lrad1LrfOnOff,
+                             lrad1CameraCondition,
+                             lrad1CameraZoom,
+                             lrad1ImuCondition,
+                             lrad1RecorderCondition,
+                             lrad1RecorderMode,
+                             lrad1RecorderElapsedSec,
+                             lrad1RecorderElapsedUsec,
+                             lrad1HorizontalReference,
+                             lrad1InhibitSector1OnOff,
+                             lrad1InhibitSector1AzStart,
+                             lrad1InhibitSector1AzStop,
+                             lrad1InhibitSector2OnOff,
+                             lrad1InhibitSector2AzStart,
+                             lrad1InhibitSector2AzStop);
 
     // LRAD 2 health (856 bytes)
-    const std::size_t lrad2HealthCopySize = (lrad2HealthBlock.size() < 856u) ? lrad2HealthBlock.size() : 856u;
-    packet.data.insert(packet.data.end(), lrad2HealthBlock.begin(), lrad2HealthBlock.begin() + lrad2HealthCopySize);
-    if (lrad2HealthCopySize < 856u) {
-        packet.data.insert(packet.data.end(), 856u - lrad2HealthCopySize, 0u);
-    }
+    append_lrad_health_block(packet.data,
+                             lrad2Configuration,
+                             lrad2Condition,
+                             lrad2OperativeState,
+                             lrad2HwEmissionAuthorization,
+                             lrad2AudioEmitterCondition,
+                             lrad2VolumeLevel,
+                             lrad2AudioVolumeDb,
+                             lrad2Mute,
+                             lrad2AudioMode,
+                             lrad2RecordedMessageId,
+                             lrad2RecordedLanguage,
+                             lrad2RecordedLoop,
+                             lrad2FreeTextLanguageIn,
+                             lrad2FreeTextLanguageOut,
+                             lrad2FreeTextMessage,
+                             lrad2FreeTextLoop,
+                             lrad2SearchlightCondition,
+                             lrad2LightPower,
+                             lrad2LightZoom,
+                             lrad2LaserDazzlerCondition,
+                             lrad2LaserMode,
+                             lrad2LrfCondition,
+                             lrad2LrfOnOff,
+                             lrad2CameraCondition,
+                             lrad2CameraZoom,
+                             lrad2ImuCondition,
+                             lrad2RecorderCondition,
+                             lrad2RecorderMode,
+                             lrad2RecorderElapsedSec,
+                             lrad2RecorderElapsedUsec,
+                             lrad2HorizontalReference,
+                             lrad2InhibitSector1OnOff,
+                             lrad2InhibitSector1AzStart,
+                             lrad2InhibitSector1AzStop,
+                             lrad2InhibitSector2OnOff,
+                             lrad2InhibitSector2AzStart,
+                             lrad2InhibitSector2AzStop);
 
     // LRAS Server Status + Console statuses (10 bytes)
     append_u16_be(packet.data, serverStatus);
