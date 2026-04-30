@@ -1,7 +1,6 @@
 #pragma once
 
 #include "AppConfig.hpp"
-#include "EventBus.hpp"
 #include "IInterfaces.hpp"
 
 #include "Topics.hpp"
@@ -17,8 +16,7 @@ class UdpSocket;
 
 class CmsEntity : public IEntity {
 public:
-    CmsEntity(const CmsConfig& config,
-              std::shared_ptr<EventBus> eventBus);
+    CmsEntity(const CmsConfig& config);
 
     void start() override;
     void stop() override;
@@ -33,7 +31,7 @@ public:
     void subscribeTopics();
     void periodicMessages();
 
-    void setMessageCallback(MessageCallback cb) 
+    void setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb);
 
     bool convertIncomingPacket(const RawPacket& packet,
                                std::string& outTopic,
@@ -234,8 +232,7 @@ public:
 
 private:
     CmsConfig config_;
-    std::shared_ptr<EventBus> eventBus_;
-    MessageCallback callback_;
+    std::function<void(const std::string&, const nlohmann::json&)> messageCallback_;
 
 
     boost::asio::io_context rxIoContext_;

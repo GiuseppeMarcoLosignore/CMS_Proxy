@@ -18,19 +18,25 @@ int main(int argc, char* argv[]) {
         auto event_bus = std::make_shared<EventBus>();
 
         auto cms_entity = std::make_shared<CmsEntity>(
-            config.cms, 
-            event_bus);
+            config.cms);
             
         auto acs_entity = std::make_shared<AcsEntity>(
-            config.acs,
-            event_bus
+            config.acs
         );
+
+        cms_entity->setMessageCallback([event_bus](const std::string& topic, const nlohmann::json& message) {
+            event_bus->publish(topic, message);
+        });
+
+        acs_entity->setMessageCallback([event_bus](const std::string& topic, const nlohmann::json& message) {
+            event_bus->publish(topic, message);
+        });
 
         cms_entity->start();
         acs_entity->start();
 
-        // auto orchestrator = std::make_shared<Orchestrator>(*cms_entity, *acs_entity, event_bus);
-        // orchestrator->start();
+        auto orchestrator = std::make_shared<Orchestrator>(*cms_entity, *acs_entity, event_bus);
+        orchestrator->start();
 
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "
                   << config_path << std::endl;

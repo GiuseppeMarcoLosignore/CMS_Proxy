@@ -486,10 +486,8 @@ bool has_known_lrad(uint16_t lradId) {
 
 } // namespace
 
-CmsEntity::CmsEntity(const CmsConfig& config,
-                     std::shared_ptr<EventBus> eventBus)
+CmsEntity::CmsEntity(const CmsConfig& config)
     : config_(config),
-      eventBus_(std::move(eventBus)),
       rxIoContext_(),
     rxWorkGuard_(std::nullopt),
     periodicTimer_(std::nullopt),
@@ -553,32 +551,9 @@ void CmsEntity::stop() {
     rxIoContext_.stop();
 }
 
-void CmsEntity::subscribeTopics() {
-    if (!eventBus_) {
-        return;
-    }
-
-    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        const uint16_t nackreason = static_cast<uint16_t>(message.value("nackreason", 0));
-        sendLRAS_CS_ack_INS(topic, nackreason, message);
-    });
-
-    eventBus_->subscribe(Topics::CS_LRAS_cueing_order_cancellation_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        const uint16_t nackreason = static_cast<uint16_t>(message.value("nackreason", 0));
-        sendLRAS_CS_ack_INS(topic, nackreason, message);
-    });
-
-    eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        const uint16_t nackreason = static_cast<uint16_t>(message.value("nackreason", 0));
-        sendLRAS_CS_ack_INS(topic, nackreason, message);
-    });
-
-    // Subscription wiring for outbound send* methods is intentionally omitted.
-    // The caller will invoke send* methods directly with explicit payload parameters.
-}
 
 void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo&) {
-    if (!eventBus_) {
+    if (!messageCallback_) {
         return;
     }
 
@@ -590,9 +565,8 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         return;
     }
 
-    if (!publishTopic.empty()) {
-        eventBus_->publish(publishTopic, publishMessage);
-    }
+    messageCallback_(publishTopic, publishMessage);
+    
 }
 
 bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
@@ -1773,7 +1747,7 @@ void CmsEntity::sendLRAS_CS_ack_INS(const std::string& topic, uint16_t nackreaso
 }
 
 void CmsEntity::periodicMessages() {
-    if (!eventBus_) {
+    if (!messageCallback_) {
         return;
     }
 
@@ -1784,18 +1758,18 @@ void CmsEntity::periodicMessages() {
     periodicTimer_->expires_after(std::chrono::milliseconds(100));
     periodicTimer_->async_wait([this](const boost::system::error_code& ec) {
         if (!ec) {
-            eventBus_->publish(Topics::LRAS_CS_lrad_1_status_INS, nlohmann::json::object());
-            eventBus_->publish(Topics::LRAS_CS_lrad_2_status_INS, nlohmann::json::object());
-            eventBus_->publish(Topics::LRAS_MULTI_full_status_v2_INS, nlohmann::json::object());
-            eventBus_->publish(Topics::LRAS_MULTI_health_status_INS, nlohmann::json::object());
+            messageCallback_(Topics::LRAS_CS_lrad_1_status_INS, nlohmann::json::object());
+            messageCallback_(Topics::LRAS_CS_lrad_2_status_INS, nlohmann::json::object());
+            messageCallback_(Topics::LRAS_MULTI_full_status_v2_INS, nlohmann::json::object());
+            messageCallback_(Topics::LRAS_MULTI_health_status_INS, nlohmann::json::object());
 
             periodicMessages();
         }
     });
 }
 
-void CmsEntity::setMessageCallback(MessageCallback cb) {
-    callback_ = std::move(cb);
+void CmsEntity::setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb) {
+    messageCallback_ = std::move(cb);
 }
 
 void CmsEntity::sendLRAS_CS_change_configuration_request_INS(const std::string& topic,

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "AppConfig.hpp"
-#include "EventBus.hpp"
 #include "IInterfaces.hpp"
 #include "Topics.hpp"
 
@@ -21,12 +20,12 @@ class UdpSocket;
 
 class AcsEntity : public IEntity {
 public:
-    AcsEntity(const AcsConfig& config,
-              std::shared_ptr<EventBus> eventBus);
+    AcsEntity(const AcsConfig& config);
 
     void start() override;
     void stop() override;
 
+    void setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb);
 
     void subscribeTopics();
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
@@ -46,7 +45,7 @@ public:
     void createSEARCHLIGHT(uint16_t destinationLradId, const std::string& power, float focus, const std::string& mode);
     void createLRF(uint16_t destinationLradId, const std::string& mode);
     void createSHADOW(uint16_t destinationLradId, float az1, float el1, float az2, float el2);
-    void createZOOM(uint16_t destinationLradId, float values);
+    void createZOOM(uint16_t destinationLradId, const std::string& id);
     void createMASTER(uint16_t destinationLradId, const std::string& mode);
     void createPOSITION(uint16_t destinationLradId, float az, float el, int goTo);
     void createDELTA(uint16_t destinationLradId, float az, float el);
@@ -54,7 +53,6 @@ public:
 
 private:
     AcsConfig config_;
-    std::shared_ptr<EventBus> eventBus_;
     std::shared_ptr<TcpSocket> tcpSocket_;
     std::shared_ptr<UdpSocket> udpSocket_;
     std::map<uint16_t, AcsDestination> destinations_;
@@ -63,4 +61,6 @@ private:
     boost::asio::io_context rxIoContext_;
     std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> rxWorkGuard_;
     std::jthread rxThread_;
+    std::function<void(const std::string&, const nlohmann::json&)> messageCallback_;
+    
 };

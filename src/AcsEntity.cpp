@@ -69,12 +69,8 @@ std::optional<uint16_t> extract_destination_lrad_id(const nlohmann::json& payloa
 
 } // namespace
 
-AcsEntity::AcsEntity(const AcsConfig& config,
-                                         std::shared_ptr<EventBus> eventBus)
+AcsEntity::AcsEntity(const AcsConfig& config)
     : config_(config),
-      eventBus_(std::move(eventBus)),
-    tcpSocket_(nullptr),
-    udpSocket_(nullptr),
     destinations_(config_.destinations),
       rxIoContext_(),
       rxWorkGuard_(std::nullopt) {
@@ -145,130 +141,11 @@ void AcsEntity::stop() {
     rxIoContext_.stop();
 }
 
-void AcsEntity::subscribeTopics() {
-    static std::once_flag subscribed;
-    std::call_once(subscribed, [this]() {
-    if (!eventBus_) {
-        return;
-    }
-
-    
-
-
-    eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
-            (void)topic;
-            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(0);
-            if (destinationLradId == 0 || !message.contains("Configuration")) {
-                std::cerr << "[ACS Entity] Parametri mancanti per MASTER: " << message.dump() << std::endl;
-                return;
-            }
-
-            const auto& configValue = message.at("Configuration");
-            const bool releaseMode =
-                (configValue.is_number_integer() && configValue.get<int32_t>() == 0) ||
-                (configValue.is_string() && configValue.get<std::string>() == "0");
-
-            createMASTER(destinationLradId, releaseMode ? "RELEASE" : "REQ");
-    });
-
-    eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const std::string& topic, const nlohmann::json& message) {
-            (void)topic;
-            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(0);
-            if (destinationLradId == 0) {
-                std::cerr << "[ACS Entity] destinationLradId mancante per emission control: " << message.dump() << std::endl;
-                return;
-            }
-
-            if (message.contains("Light Power") && message.contains("Light Zoom")) {
-                const float lightPower = message.at("Light Power").get<float>();
-                const float lightZoom = message.at("Light Zoom").get<float>();
-                const std::string power = lightPower == 1.0f ? "35W" : lightPower == 2.0f ? "45W" : lightPower == 3.0f ? "85W" : "35W";
-                const std::string mode = lightPower == 0.0f ? "OFF" : "ON";
-                createSEARCHLIGHT(destinationLradId, power, lightZoom, mode);
-            }
-
-            if (message.contains("Audio Volume dB") && message.contains("Mute")) {
-                const float audioVolume = message.at("Audio Volume dB").get<float>();
-                const bool mute = message.at("Mute").get<int32_t>() == 1;
-                createAUDIO(destinationLradId, audioVolume / 2.0f, mute);
-            }
-
-            if (message.contains("Laser Mode")) {
-                const float laserMode = message.at("Laser Mode").get<float>();
-                const std::string mode = laserMode == 0.0f ? "OFF" : laserMode == 1.0f ? "ON" : "STROBE";
-                createLAD(destinationLradId, mode, false);
-            }
-
-
-
-
-    });   
-
-    eventBus_->subscribe(Topics::CS_LRAS_inhibition_sectors_INS, [this](const std::string& topic, const nlohmann::json& message) {
-            (void)topic;
-            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(0);
-            if (destinationLradId == 0) {
-                std::cerr << "[ACS Entity] destinationLradId mancante per SHADOW: " << message.dump() << std::endl;
-                return;
-            }
-
-            nlohmann::json sectors = nlohmann::json::array();
-            if (message.contains("Sector 1") && message.at("Sector 1").is_object()) {
-                const auto& s1 = message.at("Sector 1");
-                if (s1.contains("On Off") && s1.at("On Off") == 1) {
-                    nlohmann::json sector;
-                    sector["target"] = "AZ";
-                    sector["start"] = s1.value("start", 0);
-                    sector["stop"] = s1.value("stop", 0);
-                    sectors.push_back(sector);
-                }
-            }
-
-            if (message.contains("Sector 2") && message.at("Sector 2").is_object()) {
-                const auto& s2 = message.at("Sector 2");
-                if (s2.contains("On Off") && s2.at("On Off") == 1) {
-                    nlohmann::json sector;
-                    sector["target"] = "AZ";
-                    sector["start"] = s2.value("start", 0);
-                    sector["stop"] = s2.value("stop", 0);
-                    sectors.push_back(sector);
-                }
-            }
-
-            createSHADOW(destinationLradId, sectors);
-    });
-
-    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_1_INS, [this](const std::string& topic, const nlohmann::json& message) {
-            (void)topic;
-            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(1);
-            if (!message.contains("X position") || !message.contains("Y position")) {
-                std::cerr << "[ACS Entity] Parametri mancanti per DELTA LRAD1: " << message.dump() << std::endl;
-                return;
-            }
-
-            const float x = message.at("X position").get<float>();
-            const float y = message.at("Y position").get<float>();
-            createDELTA(destinationLradId, x * 0.1f, y * 0.1f);
-    });
-
-    eventBus_->subscribe(Topics::CS_LRAS_joystick_control_lrad_2_INS, [this](const std::string& topic, const nlohmann::json& message) {
-            (void)topic;
-            const uint16_t destinationLradId = extract_destination_lrad_id(message).value_or(2);
-            if (!message.contains("X position") || !message.contains("Y position")) {
-                std::cerr << "[ACS Entity] Parametri mancanti per DELTA LRAD2: " << message.dump() << std::endl;
-                return;
-            }
-
-            const float x = message.at("X position").get<float>();
-            const float y = message.at("Y position").get<float>();
-            createDELTA(destinationLradId, x * 0.1f, y * 0.1f);
-    });
-
-    eventBus_->subscribe(Topics::NetworkConfigChanged, [this](const std::string& topic, const nlohmann::json& message) {
-        handleConfigChanged(topic, message);
-    });
-    });
+void AcsEntity::setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb) {
+    messageCallback_ = std::move(cb);
 }
+
+
 
 void AcsEntity::handleConfigChanged(const std::string& topic, const nlohmann::json& message) {
     (void)topic;
@@ -386,7 +263,7 @@ void AcsEntity::handleOutgoingJsonEvent(const std::string& topic, const nlohmann
 }
 
 void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
-    if (!eventBus_) {
+    if (!messageCallback_) {
         return;
     }
 
@@ -412,7 +289,8 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
             }
         }
     }
-    eventBus_->publish(sendTopic, payload);
+
+    messageCallback_(sendTopic, payload);
 
 }
 
@@ -429,10 +307,6 @@ void AcsEntity::createHeader(std::string header, std::string type, std::string s
 
 
 void AcsEntity::createMASTER(uint16_t destinationLradId, const std::string& mode) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -457,10 +331,6 @@ void AcsEntity::createMASTER(uint16_t destinationLradId, const std::string& mode
 
 
 void AcsEntity::createAUDIO(uint16_t destinationLradId, float gain, bool mute) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -484,10 +354,6 @@ void AcsEntity::createAUDIO(uint16_t destinationLradId, float gain, bool mute) {
 }
 
 void AcsEntity::createLAD(uint16_t destinationLradId, const std::string& mode, bool overrideMode) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -511,10 +377,6 @@ void AcsEntity::createLAD(uint16_t destinationLradId, const std::string& mode, b
 }
 
 void AcsEntity::createSEARCHLIGHT(uint16_t destinationLradId, const std::string& power, float focus, const std::string& mode) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -539,10 +401,6 @@ void AcsEntity::createSEARCHLIGHT(uint16_t destinationLradId, const std::string&
 }
 
 void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -566,14 +424,23 @@ void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
 
 //TODO: implementare le altre createXXX per gli altri tipi di comando previsti (es. ZOOM, SHADOW, etc.) mappando opportunamente i parametri in ingresso e quelli richiesti dall'ACS, e gestendo eventuali errori di formato o di parametri mancanti
 void AcsEntity::createSHADOW(uint16_t destinationLradId, float az1, float el1, float az2, float el2) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
+    nlohmann::json sectors;
 
-    const bool hasSectors = sectors.is_array() && !sectors.empty();
+    if (az1 != 0 || el1 != 0) {
+        nlohmann::json sector1;
+        sector1["az"] = az1;
+        sector1["el"] = el1;
+        sectors.push_back(sector1);
+    }
+    if (az2 != 0 || el2 != 0) {
+        nlohmann::json sector2;
+        sector2["az"] = az2;
+        sector2["el"] = el2;
+        sectors.push_back(sector2);
+    }
+
     param["sectors"] = sectors;
     createHeader("SHADOW", "CMD", "CMS", param, payload);
 
@@ -589,7 +456,7 @@ void AcsEntity::createSHADOW(uint16_t destinationLradId, float az1, float el1, f
     outPacket.data.assign(payloadStr.begin(), payloadStr.end());
     outPacket.destinationLradId = destinationLradId;
 
-    if (hasSectors) {
+    if (sectors.is_array() && !sectors.empty()) {
         sendToTcpDestination(outPacket, *destination);
     } else {
         std::cout << "[ACS Entity] Nessun settore di ombreggiamento attivo, non invio comando shadow" << std::endl;
@@ -597,10 +464,6 @@ void AcsEntity::createSHADOW(uint16_t destinationLradId, float az1, float el1, f
 }
 
 void AcsEntity::createZOOM(uint16_t destinationLradId, const std::string& id) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -624,10 +487,6 @@ void AcsEntity::createZOOM(uint16_t destinationLradId, const std::string& id) {
 
 
 void AcsEntity::createPOSITION(uint16_t destinationLradId, float az, float el, int goTo) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -651,10 +510,6 @@ void AcsEntity::createPOSITION(uint16_t destinationLradId, float az, float el, i
     sendToTcpDestination(outPacket, *destination);
 }
 void AcsEntity::createDELTA(uint16_t destinationLradId, float az, float el) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
@@ -678,10 +533,6 @@ void AcsEntity::createDELTA(uint16_t destinationLradId, float az, float el) {
 }
 
 void AcsEntity::createTRACKING(uint16_t destinationLradId, bool autoTracking) {
-    if (!eventBus_) {
-        return;
-    }
-
     nlohmann::json param;
     nlohmann::json payload;
 
