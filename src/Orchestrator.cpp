@@ -228,6 +228,20 @@ void Orchestrator::subscribeTopics() {
     });
 
 
+
+    eventBus_->subscribe(Topics::LRF_ON, [this](const std::string& topic, const nlohmann::json& message) {
+        handleLRFon((uint16_t)message); 
+    });
+
+    eventBus_->subscribe(Topics::LRF_OFF, [this](const std::string& topic, const nlohmann::json& message) {
+        handleLRFoff((uint16_t)message); 
+    });
+
+
+    eventBus_->subscribe(Topics::LRF_INFO, [this](const std::string& topic, const nlohmann::json& message) {
+        
+    });
+
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
 }
 
@@ -888,11 +902,11 @@ void Orchestrator::extractSEARCHLIGHTdata(const nlohmann::json& payload) {
 }
 
 void Orchestrator::extractLRFdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
+    if (!payload.contains("sender")) {
         return;
     }
 
-    const std::string name = payload.at("sender").get<std::string>();
+    const std::string name = payload.at("destinationLradId").get<std::string>();
     if (!isKnownLradSender(name)) {
         return;
     }
@@ -1270,6 +1284,26 @@ void Orchestrator::handleCS_LRAS_request_thresholds_INS(const nlohmann::json& me
 
 void Orchestrator::handleCS_LRAS_request_translation_INS(const nlohmann::json& message) {
     sendAckForTopic(Topics::CS_LRAS_request_translation_INS, 0, message);
+}
+
+void Orchestrator::handleLRFon(uint16_t destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::LRF)) { //trial
+        acsEntity_.turnLRFon(destinationLradId);
+    }
+}
+
+void Orchestrator::handleLRFoff(uint16_t destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::LRF)) { //trial
+        acsEntity_.turnLRFoff(destinationLradId);
+    }
 }
 
 void Orchestrator::start_cueing() {

@@ -99,4 +99,9 @@ inline constexpr const char* NAVS_MULTI_ships_admin_force_time_INS = "NAVS_MULTI
 inline constexpr const char* SFN_LRAS_authorize_lrad_1_PtP = "SFN_LRAS_authorize_lrad_1_PtP";
 inline constexpr const char* SFN_LRAS_authorize_lrad_2_PtP = "SFN_LRAS_authorize_lrad_2_PtP";
 
+inline constexpr const char* LRF_ON = "LRF_ON";
+inline constexpr const char* LRF_OFF = "LRF_OFF";
+inline constexpr const char* LRF_INFO = "LRF";
+
+
 } // namespace Topics

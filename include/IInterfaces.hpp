@@ -25,196 +25,7 @@ struct RawPacket {
 };
 
 //struct AcsData {
-struct ALIVE {
-    std::string name;
-    std::string ipAddress;
-    std::string state;
-    std::string mode;
-    std::string swVersion;
-};
 
-
-struct DIAGNOSTIC {
-    bool limitError = false;
-    bool lad = false;
-    bool lrf = false;
-    bool dsp = false;
-    bool searchlight = false;
-    bool daq = false;
-    bool psu12 = false;
-    bool psu24 = false;
-    bool psu48 = false;
-    bool tempVbox = false;
-    bool tempAhd = false;
-
-};
-
-
-
-//ERROR
-struct ERROR {
-    std::string message;
-    std::string code;
-    std::string reason;
-};
-
-
-//AUDIO
-struct AUDIO {
-    float gain = 0.0F;
-    bool mute = false;
-    std::string equal;
-    std::string lobe;
-};
-
-
-//LAD
-struct LAD {
-    std::string mode;
-    std::string override;
-};
-
-
-//SEARCHLIGHT
-struct SEARCHLIGHT {
-    std::string power;
-    std::string focus;
-    std::string mode;
-};
-
-
-//LRF
-struct LRF {
-    std::string mode;
-    float value;
-};
-
-
-//SHADOW
-struct SHADOW {
-    bool enabled = false;
-    std::string start;
-    std::string stop;
-};
-
-
-//ZOOM
-struct ZOOM {
-    std::string id;
-    float value;
-};
-
-
-//MASTER
-struct MASTER {
-    std::string mode;
-};
-;
-
-//CONTEXT
-struct CONTEXT {
-    std::string master;
-    std::string arcAz;
-    std::string arcEl;
-    std::string safetySwitch;
-    std::string inShadow;
-    std::string cms;
-};
-
-
-//POSITION
-struct POSITION {
-    std::string goTo;
-    std::string az;
-    std::string el;
-};
-
-
-//DELTA
-struct DELTA {
-    std::string az;
-    std::string el;
-};
-
-
-//TRACKING
-struct TRACKING {
-    std::string mode;
-    std::string target;
-    std::string classification;
-};
-
-struct CONFIG {
- std::string name;
- std::string direction;
- std::string hwAzLeft;
- std::string hwAzRight;
- std::string hwElLeft;
- std::string hwElRight;
-
-};
-
-//IMU
-struct IMU {
-    std::string roll;
-std::string pitch;
-std::string heading;
-};
-
-
-struct HOURS {
-    std::string atom;
-    std::string light;
-    std::string lad;
-    std::string lrf;
-    std::string ahd;
-    std::string logSession;
-};
-    
-        
-struct Acs {
-    ALIVE alive;
-    DIAGNOSTIC diagnostic;
-    ERROR error;
-    AUDIO audio;
-    LAD lad;
-    SEARCHLIGHT searchlight;
-    LRF lrf;
-
-    SHADOW az1;
-    SHADOW el1;
-    SHADOW az2;
-    SHADOW el2;
-
-    ZOOM zoom;
-    MASTER master;
-    CONTEXT context;
-    POSITION position;
-    DELTA delta;
-    TRACKING tracking;
-    CONFIG config;
-    IMU imu;
-    HOURS hours;
-
-    bool controlledByCms = false;
-    bool cueingActive = false;
-
-    bool ladEnabled = false;
-    bool searchlightEnabled = false;
-    bool lrfEnabled = false;
-    bool audioEnabled = false;
-    bool isRecording = false;
-    bool isCmsConnected = false;
-    float audioLvl1 = 0.0F;
-    float audioLvl2 = 0.0F; 
-    float audioLvl3 = 0.0F;
-    float ladMinDistance = 0.0F;
-    //INSTALLATION installation;
-    //DATABASE database;
-    std::string swVersion;
-    //THRESHHOLD threshold;
-    
-};
 
 
 struct Lrad_full {
@@ -306,6 +117,13 @@ public:
     virtual ~IEntity() = default;
     virtual void start() = 0;
     virtual void stop() = 0;
+};
+
+class IActuator {
+public:    
+    virtual ~IActuator() = default;
+    virtual void turnLRFon(uint16_t destinationLradId) = 0;
+    virtual void turnLRFoff(uint16_t destinationLradId) = 0;
 };
 
 class IEvent {

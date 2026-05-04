@@ -130,8 +130,11 @@ SendResult TcpSocket::send(const RawPacket& packet,
         return result;
     }
 
+    std::vector<uint8_t> framed_packet = packet.data;
+    framed_packet.push_back(static_cast<uint8_t>('\n'));
+
     ec.clear();
-    boost::asio::write(outgoing_socket_, boost::asio::buffer(packet.data), ec);
+    boost::asio::write(outgoing_socket_, boost::asio::buffer(framed_packet), ec);
     if (ec) {
         // Retry once after reconnect in case peer closed the persistent socket.
         close_outgoing_socket();
@@ -141,7 +144,7 @@ SendResult TcpSocket::send(const RawPacket& packet,
         }
 
         ec.clear();
-        boost::asio::write(outgoing_socket_, boost::asio::buffer(packet.data), ec);
+        boost::asio::write(outgoing_socket_, boost::asio::buffer(framed_packet), ec);
         if (ec) {
             result.success = false;
             result.error_value = ec.value();

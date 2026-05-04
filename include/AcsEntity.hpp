@@ -18,7 +18,7 @@
 class TcpSocket;
 class UdpSocket;
 
-class AcsEntity : public IEntity {
+class AcsEntity : public IEntity , public IActuator {
 public:
     AcsEntity(const AcsConfig& config);
 
@@ -49,6 +49,9 @@ public:
     void createPOSITION(uint16_t destinationLradId, float az, float el, int goTo);
     void createDELTA(uint16_t destinationLradId, float az, float el);
     void createTRACKING(uint16_t destinationLradId, bool autoTracking);
+
+    void turnLRFon(uint16_t destinationLradId) override;
+    void turnLRFoff(uint16_t destinationLradId) override;
 
 private:
     AcsConfig config_;

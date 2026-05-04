@@ -281,10 +281,10 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         const auto destination = findDestination(sourceInfo.source_ip);
         if (destination.has_value()) {
             if(destination->id == 1) {
-                payload["destinationLradId"] = 1;
+                payload["destinationLradId"] = "PORT";
             }
             else if(destination->id == 2) {
-                payload["destinationLradId"] = 2;
+                payload["destinationLradId"] = "STARBOARD";
             }
         }
     }
@@ -397,6 +397,16 @@ void AcsEntity::createSEARCHLIGHT(uint16_t destinationLradId, const std::string&
     outPacket.destinationLradId = destinationLradId;
 
     sendToTcpDestination(outPacket, *destination);
+}
+
+void AcsEntity::turnLRFon(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando LRF ON ricevuto" << std::endl;
+    createLRF(destinationLradId, "ON");
+}
+
+void AcsEntity::turnLRFoff(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando LRF OFF ricevuto" << std::endl;
+    createLRF(destinationLradId, "OFF");
 }
 
 void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
