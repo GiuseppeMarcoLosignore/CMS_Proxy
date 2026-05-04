@@ -272,6 +272,14 @@ public:
 
     void handleLRFon(int destinationLradId);
     void handleLRFoff(int destinationLradId);
+    void handleLADon(int destinationLradId);
+    void handleLADoff(int destinationLradId);
+    void handleLADstrobe(int destinationLradId);
+    void handleSearchlightOn(int destinationLradId);
+    void handleSearchlightOff(int destinationLradId);
+    void handleSearchlightStrobe(int destinationLradId);
+    void handleAudioGain(int destinationLradId, float gain);
+    void handleAudioMute(int destinationLradId, bool mute);
 
     void start_cueing();
     void stop_cueing();

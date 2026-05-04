@@ -124,6 +124,12 @@ public:
     virtual ~IActuator() = default;
     virtual void turnLRFon(uint16_t destinationLradId) = 0;
     virtual void turnLRFoff(uint16_t destinationLradId) = 0;
+    virtual void turnLADon(uint16_t destinationLradId) = 0;
+    virtual void turnLADoff(uint16_t destinationLradId) = 0;
+    virtual void turnLADstrobe(uint16_t destinationLradId) = 0;
+    virtual void turnSearchlightOn(uint16_t destinationLradId) = 0;
+    virtual void turnSearchlightOff(uint16_t destinationLradId) = 0;
+    virtual void turnSearchlightStrobe(uint16_t destinationLradId) = 0;
 };
 
 class IEvent {

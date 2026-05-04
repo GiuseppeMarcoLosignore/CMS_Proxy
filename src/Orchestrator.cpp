@@ -112,7 +112,7 @@ void Orchestrator::subscribeTopics() {
         return;
     }
 
-
+/*
     //ACS topics
     eventBus_->subscribe(Topics::CS_LRAS_change_configuration_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
         handleCS_LRAS_change_configuration_order_INS(message);
@@ -220,20 +220,38 @@ void Orchestrator::subscribeTopics() {
     eventBus_->subscribe(Topics::AcsPosition, [this](const std::string& topic, const nlohmann::json& message) {
         extractPOSITIONdata(message);
     });
+*/
 
-
-
-    eventBus_->subscribe(Topics::LRF_ON, [this](const std::string& topic, const nlohmann::json& message) {
-        handleLRFon(message.get<int>()); 
+    //new topics
+    eventBus_->subscribe(Topics::LRF_ON, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+        handleLRFon(lradId); 
     });
 
-    eventBus_->subscribe(Topics::LRF_OFF, [this](const std::string& topic, const nlohmann::json& message) {
-        handleLRFoff(message.get<int>()); 
+    eventBus_->subscribe(Topics::LRF_OFF, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+        handleLRFoff(lradId); 
     });
 
 
-    eventBus_->subscribe(Topics::LRF_INFO, [this](const std::string& topic, const nlohmann::json& message) {
+    eventBus_->subscribe(Topics::LRF_INFO, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
         extractLRFdata(message);
+    });
+
+
+    eventBus_->subscribe(Topics::LAD_ON, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+        handleLADon(lradId); 
+    });
+
+    eventBus_->subscribe(Topics::LAD_OFF, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+        handleLADoff(lradId); 
+    });
+
+    eventBus_->subscribe(Topics::LAD_STROBE, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+        handleLADstrobe(lradId); 
+    });
+
+
+    eventBus_->subscribe(Topics::LAD_INFO, [this](const std::string& topic, const nlohmann::json& message  , int lradId) {
+        extractLADdata(message);
     });
 
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
@@ -1314,6 +1332,66 @@ void Orchestrator::handleLRFoff(int destinationLradId) {
     }
     if(isPayloadEnabled(PayoladType::LRF)) { //trial
         acsEntity_.turnLRFoff(destinationLradId);
+    }
+}
+
+void Orchestrator::handleSearchlightOn(int destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+        acsEntity_.turnSearchlightOn(destinationLradId);
+    }
+}
+
+void Orchestrator::handleSearchlightOff(int destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight off command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+        acsEntity_.turnSearchlightOff(destinationLradId);
+    }
+}
+
+void Orchestrator::handleSearchlightStrobe(int destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight strobe command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+        acsEntity_.turnSearchlightStrobe(destinationLradId);
+    }
+}
+
+void Orchestrator::handleLADstrobe(int destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle LAD strobe command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::LAD)) { //trial
+        acsEntity_.turnLADstrobe(destinationLradId);
+    }
+}
+
+void Orchestrator::handleLADon(int destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle LAD on command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::LAD)) { //trial
+        acsEntity_.turnLADon(destinationLradId);
+    }
+}
+
+void Orchestrator::handleLADoff(int destinationLradId) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle LAD off command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::LAD)) { //trial
+        acsEntity_.turnLADoff(destinationLradId);
     }
 }
 
