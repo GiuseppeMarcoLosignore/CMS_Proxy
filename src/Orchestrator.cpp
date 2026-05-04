@@ -83,12 +83,10 @@ Orchestrator::Orchestrator(CmsEntity &cmsEntity, AcsEntity &acsEntity, std::shar
       acsEntity_(acsEntity),
       eventBus_(std::move(eventBus)) {
 
-        Lras_full initialLras{};
-        initialLras.lras_status = 0;
-        initialLras.lras_mode = 0;
-        std::atomic_store(&lras, std::make_shared<Lras_full>(std::move(initialLras)));
+        lrasStatus initialLras{};
+        std::atomic_store(&lras, std::make_shared<lrasStatus>(std::move(initialLras)));
 
-        std::atomic_store(&lradList_, std::make_shared<std::vector<Lrad_full>>());
+        std::atomic_store(&lradList_, std::make_shared<std::vector<lradStatus>>());
 }
 
 void Orchestrator::start() {
@@ -126,10 +124,6 @@ void Orchestrator::subscribeTopics() {
 
     eventBus_->subscribe(Topics::CS_LRAS_cueing_order_INS, [this](const std::string& topic, const nlohmann::json& message) {
         handleCS_LRAS_cueing_order_INS(message);
-    });
-
-    eventBus_->subscribe(Topics::CS_LRAS_emission_control_INS, [this](const std::string& topic, const nlohmann::json& message) {
-        handleCS_LRAS_emission_control_INS(message);
     });  
     
     eventBus_->subscribe(Topics::CS_LRAS_emission_mode_INS, [this](const std::string& topic, const nlohmann::json& message) {
@@ -230,16 +224,16 @@ void Orchestrator::subscribeTopics() {
 
 
     eventBus_->subscribe(Topics::LRF_ON, [this](const std::string& topic, const nlohmann::json& message) {
-        handleLRFon((uint16_t)message); 
+        handleLRFon(message.get<int>()); 
     });
 
     eventBus_->subscribe(Topics::LRF_OFF, [this](const std::string& topic, const nlohmann::json& message) {
-        handleLRFoff((uint16_t)message); 
+        handleLRFoff(message.get<int>()); 
     });
 
 
     eventBus_->subscribe(Topics::LRF_INFO, [this](const std::string& topic, const nlohmann::json& message) {
-        
+        extractLRFdata(message);
     });
 
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
@@ -268,22 +262,22 @@ bool Orchestrator::isDataUpdated() const {
     std::lock_guard<std::mutex> lradLock(lradMutex_);
     std::lock_guard<std::mutex> lrasLock(lrasMutex_);
 
-    const std::shared_ptr<std::vector<Lrad_full>> lradListPtr = std::atomic_load(&lradList_);
-    const std::shared_ptr<Lras_full> lrasPtr = std::atomic_load(&lras);
+    const std::shared_ptr<std::vector<lradStatus>> lradListPtr = std::atomic_load(&lradList_);
+    const std::shared_ptr<lrasStatus> lrasPtr = std::atomic_load(&lras);
 
     const bool hasLrads = lradListPtr && !lradListPtr->empty();
-    const bool lrasUpdated = lrasPtr && lrasPtr->lras_status != 0;
+    const bool lrasUpdated = lrasPtr && !lrasPtr->swVersion.empty();
 
     return hasLrads || lrasUpdated;
 }
 
-void Orchestrator::setLradFullStatus(Lrad_full status, std::string name_) {
+void Orchestrator::setLradFullStatus(lradStatus status, std::string name_) {
     std::lock_guard<std::mutex> lock(lradMutex_);
 
-    status.name = std::move(name_);
+    status.alive.name = std::move(name_);
 
-    std::vector<Lrad_full> lradList;
-    if (const std::shared_ptr<std::vector<Lrad_full>> lradListPtr = std::atomic_load(&lradList_); lradListPtr) {
+    std::vector<lradStatus> lradList;
+    if (const std::shared_ptr<std::vector<lradStatus>> lradListPtr = std::atomic_load(&lradList_); lradListPtr) {
         lradList = *lradListPtr;
     }
     
@@ -291,8 +285,8 @@ void Orchestrator::setLradFullStatus(Lrad_full status, std::string name_) {
     auto it = std::find_if(
         lradList.begin(),
         lradList.end(),
-        [&status](const Lrad_full& lrad) {
-            return lrad.name == status.name;
+        [&status](const lradStatus& lrad) {
+            return lrad.alive.name == status.alive.name;
         }
     );
 
@@ -302,45 +296,45 @@ void Orchestrator::setLradFullStatus(Lrad_full status, std::string name_) {
         lradList.push_back(status);  // Add new
     }
 
-    std::atomic_store(&lradList_, std::make_shared<std::vector<Lrad_full>>(std::move(lradList)));
+    std::atomic_store(&lradList_, std::make_shared<std::vector<lradStatus>>(std::move(lradList)));
 }
 
-void Orchestrator::setLrasFullStatus(Lras_full status) {
+void Orchestrator::setLrasFullStatus(lrasStatus status) {
     std::lock_guard<std::mutex> lock(lrasMutex_);
-    std::atomic_store(&lras, std::make_shared<Lras_full>(std::move(status)));
+    std::atomic_store(&lras, std::make_shared<lrasStatus>(std::move(status)));
 }
 
-Lrad_full Orchestrator::getLradFullStatus(const std::string& name_) const {
+lradStatus Orchestrator::getLradFullStatus(const std::string& name_) const {
     std::lock_guard<std::mutex> lock(lradMutex_);
 
-    std::vector<Lrad_full> lradList;
-    if (const std::shared_ptr<std::vector<Lrad_full>> lradListPtr = std::atomic_load(&lradList_); lradListPtr) {
+    std::vector<lradStatus> lradList;
+    if (const std::shared_ptr<std::vector<lradStatus>> lradListPtr = std::atomic_load(&lradList_); lradListPtr) {
         lradList = *lradListPtr;
     }
 
     auto it = std::find_if(
         lradList.begin(),
         lradList.end(),
-        [&name_](const Lrad_full& lrad) {
-            return lrad.name == name_;
+        [&name_](const lradStatus& lrad) {
+            return lrad.alive.name == name_;
         }
     );
 
     if (it == lradList.end()) {
-        return Lrad_full{};
+        return lradStatus{};
     }
 
     return *it;
 }
 
-Lras_full Orchestrator::getLrasFullStatus() const {
+lrasStatus Orchestrator::getLrasFullStatus() const {
     std::lock_guard<std::mutex> lock(lrasMutex_);
 
-    if (const std::shared_ptr<Lras_full> lrasPtr = std::atomic_load(&lras); lrasPtr) {
+    if (const std::shared_ptr<lrasStatus> lrasPtr = std::atomic_load(&lras); lrasPtr) {
         return *lrasPtr;
     }
 
-    return Lras_full{};
+    return lrasStatus{};
 }
 
 
@@ -465,29 +459,27 @@ void Orchestrator::handleCS_LRAS_emission_mode_INS(const nlohmann::json& message
 
         if(isLradControlledByCms(lradId)) {
             const std::string lradName = lradId == 1 ? "LRAD 1" : "LRAD 2";
-            Lrad_full lradStatus = getLradFullStatus(lradName);
+            lradStatus currentLrad = getLradFullStatus(lradName);
 
             if(message["Laser Enable Validity"] == 1) {
-                lradStatus.ladEnabled = message["Laser on off"] != 0;
+                currentLrad.ladEnabled = message["Laser on off"] != 0;
             }
             if(message["Light Enable Validity"] == 1) {
-                lradStatus.searchlightEnabled = message["Light on off"] != 0;
+                currentLrad.searchlightEnabled = message["Light on off"] != 0;
             }
             if(message["Laser Range Finder Enable Validity"] == 1) {
-                lradStatus.lrfEnabled = message["LRF on off"] != 0;
+                currentLrad.lrfEnabled = message["LRF on off"] != 0;
             }
             if(message["Audio Enable Validity"] == 1) {
-                lradStatus.audioEnabled = message["Audio on off"] != 0;
+                currentLrad.audioEnabled = message["Audio on off"] != 0;
             }
             if(message["Audio Volume Levels Validity"] == 1) {
-                Lras_full lrasStatus = getLrasFullStatus();
-                lrasStatus.audioLvl1 = message["Audio Volume Level 1"];
-                lrasStatus.audioLvl2 = message["Audio Volume Level 2"];
-                lrasStatus.audioLvl3 = message["Audio Volume Level 3"];
-                setLrasFullStatus(std::move(lrasStatus));
+                currentLrad.audioLvl1 = message["Audio Volume Level 1"];
+                currentLrad.audioLvl2 = message["Audio Volume Level 2"];
+                currentLrad.audioLvl3 = message["Audio Volume Level 3"];
             }
 
-            setLradFullStatus(std::move(lradStatus), lradName);
+            setLradFullStatus(std::move(currentLrad), lradName);
 
         } else {
             nackreason = 2; 
@@ -547,7 +539,7 @@ void Orchestrator::handleCS_LRAS_joystick_control_lrad_1_INS(const nlohmann::jso
     
     if(isLradControlledByCms(1)) {
         if(message.contains("Azimuth") && message.contains("Elevation")) {
-            const float az = message.at("xPosition").get<float>()*0.5; // TODO: capire che sensibilità usare, per ora 0.5 è un valore di esempio
+            const float az = message.at("xPosition").get<float>()*0.5; // TODO: capire che sensibilita usare, per ora 0.5 e un valore di esempio
             const float el = message.at("yPosition").get<float>()*0.5;
             acsEntity_.createDELTA(1, az, el);
         } else {
@@ -573,7 +565,7 @@ void Orchestrator::handleCS_LRAS_joystick_control_lrad_2_INS(const nlohmann::jso
     }
     if(isLradControlledByCms(2)) {
         if(message.contains("Azimuth") && message.contains("Elevation")) {
-            const float az = message.at("xPosition").get<float>()*0.5; // TODO: capire che sensibilità usare, per ora 0.5 è un valore di esempio
+            const float az = message.at("xPosition").get<float>()*0.5; // TODO: capire che sensibilita usare, per ora 0.5 e un valore di esempio
             const float el = message.at("yPosition").get<float>()*0.5;
             acsEntity_.createDELTA(2, az, el);
         } else {
@@ -612,19 +604,19 @@ void Orchestrator::handleCS_LRAS_request_emission_mode_INS(const nlohmann::json&
 
     const uint16_t lradId = message["LRAD ID"].get<uint16_t>();
     const std::string lradName = lradId == 1 ? "LRAD 1" : "LRAD 2";
-    const Lrad_full lradStatus = getLradFullStatus(lradName);
-    const Lras_full lrasStatus = getLrasFullStatus();
+    const lradStatus currentLrad = getLradFullStatus(lradName);
 
-    cmsEntity_.sendLRAS_CS_emission_mode_feedback_INS(nackreason,
+    cmsEntity_.sendLRAS_CS_emission_mode_feedback_INS(
         lradId,
-        lradStatus.audioEnabled ? 1 : 0,
-        lrasStatus.audioLvl1,
-        lrasStatus.audioLvl2,
-        lrasStatus.audioLvl3,
-        lradStatus.ladEnabled ? 1 : 0,
-        lrasStatus.ladMinDistance,
-        lradStatus.searchlightEnabled ? 1 : 0,
-        lradStatus.lrfEnabled ? 1 : 0
+        currentLrad.audioEnabled ? 1 : 0,
+        currentLrad.audioLvl1,
+        currentLrad.audioLvl2,
+        currentLrad.audioLvl3,
+        currentLrad.ladEnabled ? 1 : 0,
+        static_cast<uint32_t>(std::max(0.0F, currentLrad.ladMinDistance)),
+        currentLrad.searchlightEnabled ? 1 : 0,
+        0,
+        currentLrad.lrfEnabled ? 1 : 0
     );
     
     sendAckForTopic(Topics::CS_LRAS_request_emission_mode_INS, nackreason, message);
@@ -674,14 +666,14 @@ void Orchestrator::extractALIVEdata(const nlohmann::json& payload) {
             return {};
         };
 
-        Lrad_full lrad = getLradFullStatus(name);
-        lrad.state = readStringField("state");
-        lrad.mode = readStringField("mode");
-        lrad.ipAddress = readStringField("ipAddress", "ip");
+        lradStatus lrad = getLradFullStatus(name);
+        lrad.alive.state = readStringField("state");
+        lrad.alive.mode = readStringField("mode");
+        lrad.alive.ipAddress = readStringField("ipAddress", "ip");
 
         setLradFullStatus(std::move(lrad), name);
 
-        Lras_full lrasStatus = getLrasFullStatus();
+        lrasStatus lrasStatus = getLrasFullStatus();
         lrasStatus.swVersion = readStringField("swVersion");
         setLrasFullStatus(std::move(lrasStatus));
         
@@ -700,16 +692,16 @@ void Orchestrator::extractALIVEdata(const nlohmann::json& payload) {
             return {};
         };
 
-        Lrad_full lrad = getLradFullStatus(name);
-        lrad.state = readStringField("state");
-        lrad.mode = readStringField("mode");
-        lrad.ipAddress = readStringField("ipAddress", "ip");
+        lradStatus lrad = getLradFullStatus(name);
+        lrad.alive.state = readStringField("state");
+        lrad.alive.mode = readStringField("mode");
+        lrad.alive.ipAddress = readStringField("ipAddress", "ip");
 
         setLradFullStatus(std::move(lrad), name);
 
-        const Lrad_full portLrad = getLradFullStatus("PORT");
-        if (!portLrad.name.empty() && portLrad.mode != "Unknown") {
-            Lras_full lrasStatus = getLrasFullStatus();
+        const lradStatus portLrad = getLradFullStatus("PORT");
+        if (!portLrad.alive.name.empty() && portLrad.alive.mode != "Unknown") {
+            lrasStatus lrasStatus = getLrasFullStatus();
             lrasStatus.swVersion = readStringField("swVersion");
             setLrasFullStatus(std::move(lrasStatus));
         }
@@ -756,20 +748,20 @@ void Orchestrator::extractDIAGNOSTICdata(const nlohmann::json& payload) {
         return false;
     };
 
-    Lrad_full lradStatus = getLradFullStatus(name);
-    lradStatus.limitError = readBoolField("limitError");
-    lradStatus.lad = readBoolField("lad");
-    lradStatus.lrf = readBoolField("lrf");
-    lradStatus.dsp = readBoolField("dsp");
-    lradStatus.searchlight = readBoolField("searchlight");
-    lradStatus.daq = readBoolField("daq");
-    lradStatus.psu12 = readBoolField("psu12");
-    lradStatus.psu24 = readBoolField("psu24");
-    lradStatus.psu48 = readBoolField("psu48");
-    lradStatus.tempVbox = readBoolField("tempVbox");
-    lradStatus.tempAhd = readBoolField("tempAhd");
+    lradStatus currentLrad = getLradFullStatus(name);
+    currentLrad.diagnostic.limitError = readBoolField("limitError");
+    currentLrad.diagnostic.lad = readBoolField("lad");
+    currentLrad.diagnostic.lrf = readBoolField("lrf");
+    currentLrad.diagnostic.dsp = readBoolField("dsp");
+    currentLrad.diagnostic.searchlight = readBoolField("searchlight");
+    currentLrad.diagnostic.daq = readBoolField("daq");
+    currentLrad.diagnostic.psu12 = readBoolField("psu12");
+    currentLrad.diagnostic.psu24 = readBoolField("psu24");
+    currentLrad.diagnostic.psu48 = readBoolField("psu48");
+    currentLrad.diagnostic.tempVbox = readBoolField("tempVbox");
+    currentLrad.diagnostic.tempAhd = readBoolField("tempAhd");
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 void Orchestrator::extractAUDIOdata(const nlohmann::json& payload) {
@@ -836,11 +828,11 @@ void Orchestrator::extractAUDIOdata(const nlohmann::json& payload) {
         return 0.0F;
     };
 
-    Lrad_full lradStatus = getLradFullStatus(name);
-    lradStatus.gain = readFloatField("gain");
-    lradStatus.mute = readBoolField("mute");
+    lradStatus currentLrad = getLradFullStatus(name);
+    currentLrad.audio.gain = readFloatField("gain");
+    currentLrad.audio.mute = readBoolField("mute");
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 void Orchestrator::extractLADdata(const nlohmann::json& payload) {
@@ -859,13 +851,13 @@ void Orchestrator::extractLADdata(const nlohmann::json& payload) {
 
     const auto& param = payload.at("param");
 
-    Lrad_full lradStatus = getLradFullStatus(name);
+    lradStatus currentLrad = getLradFullStatus(name);
 
     if (param.contains("mode") && param.at("mode").is_string()) {
-        lradStatus.laser_dazzler_mode = param.at("mode").get<std::string>() == "ON" ? 1 : 0;
+        currentLrad.lad.mode = param.at("mode").get<std::string>();
     }
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 void Orchestrator::extractSEARCHLIGHTdata(const nlohmann::json& payload) {
@@ -884,21 +876,21 @@ void Orchestrator::extractSEARCHLIGHTdata(const nlohmann::json& payload) {
 
     const auto& param = payload.at("param");
 
-    Lrad_full lradStatus = getLradFullStatus(name);
+    lradStatus currentLrad = getLradFullStatus(name);
 
     if (param.contains("mode") && param.at("mode").is_string()) {
-        lradStatus.searchlight_mode = param.at("mode").get<std::string>() == "ON" ? 1 : 0;
+        currentLrad.searchlight.mode = param.at("mode").get<std::string>();
     }
 
     if (param.contains("power") && param.at("power").is_string()) {
-        lradStatus.searchlight_power_level = static_cast<uint16_t>(std::stoul(param.at("power").get<std::string>()));
+        currentLrad.searchlight.power = param.at("power").get<std::string>();
     }
 
     if (param.contains("focus") && param.at("focus").is_number_unsigned()) {
-        lradStatus.searchlight_focus = param.at("focus").get<uint16_t>();
+        currentLrad.searchlight.focus = std::to_string(param.at("focus").get<uint16_t>());
     }
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 void Orchestrator::extractLRFdata(const nlohmann::json& payload) {
@@ -917,17 +909,17 @@ void Orchestrator::extractLRFdata(const nlohmann::json& payload) {
 
     const auto& param = payload.at("param");
 
-    Lrad_full lradStatus = getLradFullStatus(name);
+    lradStatus currentLrad = getLradFullStatus(name);
 
     if (param.contains("mode") && param.at("mode").is_string()) {
-        lradStatus.lrf_on = param.at("mode").get<std::string>() == "ON";
+        currentLrad.lrf.mode = param.at("mode").get<std::string>();
     }
 
     if (param.contains("value") && param.at("value").is_string()) {
-        lradStatus.lrf_value = std::stof(param.at("value").get<std::string>());
+        currentLrad.lrf.value = std::stof(param.at("value").get<std::string>());
     }
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 void Orchestrator::extractSHADOWdata(const nlohmann::json& payload) {
@@ -970,7 +962,7 @@ void Orchestrator::extractSHADOWdata(const nlohmann::json& payload) {
         return std::nullopt;
     };
 
-    Lrad_full lradStatus = getLradFullStatus(name);
+    lradStatus currentLrad = getLradFullStatus(name);
 
     for (const auto& sector : param.at("sectors")) {
         if (!sector.is_object()) {
@@ -997,18 +989,20 @@ void Orchestrator::extractSHADOWdata(const nlohmann::json& payload) {
         });
 
         if (target == "AZ") {
-            lradStatus.AzShadowStart = *startValue;
-            lradStatus.AzShadowEnd = *stopValue;
+            currentLrad.az1.enabled = true;
+            currentLrad.az1.start = std::to_string(*startValue);
+            currentLrad.az1.stop = std::to_string(*stopValue);
             continue;
         }
 
         if (target == "EL") {
-            lradStatus.ElShadowStart = *startValue;
-            lradStatus.ElShadowEnd = *stopValue;
+            currentLrad.az2.enabled = true;
+            currentLrad.az2.start = std::to_string(*startValue);
+            currentLrad.az2.stop = std::to_string(*stopValue);
         }
     }
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 void Orchestrator::extractZOOMdata(const nlohmann::json& payload) {
@@ -1069,17 +1063,19 @@ void Orchestrator::extractZOOMdata(const nlohmann::json& payload) {
         return;
     }
 
-    Lrad_full lradStatus = getLradFullStatus(name);
+    lradStatus currentLrad = getLradFullStatus(name);
 
     if (id == "HD") {
-        lradStatus.hd_camera_zoom_level = *zoomValue;
+        currentLrad.zoom.id = "HD";
+        currentLrad.zoom.value = static_cast<float>(*zoomValue);
     } else if (id == "TH") {
-        lradStatus.th_camera_zoom_level = *zoomValue;
+        currentLrad.zoom.id = "TH";
+        currentLrad.zoom.value = static_cast<float>(*zoomValue);
     } else {
         return;
     }
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 void Orchestrator::extractPOSITIONdata(const nlohmann::json& payload) {
@@ -1119,23 +1115,23 @@ void Orchestrator::extractPOSITIONdata(const nlohmann::json& payload) {
         return std::nullopt;
     };
 
-    Lrad_full lradStatus = getLradFullStatus(name);
+    lradStatus currentLrad = getLradFullStatus(name);
 
     if (param.contains("az")) {
         const std::optional<float> azValue = readAngleValue(param.at("az"));
         if (azValue.has_value()) {
-            lradStatus.Azimuth_deg = *azValue;
+            currentLrad.position.az = std::to_string(*azValue);
         }
     }
 
     if (param.contains("el")) {
         const std::optional<float> elValue = readAngleValue(param.at("el"));
         if (elValue.has_value()) {
-            lradStatus.Elevation_deg = *elValue;
+            currentLrad.position.el = std::to_string(*elValue);
         }
     }
 
-    setLradFullStatus(std::move(lradStatus), name);
+    setLradFullStatus(std::move(currentLrad), name);
 }
 
 bool Orchestrator::isAcsConnected() const {
@@ -1148,12 +1144,12 @@ bool Orchestrator::isCmsConnected() const {
 
 bool Orchestrator::isLradControlledByCms(int lradId) const {
     const std::string name = (lradId == 1) ? "PORT" : "STARBOARD";
-    const Lrad_full lrad = getLradFullStatus(name);
-    return lrad.cmsControl;
+    const lradStatus lrad = getLradFullStatus(name);
+    return lrad.controlledByCms;
 }
 
 bool Orchestrator::isPayloadEnabled(PayoladType type) const {
-    const std::shared_ptr<std::vector<Lrad_full>> lradListPtr = std::atomic_load(&lradList_);
+    const std::shared_ptr<std::vector<lradStatus>> lradListPtr = std::atomic_load(&lradList_);
     if (!lradListPtr || lradListPtr->empty()) {
         return false;
     }
@@ -1188,67 +1184,82 @@ void Orchestrator::extractMASTERdata(const nlohmann::json& payload) {
         return;
     }
     const auto& param = payload.at("param");
-    Lrad_full lrad = getLradFullStatus(name);
+    lradStatus lrad = getLradFullStatus(name);
     if (param.contains("mode") && param.at("mode").is_string()) {
         const std::string mode = param.at("mode").get<std::string>();
-        lrad.cmsControl = (mode == "MASTER" || mode == "ACCEPT");
-        lrad.mode = mode;
+        lrad.controlledByCms = (mode == "MASTER" || mode == "ACCEPT");
+        lrad.alive.mode = mode;
     }
     setLradFullStatus(std::move(lrad), name);
 }
 
 void Orchestrator::handleCS_LRAS_request_full_status_INS(const nlohmann::json& message) {
-    const Lrad_full lrad1 = getLradFullStatus("PORT");
-    const Lrad_full lrad2 = getLradFullStatus("STARBOARD");
+    const lradStatus lrad1 = getLradFullStatus("PORT");
+    const lradStatus lrad2 = getLradFullStatus("STARBOARD");
     const auto to_u16 = [](float value) -> uint16_t {
         return static_cast<uint16_t>(std::clamp(value, 0.0F, 65535.0F));
     };
+    const auto to_mode = [](const std::string& mode) -> uint16_t {
+        return mode == "ON" ? 1u : 0u;
+    };
+    const auto to_lrf_on = [](const std::string& mode) -> uint16_t {
+        return mode == "ON" ? 1u : 0u;
+    };
+    const auto to_zoom = [](const lradStatus& lrad, const char* id) -> uint16_t {
+        if (lrad.zoom.id == id) {
+            return static_cast<uint16_t>(std::clamp(lrad.zoom.value, 0.0F, 65535.0F));
+        }
+        return 0u;
+    };
+    const auto has_imu = [](const lradStatus& lrad) -> uint16_t {
+        return (!lrad.imu.roll.empty() || !lrad.imu.pitch.empty() || !lrad.imu.heading.empty()) ? 1u : 0u;
+    };
 
     cmsEntity_.sendLRAS_MULTI_full_status_v2_INS(
-        lrad1.lrad_status,
-        static_cast<uint16_t>(lrad1.motionAzState),
-        static_cast<uint16_t>(lrad1.motionElState),
-        lrad1.audio_emitter_mode,
-        lrad1.audio_emitter_status,
-        lrad1.searchlight_mode,
-        lrad1.searchlight_status,
-        lrad1.laser_dazzler_mode,
-        lrad1.laser_dazzler_status,
-        to_u16(lrad1.lrf_value),
-        lrad1.lrf_on ? 1u : 0u,
-        lrad1.tracking_board_status ? 1u : 0u,
-        lrad1.hd_camera_status,
-        lrad1.hd_camera_zoom_level,
-        lrad1.IMU_status,
+        0,
+        0,
+        0,
+        lrad1.audioEnabled ? 1u : 0u,
+        lrad1.audio.mute ? 0u : 1u,
+        to_mode(lrad1.searchlight.mode),
+        lrad1.searchlightEnabled ? 1u : 0u,
+        to_mode(lrad1.lad.mode),
+        lrad1.ladEnabled ? 1u : 0u,
+        to_u16(lrad1.lrf.value),
+        to_lrf_on(lrad1.lrf.mode),
+        0,
+        lrad1.zoom.id == "HD" ? 1u : 0u,
+        to_zoom(lrad1, "HD"),
+        has_imu(lrad1),
         0,
         0,
         0,
         0,
         0,
-        lrad1.th_camera_status,
-        lrad1.th_camera_zoom_level,
-        lrad2.lrad_status,
-        static_cast<uint16_t>(lrad2.motionAzState),
-        static_cast<uint16_t>(lrad2.motionElState),
-        lrad2.audio_emitter_mode,
-        lrad2.audio_emitter_status,
-        lrad2.searchlight_mode,
-        lrad2.searchlight_status,
-        lrad2.laser_dazzler_mode,
-        lrad2.laser_dazzler_status,
-        to_u16(lrad2.lrf_value),
-        lrad2.lrf_on ? 1u : 0u,
-        lrad2.tracking_board_status ? 1u : 0u,
-        lrad2.hd_camera_status,
-        lrad2.hd_camera_zoom_level,
-        lrad2.IMU_status,
+        lrad1.zoom.id == "TH" ? 1u : 0u,
+        to_zoom(lrad1, "TH"),
+        0,
+        0,
+        0,
+        lrad2.audioEnabled ? 1u : 0u,
+        lrad2.audio.mute ? 0u : 1u,
+        to_mode(lrad2.searchlight.mode),
+        lrad2.searchlightEnabled ? 1u : 0u,
+        to_mode(lrad2.lad.mode),
+        lrad2.ladEnabled ? 1u : 0u,
+        to_u16(lrad2.lrf.value),
+        to_lrf_on(lrad2.lrf.mode),
+        0,
+        lrad2.zoom.id == "HD" ? 1u : 0u,
+        to_zoom(lrad2, "HD"),
+        has_imu(lrad2),
         0,
         0,
         0,
         0,
         0,
-        lrad2.th_camera_status,
-        lrad2.th_camera_zoom_level
+        lrad2.zoom.id == "TH" ? 1u : 0u,
+        to_zoom(lrad2, "TH")
     );
 
     sendAckForTopic(Topics::CS_LRAS_request_full_status_INS, 0, message);
@@ -1266,9 +1277,9 @@ void Orchestrator::handleCS_LRAS_request_message_table_INS(const nlohmann::json&
 }
 
 void Orchestrator::handleCS_LRAS_request_software_version_INS(const nlohmann::json& message) {
-    const Lras_full lras = getLrasFullStatus();
+    const lrasStatus currentLras = getLrasFullStatus();
     cmsEntity_.sendLRAS_CS_software_version_INS(
-        "LRAS Server", lras.swVersion,
+        "LRAS Server", currentLras.swVersion,
         "LRAD1 Master", "N/A", "LRAD1 Slave", "N/A", "LRAD1 Tracking", "N/A",
         "LRAD2 Master", "N/A", "LRAD2 Slave", "N/A", "LRAD2 Tracking", "N/A",
         "Console1", "N/A", "Console2", "N/A");
@@ -1286,7 +1297,7 @@ void Orchestrator::handleCS_LRAS_request_translation_INS(const nlohmann::json& m
     sendAckForTopic(Topics::CS_LRAS_request_translation_INS, 0, message);
 }
 
-void Orchestrator::handleLRFon(uint16_t destinationLradId) {
+void Orchestrator::handleLRFon(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
         return;
@@ -1296,7 +1307,7 @@ void Orchestrator::handleLRFon(uint16_t destinationLradId) {
     }
 }
 
-void Orchestrator::handleLRFoff(uint16_t destinationLradId) {
+void Orchestrator::handleLRFoff(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
         return;
@@ -1317,4 +1328,5 @@ void Orchestrator::stop_cueing() {
 void Orchestrator::manage_recording(nlohmann::json /*message*/) {
     std::cout << "[Orchestrator] manage_recording: TODO" << std::endl;
 }
+
 

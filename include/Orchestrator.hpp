@@ -202,14 +202,14 @@ struct lradStatus {
     float warningDistance = 0.0F; //THRESHHOLD distance
     float dissuasionDistance = 0.0F;
     float persuasionDistance = 0.0F;
-    
+
 };
 
 struct lrasStatus {
     
-    int totalMessagesNumber;
-    int messageNumber;
-    int dbItemNumber;
+    int totalMessagesNumber = 0;
+    int messageNumber = 0;
+    int dbItemNumber = 0;
     std::string swVersion;
     
 };
@@ -233,10 +233,10 @@ public:
 
     void enablePayload(PayoladType type, std::string enable);
 
-    void setLradFullStatus(Lrad_full status, std::string name_);
-    void setLrasFullStatus(Lras_full status);
-    Lrad_full getLradFullStatus(const std::string& name_) const;
-    Lras_full getLrasFullStatus() const;
+    void setLradFullStatus(lradStatus status, std::string name_);
+    void setLrasFullStatus(lrasStatus status);
+    lradStatus getLradFullStatus(const std::string& name_) const;
+    lrasStatus getLrasFullStatus() const;
 
     void extractALIVEdata(const nlohmann::json& payload);
     void extractDIAGNOSTICdata(const nlohmann::json& payload);
@@ -270,8 +270,8 @@ public:
     void handleCS_LRAS_request_status_INS(const nlohmann::json& message);
     void handleCS_LRAS_request_control_mode_INS(const nlohmann::json& message);
 
-    void handleLRFon(uint16_t destinationLradId);
-    void handleLRFoff(uint16_t destinationLradId);
+    void handleLRFon(int destinationLradId);
+    void handleLRFoff(int destinationLradId);
 
     void start_cueing();
     void stop_cueing();
@@ -282,8 +282,8 @@ public:
 private:
     void sendAckForTopic(const std::string& topic, uint16_t nackreason, const nlohmann::json& message) const;
 
-    std::shared_ptr<std::vector<Lrad_full>> lradList_; //TODO: capire come cestire atomic
-    std::shared_ptr<Lras_full> lras;
+    std::shared_ptr<std::vector<lradStatus>> lradList_; //TODO: capire come cestire atomic
+    std::shared_ptr<lrasStatus> lras;
     mutable std::mutex lradMutex_;
     mutable std::mutex lrasMutex_;
     CmsEntity &cmsEntity_;

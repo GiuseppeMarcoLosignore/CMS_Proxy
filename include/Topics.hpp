@@ -103,5 +103,15 @@ inline constexpr const char* LRF_ON = "LRF_ON";
 inline constexpr const char* LRF_OFF = "LRF_OFF";
 inline constexpr const char* LRF_INFO = "LRF";
 
+inline constexpr const char* LAD_ON = "LAD_ON";
+inline constexpr const char* LAD_OFF = "LAD_OFF";
+inline constexpr const char* LAD_STROBE = "LAD_STROBE";
+inline constexpr const char* LAD_INFO = "LAD";
+
+inline constexpr const char* SEARCHLIGHT_ON = "SEARCHLIGHT_ON";
+inline constexpr const char* SEARCHLIGHT_OFF = "SEARCHLIGHT_OFF";
+inline constexpr const char* SEARCHLIGHT_STROBE = "SEARCHLIGHT_STROBE";
+inline constexpr const char* SEARCHLIGHT_INFO = "SEARCHLIGHT";
+
 
 } // namespace Topics

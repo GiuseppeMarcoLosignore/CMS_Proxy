@@ -268,6 +268,7 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
 
     nlohmann::json payload;
     std::string sendTopic;
+    
     try {
         payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
         sendTopic = payload["header"];

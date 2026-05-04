@@ -40,10 +40,6 @@ int main(int argc, char* argv[]) {
         auto orchestrator = std::make_shared<Orchestrator>(*cms_entity, *acs_entity, event_bus);
         orchestrator->start();
 
-                //TRIAL
-        event_bus->publish("LRF_ON", 1);
-        event_bus->publish("LRF_OFF", 1);
-
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "
                   << config_path << std::endl;
         std::cout << "[SYSTEM] CMS multicast in ascolto su: ";

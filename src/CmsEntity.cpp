@@ -831,6 +831,14 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
 
     destinationLradId = lradId;
 
+    if(lrfModeValidity == 1) {
+        lrfOnOff == 1 ?  messageCallback_(Topics::LRF_ON, lradId) : messageCallback_(Topics::LRF_OFF, lradId);
+    }
+
+    if(laserModeValidity == 1) {
+        laserMode == 0 ?  messageCallback_(Topics::LAD_OFF, lradId) : laserMode == 1 ? messageCallback_(Topics::LAD_ON, lradId) : messageCallback_(Topics::LAD_STROBE, lradId);
+    }    
+
     if (!has_known_lrad(lradId)) {
         nackreason = 2;
     }
