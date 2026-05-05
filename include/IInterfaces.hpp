@@ -130,6 +130,14 @@ public:
     virtual void turnSearchlightOn(uint16_t destinationLradId) = 0;
     virtual void turnSearchlightOff(uint16_t destinationLradId) = 0;
     virtual void turnSearchlightStrobe(uint16_t destinationLradId) = 0;
+    virtual void setSearchlightFocus(uint16_t destinationLradId, float focus) = 0;
+    virtual void setSearchlightPower(uint16_t destinationLradId, const uint8_t& power) = 0;
+    virtual void setGain(uint16_t destinationLradId, float gain) = 0;
+    virtual void setMute(uint16_t destinationLradId, bool mute) = 0;
+    virtual void setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
+    virtual void setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
+    
+
 };
 
 class IEvent {

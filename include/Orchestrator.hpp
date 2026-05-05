@@ -189,10 +189,10 @@ struct lradStatus {
     bool controlledByCms = false;
     bool cueingActive = false;
 
-    bool ladEnabled = false;
-    bool searchlightEnabled = false;
-    bool lrfEnabled = false;
-    bool audioEnabled = false;
+    bool ladEnabled = true;
+    bool searchlightEnabled = true;
+    bool lrfEnabled = true;
+    bool audioEnabled = true;
     bool isRecording = false;
     bool isCmsConnected = false;
     float audioLvl1 = 0.0F;
@@ -223,6 +223,7 @@ public:
     void stop();
 
     void subscribeTopics();
+    void initializeDefaultStatus();
 
     bool isDataUpdated() const;
     bool isAcsConnected() const;
@@ -280,6 +281,10 @@ public:
     void handleSearchlightStrobe(int destinationLradId);
     void handleAudioGain(int destinationLradId, float gain);
     void handleAudioMute(int destinationLradId, bool mute);
+    void handleSearchlightFocus(int destinationLradId, float focus);
+    void handleSearchlightPower(int destinationLradId, const uint8_t& power);
+    void handleHdZoom(int destinationLradId, const uint8_t zoomValue);
+    void handleThZoom(int destinationLradId, const uint8_t zoomValue);
 
     void start_cueing();
     void stop_cueing();

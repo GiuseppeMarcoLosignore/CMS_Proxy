@@ -140,7 +140,7 @@ void AcsEntity::stop() {
     rxIoContext_.stop();
 }
 
-void AcsEntity::setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb) {
+void AcsEntity::setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb) {
     messageCallback_ = std::move(cb);
 }
 
@@ -268,6 +268,7 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
 
     nlohmann::json payload;
     std::string sendTopic;
+    uint16_t lradId = 0;
     
     try {
         payload = nlohmann::json::parse(packet.data.begin(), packet.data.end());
@@ -283,14 +284,16 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         if (destination.has_value()) {
             if(destination->id == 1) {
                 payload["destinationLradId"] = "PORT";
+                lradId = 1;
             }
             else if(destination->id == 2) {
                 payload["destinationLradId"] = "STARBOARD";
+                lradId = 2;
             }
         }
     }
 
-    messageCallback_(sendTopic, payload);
+    messageCallback_(sendTopic, lradId, payload);
 
 }
 
@@ -376,13 +379,18 @@ void AcsEntity::createLAD(uint16_t destinationLradId, const std::string& mode, b
     sendToTcpDestination(outPacket, *destination);
 }
 
-void AcsEntity::createSEARCHLIGHT(uint16_t destinationLradId, const std::string& power, float focus, const std::string& mode) {
+void AcsEntity::createSEARCHLIGHT(uint16_t destinationLradId, const uint8_t& power, float focus, const std::string& mode) {
     nlohmann::json param;
     nlohmann::json payload;
 
-    param["power"] = power;
+    if(power != -1)
+    power == 0 ? param["power"] = "" : power == 1 ? param["power"] = "35W" : power == 2 ? param["power"] = "45W" : param["power"] = "85W";
+
     param["focus"] = focus;
-    param["mode"] = mode;
+
+    if(mode != "")
+    power == 0 ? param["mode"] = "OFF" : param["mode"] = mode;
+    
     createHeader("SEARCHLIGHT", "CMD", "CMS", param, payload);
 
     const auto destination = findDestination(destinationLradId);
@@ -409,6 +417,37 @@ void AcsEntity::turnLRFoff(uint16_t destinationLradId) {
     std::cout << "[ACS Entity] Comando LRF OFF ricevuto" << std::endl;
     createLRF(destinationLradId, "OFF");
 }
+
+void AcsEntity::turnLADon(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando LAD ON ricevuto" << std::endl;
+    createLAD(destinationLradId, "ON", false);
+}
+
+void AcsEntity::turnLADoff(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando LAD OFF ricevuto" << std::endl;
+    createLAD(destinationLradId, "OFF", false);
+}
+void AcsEntity::turnLADstrobe(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando LAD STROBE ricevuto" << std::endl;
+    createLAD(destinationLradId, "STROBE", false);
+}
+
+
+void AcsEntity::turnSearchlightOn(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando SEARCHLIGHT ON ricevuto" << std::endl;
+    createSEARCHLIGHT(destinationLradId, 3, 0.0f, "ON");
+}
+
+void AcsEntity::turnSearchlightOff(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando SEARCHLIGHT OFF ricevuto" << std::endl;
+    createSEARCHLIGHT(destinationLradId, 0, 0.0f, "OFF");
+}
+
+void AcsEntity::turnSearchlightStrobe(uint16_t destinationLradId) {
+    std::cout << "[ACS Entity] Comando SEARCHLIGHT STROBE ricevuto" << std::endl;
+    createSEARCHLIGHT(destinationLradId, -1, 0.0f, "STROBE");
+}
+
 
 void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
     nlohmann::json param;
@@ -473,11 +512,12 @@ void AcsEntity::createSHADOW(uint16_t destinationLradId, float az1, float el1, f
     }
 }
 
-void AcsEntity::createZOOM(uint16_t destinationLradId, const std::string& id) {
+void AcsEntity::createZOOM(uint16_t destinationLradId, const std::string& id, const uint8_t value) {
     nlohmann::json param;
     nlohmann::json payload;
 
     param["id"] = id;
+    param["value"] = value;
     createHeader("ZOOM", "CMD", "CMS", param, payload);
 
     const auto destination = findDestination(destinationLradId);
@@ -564,6 +604,36 @@ void AcsEntity::createTRACKING(uint16_t destinationLradId, bool autoTracking) {
     sendToTcpDestination(outPacket, *destination);
 }
 
+
+void AcsEntity::setSearchlightFocus(uint16_t destinationLradId, float focus) {
+    std::cout << "[ACS Entity] Comando SEARCHLIGHT FOCUS ricevuto: " << focus << std::endl;
+    createSEARCHLIGHT(destinationLradId, -1, focus, "OFF");
+}
+
+void AcsEntity::setSearchlightPower(uint16_t destinationLradId, const uint8_t& power) {
+    std::cout << "[ACS Entity] Comando SEARCHLIGHT POWER ricevuto: " << static_cast<int>(power) << std::endl;
+    createSEARCHLIGHT(destinationLradId, power, 0.0f, "");
+}
+
+void AcsEntity::setGain(uint16_t destinationLradId, float gain) {
+    std::cout << "[ACS Entity] Comando GAIN ricevuto: " << gain << std::endl;
+    createAUDIO(destinationLradId, gain, false);
+}
+
+void AcsEntity::setMute(uint16_t destinationLradId, bool mute) {
+    std::cout << "[ACS Entity] Comando MUTE ricevuto: " << (mute ? "ON" : "OFF") << std::endl;
+    createAUDIO(destinationLradId, 0.0f, mute);
+}
+
+void AcsEntity::setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) {
+    std::cout << "[ACS Entity] Comando HD ZOOM ricevuto: " << static_cast<int>(zoomValue) << std::endl;
+    createZOOM(destinationLradId, "HD", zoomValue);
+}
+
+void AcsEntity::setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) {
+    std::cout << "[ACS Entity] Comando TH ZOOM ricevuto: " << static_cast<int>(zoomValue) << std::endl;
+    createZOOM(destinationLradId, "TH", zoomValue);
+}
 
 void AcsEntity::sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination) {
     if (!tcpSocket_) {

@@ -13,14 +13,17 @@ def dump_packet(data: bytes):
     print(f"\n{'='*40}")
     print(f"RICEVUTI {len(data)} BYTE")
     print(f"RAW (hex): {data.hex()}")
-    
-    # 1. Prova JSON
+
+    # 1. Prova JSON (gestisce anche più messaggi newline-delimited nello stesso recv)
     try:
-        json_str = data.decode('utf-8')
-        json_data = json.loads(json_str)
-        print("\n--- FORMATO: JSON ---")
-        print(json.dumps(json_data, indent=2))
-        return
+        text = data.decode('utf-8')
+        lines = [l for l in text.splitlines() if l.strip()]
+        if lines:
+            parsed_all = [json.loads(l) for l in lines]
+            print("\n--- FORMATO: JSON ---")
+            for obj in parsed_all:
+                print(json.dumps(obj, indent=2))
+            return
     except (UnicodeDecodeError, json.JSONDecodeError):
         pass
 

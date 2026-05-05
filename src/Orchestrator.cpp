@@ -91,10 +91,65 @@ Orchestrator::Orchestrator(CmsEntity &cmsEntity, AcsEntity &acsEntity, std::shar
 
 void Orchestrator::start() {
     std::cout << "[Orchestrator] Starting..." << std::endl;
+
+    initializeDefaultStatus();
     
     subscribeTopics();
     
     std::cout << "[Orchestrator] Started" << std::endl;
+}
+
+void Orchestrator::initializeDefaultStatus() {
+    lrasStatus defaultLras{};
+    defaultLras.totalMessagesNumber = 0;
+    defaultLras.messageNumber = 0;
+    defaultLras.dbItemNumber = 0;
+    defaultLras.swVersion = "Unknown";
+
+    lradStatus port{};
+    port.alive.name = "PORT";
+    port.alive.state = "Unknown";
+    port.alive.mode = "Unknown";
+    port.alive.ipAddress = "0.0.0.0";
+    port.alive.swVersion = "Unknown";
+    port.lrad_id = 1;
+    port.controlledByCms = false;
+    port.cueingActive = false;
+    port.videotracking = false;
+    port.ladEnabled = true;
+    port.searchlightEnabled = true;
+    port.lrfEnabled = true;
+    port.audioEnabled = true;
+    port.isRecording = false;
+    port.isCmsConnected = false;
+    port.audio.gain = 0.0F;
+    port.audio.mute = false;
+    port.lad.mode = "OFF";
+    port.searchlight.mode = "OFF";
+    port.searchlight.power = "OFF";
+    port.searchlight.focus = "0";
+    port.lrf.mode = "OFF";
+    port.lrf.value = 0.0F;
+    port.zoom.id = "HD";
+    port.zoom.value = 0.0F;
+
+    lradStatus starboard = port;
+    starboard.alive.name = "STARBOARD";
+    starboard.lrad_id = 2;
+
+    std::vector<lradStatus> defaults;
+    defaults.push_back(std::move(port));
+    defaults.push_back(std::move(starboard));
+
+    {
+        std::lock_guard<std::mutex> lradLock(lradMutex_);
+        std::atomic_store(&lradList_, std::make_shared<std::vector<lradStatus>>(std::move(defaults)));
+    }
+
+    {
+        std::lock_guard<std::mutex> lrasLock(lrasMutex_);
+        std::atomic_store(&lras, std::make_shared<lrasStatus>(std::move(defaultLras)));
+    }
 }
 
 void Orchestrator::stop() {
@@ -223,35 +278,56 @@ void Orchestrator::subscribeTopics() {
 */
 
     //new topics
-    eventBus_->subscribe(Topics::LRF_ON, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+    eventBus_->subscribe(Topics::LRF_ON, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         handleLRFon(lradId); 
     });
 
-    eventBus_->subscribe(Topics::LRF_OFF, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+    eventBus_->subscribe(Topics::LRF_OFF, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         handleLRFoff(lradId); 
     });
 
 
-    eventBus_->subscribe(Topics::LRF_INFO, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+    eventBus_->subscribe(Topics::LRF_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         extractLRFdata(message);
     });
 
 
-    eventBus_->subscribe(Topics::LAD_ON, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+    eventBus_->subscribe(Topics::LAD_ON, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         handleLADon(lradId); 
     });
 
-    eventBus_->subscribe(Topics::LAD_OFF, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+    eventBus_->subscribe(Topics::LAD_OFF, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         handleLADoff(lradId); 
     });
 
-    eventBus_->subscribe(Topics::LAD_STROBE, [this](const std::string& topic, const nlohmann::json& message, int lradId) {
+    eventBus_->subscribe(Topics::LAD_STROBE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         handleLADstrobe(lradId); 
     });
 
 
-    eventBus_->subscribe(Topics::LAD_INFO, [this](const std::string& topic, const nlohmann::json& message  , int lradId) {
+    eventBus_->subscribe(Topics::LAD_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         extractLADdata(message);
+    });
+
+    eventBus_->subscribe(Topics::HD_ZOOM, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleHdZoom(lradId, message.get<uint8_t>());
+    });
+
+    eventBus_->subscribe(Topics::ZOOM_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        
+    });
+
+
+    eventBus_->subscribe(Topics::SEARCHLIGHT_ON, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleSearchlightPower(lradId, message.get<uint8_t>());
+    });
+
+        eventBus_->subscribe(Topics::SEARCHLIGHT_OFF, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleSearchlightPower(lradId, message.get<uint8_t>());
+    });
+
+    eventBus_->subscribe(Topics::SEARCHLIGHT_FOCUS, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleSearchlightFocus(lradId, message.get<uint8_t>());
     });
 
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
@@ -416,51 +492,7 @@ void Orchestrator::handleCS_LRAS_cueing_order_INS(const nlohmann::json& message)
 }
 
 void Orchestrator::handleCS_LRAS_emission_control_INS(const nlohmann::json& message) {
-    uint16_t nackreason = 0; // 0 means no error, 2 means invalid parameter
-    if(!isAcsConnected()) {
-        std::cout << "[Orchestrator] Cannot handle CS_LRAS_emission_control_INS: ACS not connected" << std::endl;
-        nackreason = 3; // 3 means ACS not connected
-        sendAckForTopic(Topics::CS_LRAS_emission_control_INS, nackreason, message);
-        return;
-    }
 
-    if(message.contains("LRAD ID")) {
-        const uint16_t lradId = message.at("LRAD ID").get<uint16_t>();
-
-        if(isLradControlledByCms(lradId)) {
-            if(isPayloadEnabled(PayoladType::LAD) && message["Laser Enable Validity"] == 1) {
-                acsEntity_.createLAD(lradId, message["Laser on off"] == 0 ? "OFF" : "ON", false);
-
-            }
-            if(isPayloadEnabled(PayoladType::SEARCHLIGHT) && message["Light Enable Validity"] == 1) {
-                acsEntity_.createSEARCHLIGHT(
-                    lradId, 
-                    message["Light Power"] == 0 ? "OFF" :  message["Light Power"] == 1 ? "ON" : "STROBE",
-                    message["Light Zoom"], 
-                    message["Light Mode"] == 1 ? "35W" : message["Light Mode"] == 2 ? "45W" : "85W"
-                    );
-            }
-            if(isPayloadEnabled(PayoladType::LRF) && message["Laser Range Finder Enable Validity"] == 1) {
-                acsEntity_.createLRF(lradId,
-                    message["LRF on off"] == 0 ? "OFF" :  "ON");
-            }
-            if(isPayloadEnabled(PayoladType::AUDIO) && message["Audio Enable Validity"] == 1) {
-                acsEntity_.createAUDIO(lradId, message["Audio Volume dB"], message["Mute"]);
-            }
-
-        } else {
-            nackreason = 2; 
-            sendAckForTopic(Topics::CS_LRAS_emission_control_INS, nackreason, message);
-            return;
-        }
-
-        sendAckForTopic(Topics::CS_LRAS_emission_control_INS, nackreason, message);
-        // Process the configuration change as needed
-        // For example, you might want to update internal state or send a command to the LRAD
-    } else {
-        nackreason = 2; // Invalid parameter
-        sendAckForTopic(Topics::CS_LRAS_emission_control_INS, nackreason, message);
-    }
 }
 
 void Orchestrator::handleCS_LRAS_emission_mode_INS(const nlohmann::json& message) {
@@ -1190,6 +1222,7 @@ void Orchestrator::enablePayload(PayoladType /*type*/, std::string /*enable*/) {
     // TODO
 }
 
+
 void Orchestrator::extractMASTERdata(const nlohmann::json& payload) {
     if (!payload.contains("sender") || !payload.at("sender").is_string()) {
         return;
@@ -1315,6 +1348,7 @@ void Orchestrator::handleCS_LRAS_request_translation_INS(const nlohmann::json& m
     sendAckForTopic(Topics::CS_LRAS_request_translation_INS, 0, message);
 }
 
+
 void Orchestrator::handleLRFon(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
@@ -1394,6 +1428,68 @@ void Orchestrator::handleLADoff(int destinationLradId) {
         acsEntity_.turnLADoff(destinationLradId);
     }
 }
+
+
+void Orchestrator::handleAudioGain(int destinationLradId, float gain) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle Audio gain command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::AUDIO)) { //trial
+        acsEntity_.setGain(destinationLradId, gain);
+    }
+}
+
+void Orchestrator::handleAudioMute(int destinationLradId, bool mute) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle Audio mute command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::AUDIO)) { //trial
+        acsEntity_.setMute(destinationLradId, mute);
+    }
+}
+
+void Orchestrator::handleSearchlightFocus(int destinationLradId, float focus) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight focus command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+        acsEntity_.setSearchlightFocus(destinationLradId, focus);
+    }
+}
+
+void Orchestrator::handleSearchlightPower(int destinationLradId, const uint8_t  & power) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight power command: ACS not connected" << std::endl;
+        return;
+    }
+    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+        acsEntity_.setSearchlightPower(destinationLradId, power);
+    }
+}
+
+void Orchestrator::handleHdZoom(int destinationLradId, const uint8_t zoomValue) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle HD zoom command: ACS not connected" << std::endl;
+        return;
+    }
+    if(zoomValue > 0 && zoomValue <= 100) { //trial
+        acsEntity_.setHdZoom(destinationLradId, zoomValue);
+    }
+}
+
+void Orchestrator::handleThZoom(int destinationLradId, const uint8_t zoomValue) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle TH zoom command: ACS not connected" << std::endl;
+        return;
+    }
+    if(zoomValue > 0 && zoomValue <= 100) { //trial
+        acsEntity_.setThZoom(destinationLradId, zoomValue);
+    }
+}
+
 
 void Orchestrator::start_cueing() {
     std::cout << "[Orchestrator] start_cueing: TODO" << std::endl;

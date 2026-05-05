@@ -9,6 +9,7 @@ cmake_policy(SET CMP0167 OLD)
 
 # --- DIPENDENZE ---
 set(Boost_ROOT "C:/Users/HP840G8/vcpkg/installed/x64-windows")
+list(APPEND CMAKE_PREFIX_PATH "C:/Users/HP840G8/vcpkg/installed/x64-windows/share")
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)

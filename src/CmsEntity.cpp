@@ -513,7 +513,7 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         return;
     }
 
-    messageCallback_(publishTopic, publishMessage);
+    //messageCallback_(publishTopic, publishMessage);
     
 }
 
@@ -832,15 +832,25 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
     destinationLradId = lradId;
 
     if(lrfModeValidity == 1) {
-        lrfOnOff == 1 ?  messageCallback_(Topics::LRF_ON, lradId) : messageCallback_(Topics::LRF_OFF, lradId);
+        lrfOnOff == 1 ?  messageCallback_(Topics::LRF_ON, lradId, lrfOnOff) : messageCallback_(Topics::LRF_OFF, lradId, lrfOnOff);
     }
 
     if(laserModeValidity == 1) {
-        laserMode == 0 ?  messageCallback_(Topics::LAD_OFF, lradId) : laserMode == 1 ? messageCallback_(Topics::LAD_ON, lradId) : messageCallback_(Topics::LAD_STROBE, lradId);
-    }    
+        laserMode == 0 ?  messageCallback_(Topics::LAD_OFF, lradId, "") : laserMode == 1 ? messageCallback_(Topics::LAD_ON, lradId, "") : messageCallback_(Topics::LAD_STROBE, lradId, "");
+    }
+
+    if(lightModeValidity == 1) {
+        lightPower != 0 ? messageCallback_(Topics::SEARCHLIGHT_ON, lradId, lightPower) : messageCallback_(Topics::SEARCHLIGHT_OFF, lradId, lightPower);
+        messageCallback_(Topics::SEARCHLIGHT_FOCUS, lradId, lightZoom);
+    }
+
+    
+    if(cameraZoomValidity == 1) {
+        messageCallback_(Topics::HD_ZOOM, lradId, cameraZoom);
+    }
 
     if (!has_known_lrad(lradId)) {
-        nackreason = 2;
+    //    nackreason = 2;
     }
     return payload;
 }
@@ -1691,17 +1701,17 @@ void CmsEntity::periodicMessages() {
     periodicTimer_->expires_after(std::chrono::milliseconds(100));
     periodicTimer_->async_wait([this](const boost::system::error_code& ec) {
         if (!ec) {
-            messageCallback_(Topics::LRAS_CS_lrad_1_status_INS, nlohmann::json::object());
+        /*    messageCallback_(Topics::LRAS_CS_lrad_1_status_INS, nlohmann::json::object());
             messageCallback_(Topics::LRAS_CS_lrad_2_status_INS, nlohmann::json::object());
             messageCallback_(Topics::LRAS_MULTI_full_status_v2_INS, nlohmann::json::object());
             messageCallback_(Topics::LRAS_MULTI_health_status_INS, nlohmann::json::object());
 
-            periodicMessages();
+            periodicMessages();*/
         }
     });
 }
 
-void CmsEntity::setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb) {
+void CmsEntity::setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb) {
     messageCallback_ = std::move(cb);
 }
 

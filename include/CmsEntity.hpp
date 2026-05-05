@@ -31,7 +31,7 @@ public:
     void subscribeTopics();
     void periodicMessages();
 
-    void setMessageCallback(std::function<void(const std::string&, const nlohmann::json&)> cb);
+    void setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb);
 
     bool convertIncomingPacket(const RawPacket& packet,
                                std::string& outTopic,
@@ -323,7 +323,7 @@ public:
 
 private:
     CmsConfig config_;
-    std::function<void(const std::string&, const nlohmann::json&)> messageCallback_;
+    std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> messageCallback_;
 
 
     boost::asio::io_context rxIoContext_;

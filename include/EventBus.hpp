@@ -13,14 +13,14 @@
 
 class EventBus {
 public:
-    using Callback = std::function<void(const std::string&, const nlohmann::json&, const int)>;
+    using Callback = std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)>;
 
     void subscribe(const std::string& topic, Callback cb) {
         std::lock_guard<std::mutex> lock(mutex_);
         subscribers_[topic].push_back(std::move(cb));
     }
 
-    void publish(const std::string& topic, const nlohmann::json& message, int someInt) const {
+    void publish(const std::string& topic, const uint16_t someInt, const nlohmann::json& message) const {
         std::vector<Callback> callbacks;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -32,7 +32,7 @@ public:
 
         for (const auto& cb : callbacks) {
             std::thread([cb, topic, message, someInt]() {
-                cb(topic, message, someInt);
+                cb(topic, someInt, message);
             }).detach();
         }
     }

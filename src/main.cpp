@@ -24,12 +24,12 @@ int main(int argc, char* argv[]) {
             config.acs
         );
 
-        cms_entity->setMessageCallback([event_bus](const std::string& topic, const nlohmann::json& message) {
-            event_bus->publish(topic, message);
+        cms_entity->setMessageCallback([event_bus](const std::string& topic,const uint16_t& lradId, const nlohmann::json& message) {
+            event_bus->publish(topic, lradId, message);
         });
 
-        acs_entity->setMessageCallback([event_bus](const std::string& topic, const nlohmann::json& message) {
-            event_bus->publish(topic, message);
+        acs_entity->setMessageCallback([event_bus](const std::string& topic, const uint16_t& lradId, const nlohmann::json& message) {
+            event_bus->publish(topic, lradId, message);
         });
 
         cms_entity->start();
