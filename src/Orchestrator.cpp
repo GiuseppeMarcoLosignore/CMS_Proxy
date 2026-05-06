@@ -1362,74 +1362,104 @@ void Orchestrator::handleCS_LRAS_request_translation_INS(const nlohmann::json& m
 void Orchestrator::handleLRFon(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_ON, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::LRF)) { //trial
-        acsEntity_.turnLRFon(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::LRF)) { //trial
+        std::cout << "[Orchestrator] Cannot handle LRF command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_ON, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.turnLRFon(destinationLradId);
 }
 
 void Orchestrator::handleLRFoff(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_OFF, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::LRF)) { //trial
-        acsEntity_.turnLRFoff(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::LRF)) { //trial
+        std::cout << "[Orchestrator] Cannot handle LRF command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_OFF, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.turnLRFoff(destinationLradId);
 }
+
 
 void Orchestrator::handleSearchlightOn(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle Searchlight command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_ON, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
-        acsEntity_.turnSearchlightOn(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
+        std::cout << "[Orchestrator] Cannot handle Searchlight command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_ON, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.turnSearchlightOn(destinationLradId);
 }
+
 
 void Orchestrator::handleSearchlightOff(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle Searchlight off command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_OFF, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
-        acsEntity_.turnSearchlightOff(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
+        std::cout << "[Orchestrator] Cannot handle Searchlight off command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_OFF, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.turnSearchlightOff(destinationLradId);
 }
 
 void Orchestrator::handleSearchlightStrobe(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle Searchlight strobe command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_STROBE, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
-        acsEntity_.turnSearchlightStrobe(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
+        std::cout << "[Orchestrator] Cannot handle Searchlight strobe command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_STROBE, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.turnSearchlightStrobe(destinationLradId);
 }
+
 
 void Orchestrator::handleLADstrobe(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LAD strobe command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_STROBE, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::LAD)) { //trial
-        acsEntity_.turnLADstrobe(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::LAD)) { //trial
+        std::cout << "[Orchestrator] Cannot handle LAD strobe command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_STROBE, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.turnLADstrobe(destinationLradId);
 }
 
 void Orchestrator::handleLADon(int destinationLradId) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LAD on command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_ON, StatusEventValue::NETWORK_ERR);
         return;
     }
     if(!isPayloadEnabled(destinationLradId, PayoladType::LAD)) { //trial
         std::cout << "[Orchestrator] Cannot handle LAD on command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_ON, StatusEventValue::SYSTEM_ERR);
         return;
     }
     if(!canLadFire(destinationLradId)) {
         std::cout << "[Orchestrator] Cannot handle LAD on command: LRF conditions not met" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_ON, StatusEventValue::SYSTEM_ERR);
         return;
     }
 
@@ -1457,21 +1487,29 @@ void Orchestrator::handleLADoff(int destinationLradId) {
 void Orchestrator::handleAudioGain(int destinationLradId, float gain) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle Audio gain command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::AUDIO_GAIN, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::AUDIO)) { //trial
-        acsEntity_.setGain(destinationLradId, gain);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::AUDIO)) { //trial
+        std::cout << "[Orchestrator] Cannot handle Audio gain command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::AUDIO_GAIN, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.setGain(destinationLradId, gain);
 }
 
 void Orchestrator::handleAudioMute(int destinationLradId, bool mute) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle Audio mute command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::AUDIO_MUTE, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::AUDIO)) { //trial
-        acsEntity_.setMute(destinationLradId, mute);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::AUDIO)) { //trial
+        std::cout << "[Orchestrator] Cannot handle Audio mute command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::AUDIO_MUTE, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.setMute(destinationLradId, mute);
 }
 
 void Orchestrator::handleSearchlightFocus(int destinationLradId, float focus) {
@@ -1479,39 +1517,53 @@ void Orchestrator::handleSearchlightFocus(int destinationLradId, float focus) {
         std::cout << "[Orchestrator] Cannot handle Searchlight focus command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
-        acsEntity_.setSearchlightFocus(destinationLradId, focus);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
+        std::cout << "[Orchestrator] Cannot handle Searchlight focus command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_FOCUS, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.setSearchlightFocus(destinationLradId, focus);
 }
 
 void Orchestrator::handleSearchlightPower(int destinationLradId, const uint8_t  & power) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle Searchlight power command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_POWER, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
-        acsEntity_.setSearchlightPower(destinationLradId, power);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
+        std::cout << "[Orchestrator] Cannot handle Searchlight power command: Payload not enabled" << std::endl;
+        return;
     }
+    acsEntity_.setSearchlightPower(destinationLradId, power);
 }
 
 void Orchestrator::handleHdZoom(int destinationLradId, const uint8_t zoomValue) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle HD zoom command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::HD_ZOOM, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(zoomValue > 0 && zoomValue <= 100) { //trial
-        acsEntity_.setHdZoom(destinationLradId, zoomValue);
+    if(!(zoomValue > 0 && zoomValue <= 100)) { //trial
+        std::cout << "[Orchestrator] Cannot handle HD zoom command: Invalid zoom value" << std::endl;
+        cmsEntity_.eventStatus(Topics::HD_ZOOM, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.setHdZoom(destinationLradId, zoomValue);
 }
 
 void Orchestrator::handleThZoom(int destinationLradId, const uint8_t zoomValue) {
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle TH zoom command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::TH_ZOOM, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(zoomValue > 0 && zoomValue <= 100) { //trial
-        acsEntity_.setThZoom(destinationLradId, zoomValue);
+    if(!(zoomValue > 0 && zoomValue <= 100)) { //trial
+        std::cout << "[Orchestrator] Cannot handle TH zoom command: Invalid zoom value" << std::endl;
+        cmsEntity_.eventStatus(Topics::TH_ZOOM, StatusEventValue::SYSTEM_ERR);
+        return;
     }
+    acsEntity_.setThZoom(destinationLradId, zoomValue);
 }
 
 

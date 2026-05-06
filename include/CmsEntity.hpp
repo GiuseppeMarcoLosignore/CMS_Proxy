@@ -14,7 +14,7 @@
 
 class UdpSocket;
 
-class CmsEntity : public IEntity {
+class CmsEntity : public IEntity, public IRemote {
 public:
     CmsEntity(const CmsConfig& config);
 
@@ -30,6 +30,8 @@ public:
     void onPacketReceived(const RawPacket& packet, const PacketSourceInfo& sourceInfo);
     void subscribeTopics();
     void periodicMessages();
+    void eventStatus(const std::string& topic, StatusEventValue value) override;
+    uint32_t extractMessageIdFromTopic(const std::string& topic) const;
 
     void setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb);
 

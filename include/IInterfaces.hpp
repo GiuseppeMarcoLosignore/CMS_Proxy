@@ -8,6 +8,13 @@
 #include <optional>
 #include <nlohmann/json.hpp>
 
+enum class StatusEventValue {
+    NO_ERR,
+    NETWORK_ERR,
+    SYSTEM_ERR,
+    UNKNOWN
+};
+
 struct MulticastEndpoint {
     std::string ip;
     uint16_t port = 0;
@@ -143,6 +150,7 @@ public:
 class IRemote {
 public:
     virtual ~IRemote() = default;
+    virtual void eventStatus(const std::string& topic, StatusEventValue value) = 0;
 };
 
 class IEvent {

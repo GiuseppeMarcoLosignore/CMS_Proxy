@@ -1719,6 +1719,62 @@ void CmsEntity::periodicMessages() {
     });
 }
 
+void CmsEntity::eventStatus(const std::string& topic, StatusEventValue value) {
+    const uint32_t sourceMessageId = extractMessageIdFromTopic(topic);
+    if (sourceMessageId == 0) {
+        std::cerr << "[CmsEntity] source_message_id non disponibile per topic ACK: " << topic << std::endl;
+        return;
+    }
+
+    uint16_t nackReason = 1; // Default to generic error.
+    switch (value) {
+        case StatusEventValue::NO_ERR:
+            nackReason = 0;
+            break;
+        case StatusEventValue::NETWORK_ERR:
+            nackReason = 3;
+            break;
+        case StatusEventValue::SYSTEM_ERR:
+            nackReason = 1;
+            break;
+        case StatusEventValue::UNKNOWN:
+        default:
+            nackReason = 1;
+            break;
+    }
+
+    const uint16_t ackNackAccepted = (nackReason == 0) ? 1u : 2u;
+    constexpr uint32_t defaultActionId = 0;
+    sendLRAS_CS_ack_INS(defaultActionId, sourceMessageId, ackNackAccepted, nackReason);
+}
+
+uint32_t CmsEntity::extractMessageIdFromTopic(const std::string& topic) const {
+    if (topic == Topics::CS_LRAS_change_configuration_order_INS) return MessageId_CS_LRAS_change_configuration_order_INS;
+    if (topic == Topics::CS_LRAS_cueing_order_cancellation_INS) return MessageId_CS_LRAS_cueing_order_cancellation_INS;
+    if (topic == Topics::CS_LRAS_cueing_order_INS) return MessageId_CS_LRAS_cueing_order_INS;
+    if (topic == Topics::CS_LRAS_emission_control_INS) return MessageId_CS_LRAS_emission_control_INS;
+    if (topic == Topics::CS_LRAS_emission_mode_INS) return MessageId_CS_LRAS_emission_mode_INS;
+    if (topic == Topics::CS_LRAS_inhibition_sectors_INS) return MessageId_CS_LRAS_inhibition_sectors_INS;
+    if (topic == Topics::CS_LRAS_joystick_control_lrad_1_INS) return MessageId_CS_LRAS_joystick_control_lrad_1_INS;
+    if (topic == Topics::CS_LRAS_joystick_control_lrad_2_INS) return MessageId_CS_LRAS_joystick_control_lrad_2_INS;
+    if (topic == Topics::CS_LRAS_recording_command_INS) return MessageId_CS_LRAS_recording_command_INS;
+    if (topic == Topics::CS_LRAS_request_engagement_capability_INS) return MessageId_CS_LRAS_request_engagement_capability_INS;
+    if (topic == Topics::CS_LRAS_request_full_status_INS) return MessageId_CS_LRAS_request_full_status_INS;
+    if (topic == Topics::CS_LRAS_request_message_table_INS) return MessageId_CS_LRAS_request_message_table_INS;
+    if (topic == Topics::CS_LRAS_request_software_version_INS) return MessageId_CS_LRAS_request_software_version_INS;
+    if (topic == Topics::CS_LRAS_request_thresholds_INS) return MessageId_CS_LRAS_request_thresholds_INS;
+    if (topic == Topics::CS_LRAS_request_translation_INS) return MessageId_CS_LRAS_request_translation_INS;
+    if (topic == Topics::CS_LRAS_video_tracking_command_INS) return MessageId_CS_LRAS_video_tracking_command_INS;
+    if (topic == Topics::CS_LRAS_request_emission_mode_INS) return MessageId_CS_LRAS_request_emission_mode_INS;
+    if (topic == Topics::CS_LRAS_request_installation_data_INS) return MessageId_CS_LRAS_request_installation_data_INS;
+    if (topic == Topics::CS_MULTI_health_status_INS) return MessageId_CS_MULTI_health_status_INS;
+    if (topic == Topics::CS_MULTI_update_cst_kinematics_INS) return MessageId_CS_MULTI_update_cst_kinematics_INS;
+
+    return 0;
+}
+
+
+
 void CmsEntity::setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb) {
     messageCallback_ = std::move(cb);
 }
