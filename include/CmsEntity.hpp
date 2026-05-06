@@ -31,7 +31,7 @@ public:
     void subscribeTopics();
     void periodicMessages();
     void eventStatus(const std::string& topic, StatusEventValue value) override;
-    uint32_t extractMessageIdFromTopic(const std::string& topic) const;
+    uint32_t extractMessageIdFromTopic(const char* topic) const;
 
     void setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb);
 
@@ -326,6 +326,8 @@ public:
 private:
     CmsConfig config_;
     std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> messageCallback_;
+
+    mutable std::atomic<uint32_t> lastActionId{0};
 
 
     boost::asio::io_context rxIoContext_;

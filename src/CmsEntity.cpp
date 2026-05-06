@@ -475,6 +475,7 @@ void CmsEntity::start() {
     });
 
     running_.store(true);
+    lastActionId.store(0u);
      
 
     std::cout << "[CMS Entity] Avviata su " << config_.multicast_groups.size()
@@ -639,6 +640,7 @@ json CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     }
 
     const uint16_t actionId = read_u16_be(packet.data, offset);
+    lastActionId.store(static_cast<uint32_t>(actionId));
     const uint16_t lradId = read_u16_be(packet.data, offset + 4);
     const uint16_t rawConfig = read_u16_be(packet.data, offset + 6);
 
@@ -660,6 +662,7 @@ json CmsEntity::parse_CS_LRAS_cueing_order_cancellation_INS(
     }
 
     const uint32_t actionId = read_u32_be(packet.data, offset);
+    lastActionId.store(actionId);
     const uint16_t lradId = read_u16_be(packet.data, offset + 4);
 
     json payload;
@@ -683,6 +686,7 @@ json CmsEntity::parse_CS_LRAS_cueing_order_INS(
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint16_t lradId = read_u16_be(packet.data, 20);
     const uint16_t cueingType = read_u16_be(packet.data, 22);
     const uint32_t cstn = read_u32_be(packet.data, 24);
@@ -767,6 +771,7 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint16_t lradId = read_u16_be(packet.data, 20);
     const uint16_t audioModeValidity = read_u16_be(packet.data, 22);
     const uint16_t volumeLevel = read_u16_be(packet.data, 24);
@@ -865,10 +870,20 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
 
 json CmsEntity::parse_CS_LRAS_emission_mode_INS(
     const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
-    (void)packet;
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_payload();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
+
     (void)destinationLradId;
     (void)nackreason;
-    return json::object();
+
+    json payload;
+    payload["Action Id"] = actionId;
+    return payload;
 }
 
 json CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
@@ -881,6 +896,7 @@ json CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint16_t lradId = read_u16_be(packet.data, 20);
 
     const uint16_t sector1OnOff = read_u16_be(packet.data, 22);
@@ -928,6 +944,8 @@ json CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
 
     const int16_t xPosition = read_i16_be(packet.data, 16);
     const int16_t yPosition = read_i16_be(packet.data, 18);
+    const uint32_t actionId = 0u;
+    lastActionId.store(actionId);
 
     json payload;
     payload["LRAD ID"] = 1;
@@ -953,6 +971,8 @@ json CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
 
     const int16_t xPosition = read_i16_be(packet.data, 16);
     const int16_t yPosition = read_i16_be(packet.data, 18);
+    const uint32_t actionId = 0u;
+    lastActionId.store(actionId);
 
     json payload;
     payload["LRAD ID"] = 2;
@@ -979,6 +999,7 @@ json CmsEntity::parse_CS_LRAS_recording_command_INS(
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint16_t lradId = read_u16_be(packet.data, 20);
     const uint16_t videoSource = read_u16_be(packet.data, 22);
     const uint16_t videoProfile = read_u16_be(packet.data, 24);
@@ -1014,11 +1035,18 @@ json CmsEntity::parse_CS_LRAS_recording_command_INS(
 
 json CmsEntity::parse_CS_LRAS_request_emission_mode_INS(
     const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
-    (void)packet;
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_payload();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
+
     (void)nackreason;
 
     json payload;
-    payload["Action Id"] = 1234;
+    payload["Action Id"] = actionId;
     payload["LRAD ID"] = 1; 
 
     destinationLradId = 1;
@@ -1037,6 +1065,7 @@ json CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
     (void)destinationLradId;
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint32_t cstn = read_u32_be(packet.data, 20);
     const uint32_t validitySeconds = read_u32_be(packet.data, 24);
     const uint32_t validityMicroseconds = read_u32_be(packet.data, 28);
@@ -1133,10 +1162,20 @@ json CmsEntity::parse_CS_LRAS_request_engagement_capability_INS(
 
 json CmsEntity::parse_CS_LRAS_request_full_status_INS(
     const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
-    (void)packet;
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_payload();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
+
     (void)destinationLradId;
     (void)nackreason;
-    return json::object();
+
+    json payload;
+    payload["Action Id"] = actionId;
+    return payload;
 }
 
 json CmsEntity::parse_CS_LRAS_request_installation_data_INS(
@@ -1151,6 +1190,7 @@ json CmsEntity::parse_CS_LRAS_request_installation_data_INS(
     (void)nackreason;
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
 
     json payload;
     payload["Action Id"] = actionId;
@@ -1160,18 +1200,38 @@ json CmsEntity::parse_CS_LRAS_request_installation_data_INS(
 
 json CmsEntity::parse_CS_LRAS_request_message_table_INS(
     const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
-    (void)packet;
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_payload();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
+
     (void)destinationLradId;
     (void)nackreason;
-    return json::object();
+
+    json payload;
+    payload["Action Id"] = actionId;
+    return payload;
 }
 
 json CmsEntity::parse_CS_LRAS_request_software_version_INS(
     const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
-    (void)packet;
+    constexpr std::size_t minPacketSize = 20;
+    if (packet.data.size() < minPacketSize) {
+        return make_empty_payload();
+    }
+
+    const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
+
     (void)destinationLradId;
     (void)nackreason;
-    return json::object();
+
+    json payload;
+    payload["Action Id"] = actionId;
+    return payload;
 }
 
 json CmsEntity::parse_CS_LRAS_request_thresholds_INS(
@@ -1186,6 +1246,7 @@ json CmsEntity::parse_CS_LRAS_request_thresholds_INS(
     (void)destinationLradId;
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint16_t volumeSelector = read_u16_be(packet.data, 20);
     const float audioVolumeDb = read_f32_be(packet.data, 22);
     const uint16_t scenario = read_u16_be(packet.data, 26);
@@ -1216,6 +1277,7 @@ json CmsEntity::parse_CS_LRAS_request_translation_INS(
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint16_t lradId = read_u16_be(packet.data, 20);
     const uint16_t languageIn = read_u16_be(packet.data, 22);
     const uint16_t languageOut = read_u16_be(packet.data, 24);
@@ -1263,6 +1325,7 @@ json CmsEntity::parse_CS_LRAS_video_tracking_command_INS(
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
+    lastActionId.store(actionId);
     const uint16_t lradId = read_u16_be(packet.data, 20);
     const uint16_t autoTracking = read_u16_be(packet.data, 22);
 
@@ -1720,7 +1783,7 @@ void CmsEntity::periodicMessages() {
 }
 
 void CmsEntity::eventStatus(const std::string& topic, StatusEventValue value) {
-    const uint32_t sourceMessageId = extractMessageIdFromTopic(topic);
+    const uint32_t sourceMessageId = extractMessageIdFromTopic(topic.c_str());
     if (sourceMessageId == 0) {
         std::cerr << "[CmsEntity] source_message_id non disponibile per topic ACK: " << topic << std::endl;
         return;
@@ -1744,31 +1807,24 @@ void CmsEntity::eventStatus(const std::string& topic, StatusEventValue value) {
     }
 
     const uint16_t ackNackAccepted = (nackReason == 0) ? 1u : 2u;
-    constexpr uint32_t defaultActionId = 0;
-    sendLRAS_CS_ack_INS(defaultActionId, sourceMessageId, ackNackAccepted, nackReason);
+    sendLRAS_CS_ack_INS(lastActionId.load(), sourceMessageId, ackNackAccepted, nackReason);
 }
 
-uint32_t CmsEntity::extractMessageIdFromTopic(const std::string& topic) const {
-    if (topic == Topics::CS_LRAS_change_configuration_order_INS) return MessageId_CS_LRAS_change_configuration_order_INS;
-    if (topic == Topics::CS_LRAS_cueing_order_cancellation_INS) return MessageId_CS_LRAS_cueing_order_cancellation_INS;
-    if (topic == Topics::CS_LRAS_cueing_order_INS) return MessageId_CS_LRAS_cueing_order_INS;
-    if (topic == Topics::CS_LRAS_emission_control_INS) return MessageId_CS_LRAS_emission_control_INS;
-    if (topic == Topics::CS_LRAS_emission_mode_INS) return MessageId_CS_LRAS_emission_mode_INS;
-    if (topic == Topics::CS_LRAS_inhibition_sectors_INS) return MessageId_CS_LRAS_inhibition_sectors_INS;
-    if (topic == Topics::CS_LRAS_joystick_control_lrad_1_INS) return MessageId_CS_LRAS_joystick_control_lrad_1_INS;
-    if (topic == Topics::CS_LRAS_joystick_control_lrad_2_INS) return MessageId_CS_LRAS_joystick_control_lrad_2_INS;
-    if (topic == Topics::CS_LRAS_recording_command_INS) return MessageId_CS_LRAS_recording_command_INS;
-    if (topic == Topics::CS_LRAS_request_engagement_capability_INS) return MessageId_CS_LRAS_request_engagement_capability_INS;
-    if (topic == Topics::CS_LRAS_request_full_status_INS) return MessageId_CS_LRAS_request_full_status_INS;
-    if (topic == Topics::CS_LRAS_request_message_table_INS) return MessageId_CS_LRAS_request_message_table_INS;
-    if (topic == Topics::CS_LRAS_request_software_version_INS) return MessageId_CS_LRAS_request_software_version_INS;
-    if (topic == Topics::CS_LRAS_request_thresholds_INS) return MessageId_CS_LRAS_request_thresholds_INS;
-    if (topic == Topics::CS_LRAS_request_translation_INS) return MessageId_CS_LRAS_request_translation_INS;
-    if (topic == Topics::CS_LRAS_video_tracking_command_INS) return MessageId_CS_LRAS_video_tracking_command_INS;
-    if (topic == Topics::CS_LRAS_request_emission_mode_INS) return MessageId_CS_LRAS_request_emission_mode_INS;
-    if (topic == Topics::CS_LRAS_request_installation_data_INS) return MessageId_CS_LRAS_request_installation_data_INS;
-    if (topic == Topics::CS_MULTI_health_status_INS) return MessageId_CS_MULTI_health_status_INS;
-    if (topic == Topics::CS_MULTI_update_cst_kinematics_INS) return MessageId_CS_MULTI_update_cst_kinematics_INS;
+uint32_t CmsEntity::extractMessageIdFromTopic(const char* topic) const {
+    if (strcmp(topic, Topics::LRF_ON) == 0) {
+        return 1679949828; // Emission Control 
+    }
+    if (strcmp(topic, Topics::LRF_OFF) == 0) {
+        return 1679949828; // Emission Control 
+    }
+    if (strcmp(topic, Topics::LAD_ON) == 0) {
+        return 1679949828; // Emission Control 
+    } 
+    if (strcmp(topic, Topics::LAD_OFF) == 0) {
+        return 1679949828; // Emission Control 
+    }
+           
+
 
     return 0;
 }

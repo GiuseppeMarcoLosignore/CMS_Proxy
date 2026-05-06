@@ -1370,7 +1370,10 @@ void Orchestrator::handleLRFon(int destinationLradId) {
         cmsEntity_.eventStatus(Topics::LRF_ON, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::LRF_ON, StatusEventValue::NO_ERR);
     acsEntity_.turnLRFon(destinationLradId);
+
+    
 }
 
 void Orchestrator::handleLRFoff(int destinationLradId) {
@@ -1384,7 +1387,9 @@ void Orchestrator::handleLRFoff(int destinationLradId) {
         cmsEntity_.eventStatus(Topics::LRF_OFF, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::LRF_OFF, StatusEventValue::NO_ERR);
     acsEntity_.turnLRFoff(destinationLradId);
+
 }
 
 
@@ -1399,6 +1404,7 @@ void Orchestrator::handleSearchlightOn(int destinationLradId) {
         cmsEntity_.eventStatus(Topics::SEARCHLIGHT_ON, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::SEARCHLIGHT_ON, StatusEventValue::NO_ERR);
     acsEntity_.turnSearchlightOn(destinationLradId);
 }
 
@@ -1414,6 +1420,7 @@ void Orchestrator::handleSearchlightOff(int destinationLradId) {
         cmsEntity_.eventStatus(Topics::SEARCHLIGHT_OFF, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::SEARCHLIGHT_OFF, StatusEventValue::NO_ERR);
     acsEntity_.turnSearchlightOff(destinationLradId);
 }
 
@@ -1428,6 +1435,7 @@ void Orchestrator::handleSearchlightStrobe(int destinationLradId) {
         cmsEntity_.eventStatus(Topics::SEARCHLIGHT_STROBE, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::SEARCHLIGHT_STROBE, StatusEventValue::NO_ERR);
     acsEntity_.turnSearchlightStrobe(destinationLradId);
 }
 
@@ -1443,6 +1451,7 @@ void Orchestrator::handleLADstrobe(int destinationLradId) {
         cmsEntity_.eventStatus(Topics::LAD_STROBE, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::LAD_STROBE, StatusEventValue::NO_ERR);
     acsEntity_.turnLADstrobe(destinationLradId);
 }
 
@@ -1463,6 +1472,7 @@ void Orchestrator::handleLADon(int destinationLradId) {
         return;
     }
 
+    cmsEntity_.eventStatus(Topics::LAD_ON, StatusEventValue::NO_ERR);
     acsEntity_.turnLADon(destinationLradId);
 }
 
@@ -1480,6 +1490,7 @@ void Orchestrator::handleLADoff(int destinationLradId) {
         return;
     }
 
+    cmsEntity_.eventStatus(Topics::LAD_OFF, StatusEventValue::NO_ERR);
     acsEntity_.turnLADoff(destinationLradId);
 }
 
@@ -1495,6 +1506,7 @@ void Orchestrator::handleAudioGain(int destinationLradId, float gain) {
         cmsEntity_.eventStatus(Topics::AUDIO_GAIN, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::AUDIO_GAIN, StatusEventValue::NO_ERR);
     acsEntity_.setGain(destinationLradId, gain);
 }
 
@@ -1509,6 +1521,7 @@ void Orchestrator::handleAudioMute(int destinationLradId, bool mute) {
         cmsEntity_.eventStatus(Topics::AUDIO_MUTE, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::AUDIO_MUTE, StatusEventValue::NO_ERR);
     acsEntity_.setMute(destinationLradId, mute);
 }
 
@@ -1522,6 +1535,7 @@ void Orchestrator::handleSearchlightFocus(int destinationLradId, float focus) {
         cmsEntity_.eventStatus(Topics::SEARCHLIGHT_FOCUS, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::SEARCHLIGHT_FOCUS, StatusEventValue::NO_ERR);
     acsEntity_.setSearchlightFocus(destinationLradId, focus);
 }
 
@@ -1535,6 +1549,7 @@ void Orchestrator::handleSearchlightPower(int destinationLradId, const uint8_t  
         std::cout << "[Orchestrator] Cannot handle Searchlight power command: Payload not enabled" << std::endl;
         return;
     }
+    cmsEntity_.eventStatus(Topics::SEARCHLIGHT_POWER, StatusEventValue::NO_ERR);
     acsEntity_.setSearchlightPower(destinationLradId, power);
 }
 
@@ -1549,6 +1564,7 @@ void Orchestrator::handleHdZoom(int destinationLradId, const uint8_t zoomValue) 
         cmsEntity_.eventStatus(Topics::HD_ZOOM, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::HD_ZOOM, StatusEventValue::NO_ERR);
     acsEntity_.setHdZoom(destinationLradId, zoomValue);
 }
 
@@ -1563,6 +1579,7 @@ void Orchestrator::handleThZoom(int destinationLradId, const uint8_t zoomValue) 
         cmsEntity_.eventStatus(Topics::TH_ZOOM, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    cmsEntity_.eventStatus(Topics::TH_ZOOM, StatusEventValue::NO_ERR);
     acsEntity_.setThZoom(destinationLradId, zoomValue);
 }
 

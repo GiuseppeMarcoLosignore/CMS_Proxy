@@ -30,7 +30,7 @@ import sys
 import time
 
 MSG_ID_LRAS_CS_ACK_INS = 576978945
-EXPECTED_TOTAL_SIZE = 28
+EXPECTED_TOTAL_SIZE = 12
 
 ACK_NACK_LABELS = {
     1: "ACK accettato",
@@ -86,8 +86,8 @@ def decode_header(data: bytes) -> tuple | None:
 
 def decode_ack_payload(data: bytes, payload_len: int):
     """Decodifica il payload specifico di LRAS_CS_ack_INS."""
-    if len(data) < 16 + payload_len:
-        print(f"  [!] Dati insufficienti per il payload (attesi {16 + payload_len}, ricevuti {len(data)})")
+    if len(data) < payload_len:
+        print(f"  [!] Dati insufficienti per il payload (attesi {payload_len}, ricevuti {len(data)})")
         return
     if payload_len < 12:
         print(f"  [!] Payload troppo corto (attesi >= 12, presenti {payload_len})")
