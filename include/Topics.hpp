@@ -110,6 +110,7 @@ inline constexpr const char* LAD_INFO = "LAD";
 
 inline constexpr const char* SEARCHLIGHT_ON = "SEARCHLIGHT_ON";
 inline constexpr const char* SEARCHLIGHT_OFF = "SEARCHLIGHT_OFF";
+inline constexpr const char* SEARCHLIGHT_POWER = "SEARCHLIGHT_POWER";
 inline constexpr const char* SEARCHLIGHT_STROBE = "SEARCHLIGHT_STROBE";
 inline constexpr const char* SEARCHLIGHT_FOCUS = "SEARCHLIGHT_FOCUS";
 inline constexpr const char* SEARCHLIGHT_INFO = "SEARCHLIGHT";

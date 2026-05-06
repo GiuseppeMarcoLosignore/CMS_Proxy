@@ -283,11 +283,9 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
         const auto destination = findDestination(sourceInfo.source_ip);
         if (destination.has_value()) {
             if(destination->id == 1) {
-                payload["destinationLradId"] = "PORT";
                 lradId = 1;
             }
             else if(destination->id == 2) {
-                payload["destinationLradId"] = "STARBOARD";
                 lradId = 2;
             }
         }
@@ -448,6 +446,36 @@ void AcsEntity::turnSearchlightStrobe(uint16_t destinationLradId) {
     createSEARCHLIGHT(destinationLradId, -1, 0.0f, "STROBE");
 }
 
+void AcsEntity::setSearchlightFocus(uint16_t destinationLradId, float focus) {
+    std::cout << "[ACS Entity] Comando SEARCHLIGHT FOCUS ricevuto: " << focus << std::endl;
+    createSEARCHLIGHT(destinationLradId, -1, focus, "OFF");
+}
+
+void AcsEntity::setSearchlightPower(uint16_t destinationLradId, const uint8_t& power) {
+    std::cout << "[ACS Entity] Comando SEARCHLIGHT POWER ricevuto: " << static_cast<int>(power) << std::endl;
+    createSEARCHLIGHT(destinationLradId, power, 0.0f, "");
+}
+
+void AcsEntity::setGain(uint16_t destinationLradId, float gain) {
+    std::cout << "[ACS Entity] Comando GAIN ricevuto: " << gain << std::endl;
+    createAUDIO(destinationLradId, gain, false);
+}
+
+void AcsEntity::setMute(uint16_t destinationLradId, bool mute) {
+    std::cout << "[ACS Entity] Comando MUTE ricevuto: " << (mute ? "ON" : "OFF") << std::endl;
+    createAUDIO(destinationLradId, 0.0f, mute);
+}
+
+void AcsEntity::setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) {
+    std::cout << "[ACS Entity] Comando HD ZOOM ricevuto: " << static_cast<int>(zoomValue) << std::endl;
+    createZOOM(destinationLradId, "HD", zoomValue);
+}
+
+void AcsEntity::setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) {
+    std::cout << "[ACS Entity] Comando TH ZOOM ricevuto: " << static_cast<int>(zoomValue) << std::endl;
+    createZOOM(destinationLradId, "TH", zoomValue);
+}
+
 
 void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
     nlohmann::json param;
@@ -605,35 +633,7 @@ void AcsEntity::createTRACKING(uint16_t destinationLradId, bool autoTracking) {
 }
 
 
-void AcsEntity::setSearchlightFocus(uint16_t destinationLradId, float focus) {
-    std::cout << "[ACS Entity] Comando SEARCHLIGHT FOCUS ricevuto: " << focus << std::endl;
-    createSEARCHLIGHT(destinationLradId, -1, focus, "OFF");
-}
 
-void AcsEntity::setSearchlightPower(uint16_t destinationLradId, const uint8_t& power) {
-    std::cout << "[ACS Entity] Comando SEARCHLIGHT POWER ricevuto: " << static_cast<int>(power) << std::endl;
-    createSEARCHLIGHT(destinationLradId, power, 0.0f, "");
-}
-
-void AcsEntity::setGain(uint16_t destinationLradId, float gain) {
-    std::cout << "[ACS Entity] Comando GAIN ricevuto: " << gain << std::endl;
-    createAUDIO(destinationLradId, gain, false);
-}
-
-void AcsEntity::setMute(uint16_t destinationLradId, bool mute) {
-    std::cout << "[ACS Entity] Comando MUTE ricevuto: " << (mute ? "ON" : "OFF") << std::endl;
-    createAUDIO(destinationLradId, 0.0f, mute);
-}
-
-void AcsEntity::setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) {
-    std::cout << "[ACS Entity] Comando HD ZOOM ricevuto: " << static_cast<int>(zoomValue) << std::endl;
-    createZOOM(destinationLradId, "HD", zoomValue);
-}
-
-void AcsEntity::setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) {
-    std::cout << "[ACS Entity] Comando TH ZOOM ricevuto: " << static_cast<int>(zoomValue) << std::endl;
-    createZOOM(destinationLradId, "TH", zoomValue);
-}
 
 void AcsEntity::sendToTcpDestination(const RawPacket& packet, const AcsDestination& destination) {
     if (!tcpSocket_) {

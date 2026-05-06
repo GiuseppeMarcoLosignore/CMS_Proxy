@@ -229,8 +229,9 @@ public:
     bool isAcsConnected() const;
     bool isCmsConnected() const;
     bool isLradControlledByCms(int lradIndex) const;
-    bool isPayloadEnabled(PayoladType type) const;
-    bool isShadowEnabled() const;
+    bool isPayloadEnabled(int lradId, PayoladType type) const;
+    bool canLadFire(int lradId) const;
+    bool inInShadow(int lradId) const;
 
     void enablePayload(PayoladType type, std::string enable);
 
@@ -239,16 +240,16 @@ public:
     lradStatus getLradFullStatus(const std::string& name_) const;
     lrasStatus getLrasFullStatus() const;
 
-    void extractALIVEdata(const nlohmann::json& payload);
-    void extractDIAGNOSTICdata(const nlohmann::json& payload);
-    void extractAUDIOdata(const nlohmann::json& payload);
-    void extractLADdata(const nlohmann::json& payload);
-    void extractSEARCHLIGHTdata(const nlohmann::json& payload);
-    void extractLRFdata(const nlohmann::json& payload);
-    void extractSHADOWdata(const nlohmann::json& payload);
-    void extractZOOMdata(const nlohmann::json& payload);
-    void extractMASTERdata(const nlohmann::json& payload);
-    void extractPOSITIONdata(const nlohmann::json& payload);
+    void extractALIVEdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractDIAGNOSTICdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractAUDIOdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractLADdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractSEARCHLIGHTdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractLRFdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractSHADOWdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractZOOMdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractMASTERdata(const uint8_t& lradId, const nlohmann::json& payload);
+    void extractPOSITIONdata(const uint8_t& lradId, const nlohmann::json& payload);
 
     void handleCS_LRAS_change_configuration_order_INS(const nlohmann::json& message);
     void handleCS_LRAS_cueing_order_cancellation_INS(const nlohmann::json& message);

@@ -140,6 +140,11 @@ public:
 
 };
 
+class IRemote {
+public:
+    virtual ~IRemote() = default;
+};
+
 class IEvent {
 public:
     virtual ~IEvent() = default;

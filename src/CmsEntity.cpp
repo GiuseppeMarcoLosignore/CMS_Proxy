@@ -836,12 +836,23 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
     }
 
     if(laserModeValidity == 1) {
-        laserMode == 0 ?  messageCallback_(Topics::LAD_OFF, lradId, "") : laserMode == 1 ? messageCallback_(Topics::LAD_ON, lradId, "") : messageCallback_(Topics::LAD_STROBE, lradId, "");
+        laserMode == 0 ?  messageCallback_(Topics::LAD_OFF, lradId, "") :
+        laserMode == 1 ? messageCallback_(Topics::LAD_ON, lradId, "") : 
+        messageCallback_(Topics::LAD_STROBE, lradId, "");
     }
 
     if(lightModeValidity == 1) {
-        lightPower != 0 ? messageCallback_(Topics::SEARCHLIGHT_ON, lradId, lightPower) : messageCallback_(Topics::SEARCHLIGHT_OFF, lradId, lightPower);
+        lightPower != 0 ? messageCallback_(Topics::SEARCHLIGHT_POWER, lradId, lightPower) : 
+        messageCallback_(Topics::SEARCHLIGHT_POWER, lradId, lightPower);
+
         messageCallback_(Topics::SEARCHLIGHT_FOCUS, lradId, lightZoom);
+    }
+
+    if(audioModeValidity == 1) {
+        messageCallback_(Topics::AUDIO_GAIN, lradId, volumeLevel);
+
+        messageCallback_(Topics::AUDIO_MUTE, lradId, mute == 1 ? true : false);
+        
     }
 
     
@@ -849,9 +860,6 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
         messageCallback_(Topics::HD_ZOOM, lradId, cameraZoom);
     }
 
-    if (!has_known_lrad(lradId)) {
-    //    nackreason = 2;
-    }
     return payload;
 }
 

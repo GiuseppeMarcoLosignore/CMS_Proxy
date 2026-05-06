@@ -288,7 +288,7 @@ void Orchestrator::subscribeTopics() {
 
 
     eventBus_->subscribe(Topics::LRF_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
-        extractLRFdata(message);
+        extractLRFdata(lradId, message);
     });
 
 
@@ -306,7 +306,7 @@ void Orchestrator::subscribeTopics() {
 
 
     eventBus_->subscribe(Topics::LAD_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
-        extractLADdata(message);
+        extractLADdata(lradId, message);
     });
 
     eventBus_->subscribe(Topics::HD_ZOOM, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
@@ -314,20 +314,40 @@ void Orchestrator::subscribeTopics() {
     });
 
     eventBus_->subscribe(Topics::ZOOM_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
-        
+        extractZOOMdata(lradId, message);
     });
 
+
+    eventBus_->subscribe(Topics::SEARCHLIGHT_POWER, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleSearchlightPower(lradId, message.get<uint8_t>());
+    });
 
     eventBus_->subscribe(Topics::SEARCHLIGHT_ON, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
-        handleSearchlightPower(lradId, message.get<uint8_t>());
+        handleSearchlightOn(lradId);
     });
 
-        eventBus_->subscribe(Topics::SEARCHLIGHT_OFF, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
-        handleSearchlightPower(lradId, message.get<uint8_t>());
+    eventBus_->subscribe(Topics::SEARCHLIGHT_OFF, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleSearchlightOff(lradId);
     });
 
     eventBus_->subscribe(Topics::SEARCHLIGHT_FOCUS, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         handleSearchlightFocus(lradId, message.get<uint8_t>());
+    });
+
+    eventBus_->subscribe(Topics::SEARCHLIGHT_STROBE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleSearchlightStrobe(lradId);
+    });
+
+    eventBus_->subscribe(Topics::SEARCHLIGHT_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        extractSEARCHLIGHTdata(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::AUDIO_GAIN, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleAudioGain(lradId, message.get<float>());
+    });
+
+    eventBus_->subscribe(Topics::AUDIO_MUTE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleAudioMute(lradId, message.get<bool>());
     });
 
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
@@ -690,7 +710,9 @@ void Orchestrator::handleCS_LRAS_request_engagement_capability_INS(const nlohman
 
 
 //TO TEST
-void Orchestrator::extractALIVEdata(const nlohmann::json& payload) {
+void Orchestrator::extractALIVEdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) return;
     
     if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
@@ -698,11 +720,6 @@ void Orchestrator::extractALIVEdata(const nlohmann::json& payload) {
 
     const auto& param = payload.at("param");
 
-    if(!param.contains("name")) {
-        return;
-    }
-
-    const std::string name = param.at("name").get<std::string>();
     if(name == "PORT" || name == "LRAD1") {
         auto readStringField = [&param](const char* primaryKey, const char* fallbackKey = nullptr) -> std::string {
             if (param.contains(primaryKey) && param.at(primaryKey).is_string()) {
@@ -729,44 +746,13 @@ void Orchestrator::extractALIVEdata(const nlohmann::json& payload) {
         
     }
     
-    if(name == "STARBOARD" || name == "LRAD2") {
-        auto readStringField = [&param](const char* primaryKey, const char* fallbackKey = nullptr) -> std::string {
-            if (param.contains(primaryKey) && param.at(primaryKey).is_string()) {
-                return param.at(primaryKey).get<std::string>();
-            }
-
-            if (fallbackKey != nullptr && param.contains(fallbackKey) && param.at(fallbackKey).is_string()) {
-                return param.at(fallbackKey).get<std::string>();
-            }
-
-            return {};
-        };
-
-        lradStatus lrad = getLradFullStatus(name);
-        lrad.alive.state = readStringField("state");
-        lrad.alive.mode = readStringField("mode");
-        lrad.alive.ipAddress = readStringField("ipAddress", "ip");
-
-        setLradFullStatus(std::move(lrad), name);
-
-        const lradStatus portLrad = getLradFullStatus("PORT");
-        if (!portLrad.alive.name.empty() && portLrad.alive.mode != "Unknown") {
-            lrasStatus lrasStatus = getLrasFullStatus();
-            lrasStatus.swVersion = readStringField("swVersion");
-            setLrasFullStatus(std::move(lrasStatus));
-        }
-    }
-
-
 }
 
-void Orchestrator::extractDIAGNOSTICdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
+void Orchestrator::extractDIAGNOSTICdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) return;
 
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
+    if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
     }
 
@@ -814,15 +800,9 @@ void Orchestrator::extractDIAGNOSTICdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(currentLrad), name);
 }
 
-void Orchestrator::extractAUDIOdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
-
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
-        return;
-    }
+void Orchestrator::extractAUDIOdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) return;
 
     if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
@@ -885,13 +865,9 @@ void Orchestrator::extractAUDIOdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(currentLrad), name);
 }
 
-void Orchestrator::extractLADdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
-
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
+void Orchestrator::extractLADdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) {
         return;
     }
 
@@ -910,13 +886,9 @@ void Orchestrator::extractLADdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(currentLrad), name);
 }
 
-void Orchestrator::extractSEARCHLIGHTdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
-
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
+void Orchestrator::extractSEARCHLIGHTdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) {
         return;
     }
 
@@ -943,13 +915,9 @@ void Orchestrator::extractSEARCHLIGHTdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(currentLrad), name);
 }
 
-void Orchestrator::extractLRFdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender")) {
-        return;
-    }
-
-    const std::string name = payload.at("destinationLradId").get<std::string>();
-    if (!isKnownLradSender(name)) {
+void Orchestrator::extractLRFdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) {
         return;
     }
 
@@ -965,6 +933,10 @@ void Orchestrator::extractLRFdata(const nlohmann::json& payload) {
         currentLrad.lrf.mode = param.at("mode").get<std::string>();
     }
 
+    if (param.contains("value") && param.at("value").is_number()) {
+        currentLrad.lrf.value = param.at("value").get<float>();
+    }
+
     if (param.contains("value") && param.at("value").is_string()) {
         currentLrad.lrf.value = std::stof(param.at("value").get<std::string>());
     }
@@ -972,15 +944,9 @@ void Orchestrator::extractLRFdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(currentLrad), name);
 }
 
-void Orchestrator::extractSHADOWdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
-
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
-        return;
-    }
+void Orchestrator::extractSHADOWdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) return;
 
     if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
@@ -1055,15 +1021,9 @@ void Orchestrator::extractSHADOWdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(currentLrad), name);
 }
 
-void Orchestrator::extractZOOMdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
-
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
-        return;
-    }
+void Orchestrator::extractZOOMdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) return;
 
     if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
@@ -1128,15 +1088,9 @@ void Orchestrator::extractZOOMdata(const nlohmann::json& payload) {
     setLradFullStatus(std::move(currentLrad), name);
 }
 
-void Orchestrator::extractPOSITIONdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
-
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
-        return;
-    }
+void Orchestrator::extractPOSITIONdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) return;
 
     if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
@@ -1198,24 +1152,85 @@ bool Orchestrator::isLradControlledByCms(int lradId) const {
     return lrad.controlledByCms;
 }
 
-bool Orchestrator::isPayloadEnabled(PayoladType type) const {
-    const std::shared_ptr<std::vector<lradStatus>> lradListPtr = std::atomic_load(&lradList_);
-    if (!lradListPtr || lradListPtr->empty()) {
+bool Orchestrator::isPayloadEnabled(int lradId, PayoladType type) const {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) {
         return false;
     }
-    for (const auto& lrad : *lradListPtr) {
-        switch (type) {
-            case PayoladType::AUDIO:       if (lrad.audioEnabled)       return true; break;
-            case PayoladType::LAD:         if (lrad.ladEnabled)         return true; break;
-            case PayoladType::SEARCHLIGHT: if (lrad.searchlightEnabled) return true; break;
-            case PayoladType::LRF:         if (lrad.lrfEnabled)         return true; break;
-        }
+
+    const lradStatus lrad = getLradFullStatus(name);
+    switch (type) {
+        case PayoladType::AUDIO:       return lrad.audioEnabled;
+        case PayoladType::LAD:         return lrad.ladEnabled;
+        case PayoladType::SEARCHLIGHT: return lrad.searchlightEnabled;
+        case PayoladType::LRF:         return lrad.lrfEnabled;
     }
+
     return false;
 }
 
-bool Orchestrator::isShadowEnabled() const {
-    return false;
+bool Orchestrator::canLadFire(int lradId) const {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) {
+        return false;
+    }
+
+    const lradStatus lrad = getLradFullStatus(name);
+    return lrad.lrf.mode == "ON" && lrad.lrf.value > lrad.ladMinDistance;
+}
+
+bool Orchestrator::inInShadow(int lradId) const {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) {
+        return false;
+    }
+
+    const lradStatus lrad = getLradFullStatus(name);
+
+    auto parseFloat = [](const std::string& text) -> std::optional<float> {
+        if (text.empty()) {
+            return std::nullopt;
+        }
+
+        try {
+            return std::stof(text);
+        } catch (...) {
+            return std::nullopt;
+        }
+    };
+
+    const bool azSectorActive = lrad.az1.enabled;
+    const bool elSectorActive = lrad.az2.enabled;
+
+    if (!azSectorActive && !elSectorActive) {
+        return false;
+    }
+
+    bool azInside = false;
+    if (azSectorActive) {
+        const std::optional<float> currentAz = parseFloat(lrad.position.az);
+        const std::optional<float> azStart = parseFloat(lrad.az1.start);
+        const std::optional<float> azStop = parseFloat(lrad.az1.stop);
+        if (currentAz.has_value() && azStart.has_value() && azStop.has_value()) {
+            const float minAz = std::min(*azStart, *azStop);
+            const float maxAz = std::max(*azStart, *azStop);
+            azInside = *currentAz >= minAz && *currentAz <= maxAz;
+        }
+    }
+
+    bool elInside = false;
+    if (elSectorActive) {
+        const std::optional<float> currentEl = parseFloat(lrad.position.el);
+        const std::optional<float> elStart = parseFloat(lrad.az2.start);
+        const std::optional<float> elStop = parseFloat(lrad.az2.stop);
+        if (currentEl.has_value() && elStart.has_value() && elStop.has_value()) {
+            const float minEl = std::min(*elStart, *elStop);
+            const float maxEl = std::max(*elStart, *elStop);
+            elInside = *currentEl >= minEl && *currentEl <= maxEl;
+        }
+    }
+
+    return azInside || elInside;
 }
 
 void Orchestrator::enablePayload(PayoladType /*type*/, std::string /*enable*/) {
@@ -1223,14 +1238,9 @@ void Orchestrator::enablePayload(PayoladType /*type*/, std::string /*enable*/) {
 }
 
 
-void Orchestrator::extractMASTERdata(const nlohmann::json& payload) {
-    if (!payload.contains("sender") || !payload.at("sender").is_string()) {
-        return;
-    }
-    const std::string name = payload.at("sender").get<std::string>();
-    if (!isKnownLradSender(name)) {
-        return;
-    }
+void Orchestrator::extractMASTERdata(const uint8_t& lradId, const nlohmann::json& payload) {
+    const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
+    if (name.empty()) return;
     if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
     }
@@ -1354,7 +1364,7 @@ void Orchestrator::handleLRFon(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::LRF)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::LRF)) { //trial
         acsEntity_.turnLRFon(destinationLradId);
     }
 }
@@ -1364,7 +1374,7 @@ void Orchestrator::handleLRFoff(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle LRF command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::LRF)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::LRF)) { //trial
         acsEntity_.turnLRFoff(destinationLradId);
     }
 }
@@ -1374,7 +1384,7 @@ void Orchestrator::handleSearchlightOn(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle Searchlight command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
         acsEntity_.turnSearchlightOn(destinationLradId);
     }
 }
@@ -1384,7 +1394,7 @@ void Orchestrator::handleSearchlightOff(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle Searchlight off command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
         acsEntity_.turnSearchlightOff(destinationLradId);
     }
 }
@@ -1394,7 +1404,7 @@ void Orchestrator::handleSearchlightStrobe(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle Searchlight strobe command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
         acsEntity_.turnSearchlightStrobe(destinationLradId);
     }
 }
@@ -1404,7 +1414,7 @@ void Orchestrator::handleLADstrobe(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle LAD strobe command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::LAD)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::LAD)) { //trial
         acsEntity_.turnLADstrobe(destinationLradId);
     }
 }
@@ -1414,9 +1424,16 @@ void Orchestrator::handleLADon(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle LAD on command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::LAD)) { //trial
-        acsEntity_.turnLADon(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::LAD)) { //trial
+        std::cout << "[Orchestrator] Cannot handle LAD on command: Payload not enabled" << std::endl;
+        return;
     }
+    if(!canLadFire(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LAD on command: LRF conditions not met" << std::endl;
+        return;
+    }
+
+    acsEntity_.turnLADon(destinationLradId);
 }
 
 void Orchestrator::handleLADoff(int destinationLradId) {
@@ -1424,9 +1441,16 @@ void Orchestrator::handleLADoff(int destinationLradId) {
         std::cout << "[Orchestrator] Cannot handle LAD off command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::LAD)) { //trial
-        acsEntity_.turnLADoff(destinationLradId);
+    if(!isPayloadEnabled(destinationLradId, PayoladType::LAD)) { //trial
+        std::cout << "[Orchestrator] Cannot handle LAD off command: Payload not enabled" << std::endl;
+        return;
     }
+    if(!canLadFire(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LAD off command: LRF conditions not met" << std::endl;
+        return;
+    }
+
+    acsEntity_.turnLADoff(destinationLradId);
 }
 
 
@@ -1435,7 +1459,7 @@ void Orchestrator::handleAudioGain(int destinationLradId, float gain) {
         std::cout << "[Orchestrator] Cannot handle Audio gain command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::AUDIO)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::AUDIO)) { //trial
         acsEntity_.setGain(destinationLradId, gain);
     }
 }
@@ -1445,7 +1469,7 @@ void Orchestrator::handleAudioMute(int destinationLradId, bool mute) {
         std::cout << "[Orchestrator] Cannot handle Audio mute command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::AUDIO)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::AUDIO)) { //trial
         acsEntity_.setMute(destinationLradId, mute);
     }
 }
@@ -1455,7 +1479,7 @@ void Orchestrator::handleSearchlightFocus(int destinationLradId, float focus) {
         std::cout << "[Orchestrator] Cannot handle Searchlight focus command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
         acsEntity_.setSearchlightFocus(destinationLradId, focus);
     }
 }
@@ -1465,7 +1489,7 @@ void Orchestrator::handleSearchlightPower(int destinationLradId, const uint8_t  
         std::cout << "[Orchestrator] Cannot handle Searchlight power command: ACS not connected" << std::endl;
         return;
     }
-    if(isPayloadEnabled(PayoladType::SEARCHLIGHT)) { //trial
+    if(isPayloadEnabled(destinationLradId, PayoladType::SEARCHLIGHT)) { //trial
         acsEntity_.setSearchlightPower(destinationLradId, power);
     }
 }
