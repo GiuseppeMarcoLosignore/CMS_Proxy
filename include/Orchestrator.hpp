@@ -286,6 +286,7 @@ public:
     void handleSearchlightPower(int destinationLradId, const uint8_t& power);
     void handleHdZoom(int destinationLradId, const uint8_t zoomValue);
     void handleThZoom(int destinationLradId, const uint8_t zoomValue);
+    void handleChangeRequest(int destinationLradId, const std::string& mode);
 
     void start_cueing();
     void stop_cueing();

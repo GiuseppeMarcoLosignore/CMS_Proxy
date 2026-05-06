@@ -476,6 +476,11 @@ void AcsEntity::setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) {
     createZOOM(destinationLradId, "TH", zoomValue);
 }
 
+void AcsEntity::setChangeRequest(uint16_t destinationLradId, const std::string& mode) {
+    std::cout << "[ACS Entity] Comando CHANGE REQUEST ricevuto: " << mode << std::endl;
+    createMASTER(destinationLradId, mode);
+}
+
 
 void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
     nlohmann::json param;

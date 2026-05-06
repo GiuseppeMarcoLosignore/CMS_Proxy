@@ -63,7 +63,8 @@ public:
     void setGain(uint16_t destinationLradId, float gain) override;
     void setMute(uint16_t destinationLradId, bool mute) override;
     void setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) override;
-    void setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) override;   
+    void setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) override;  
+    void setChangeRequest(uint16_t destinationLradId, const std::string& mode) override; 
 
 private:
     AcsConfig config_;

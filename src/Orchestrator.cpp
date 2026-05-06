@@ -350,6 +350,21 @@ void Orchestrator::subscribeTopics() {
         handleAudioMute(lradId, message.get<bool>());
     });
 
+    eventBus_->subscribe(Topics::CHANGE_REQ, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        if (message.is_string()) {
+            handleChangeRequest(lradId, message.get<std::string>());
+            return;
+        }
+
+        if (message.is_object() && message.contains("mode") && message.at("mode").is_string()) {
+            handleChangeRequest(lradId, message.at("mode").get<std::string>());
+            return;
+        }
+
+        std::cout << "[Orchestrator] Cannot handle change request command: invalid payload" << std::endl;
+        cmsEntity_.eventStatus(Topics::CHANGE_REQ, StatusEventValue::SYSTEM_ERR);
+    });
+
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
 }
 
@@ -1581,6 +1596,22 @@ void Orchestrator::handleThZoom(int destinationLradId, const uint8_t zoomValue) 
     }
     cmsEntity_.eventStatus(Topics::TH_ZOOM, StatusEventValue::NO_ERR);
     acsEntity_.setThZoom(destinationLradId, zoomValue);
+}
+
+void Orchestrator::handleChangeRequest(int destinationLradId, const std::string& mode) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle change request command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::CHANGE_REQ, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    std::string resolvedMode = mode;
+    if (mode == "REQ" && isLradControlledByCms(destinationLradId)) {
+        resolvedMode = "REFUSE";
+    }
+
+    
+    cmsEntity_.eventStatus(Topics::CHANGE_REQ, StatusEventValue::NO_ERR);
+    acsEntity_.setChangeRequest(destinationLradId, resolvedMode);
 }
 
 

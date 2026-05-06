@@ -143,8 +143,7 @@ public:
     virtual void setMute(uint16_t destinationLradId, bool mute) = 0;
     virtual void setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
     virtual void setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
-    
-
+    virtual void setChangeRequest(uint16_t destinationLradId, const std::string& mode) = 0;
 };
 
 class IRemote {

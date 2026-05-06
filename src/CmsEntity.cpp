@@ -649,6 +649,10 @@ json CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     payload["LRAD ID"] = lradId;
     payload["Configuration"] = rawConfig;
 
+    lastActionId.store(static_cast<uint32_t>(actionId));
+
+    messageCallback_(Topics::CHANGE_REQ, lradId, rawConfig == 0 ? "RELEASE" : "REQ");
+
 
     return payload;
 }
@@ -1822,6 +1826,9 @@ uint32_t CmsEntity::extractMessageIdFromTopic(const char* topic) const {
     } 
     if (strcmp(topic, Topics::LAD_OFF) == 0) {
         return 1679949828; // Emission Control 
+    }
+    if(strcmp(topic, Topics::CHANGE_REQ) == 0) {
+        return 1679949825; // Emission Control 
     }
            
 
