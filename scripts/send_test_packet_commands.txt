@@ -110,3 +110,8 @@ python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345
 
 9) Same emission control test, multicast destination example:
 python3 scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 200 --audio-mode-validity 1 --volume-level 1 --audio-volume-db 6.0 --mute 0 --audio-mode 2 --recorded-message-id 0 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Multicast test" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 0 --light-mode-validity 1 --light-power 1 --light-zoom 8 --lrf-mode-validity 1 --lrf-on-off 0 --camera-zoom-validity 1 --camera-zoom 10 --horizontal-reference-validity 1 --horizontal-reference 1
+
+
+python3 send_JSON.py POSITION
+python3 send_JSON.py TRACKING --rate 2.0
+python3 send_JSON.py IMU --port 56101

@@ -1814,6 +1814,14 @@ void CmsEntity::eventStatus(const std::string& topic, StatusEventValue value) {
     sendLRAS_CS_ack_INS(lastActionId.load(), sourceMessageId, ackNackAccepted, nackReason);
 }
 
+
+void CmsEntity::sendControlReq(const uint16_t& lradId) {
+
+    sendLRAS_CS_change_configuration_request_INS(lradId, 0);
+
+}
+
+
 uint32_t CmsEntity::extractMessageIdFromTopic(const char* topic) const {
     if (strcmp(topic, Topics::LRF_ON) == 0) {
         return 1679949828; // Emission Control 

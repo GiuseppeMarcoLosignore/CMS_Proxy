@@ -124,6 +124,8 @@ inline constexpr const char* TH_ZOOM = "TH_ZOOM";
 inline constexpr const char* ZOOM_INFO = "ZOOM";
 
 inline constexpr const char* CHANGE_REQ = "CHANGE_REQ";
+inline constexpr const char* MASTER_INFO = "MASTER";
+
 
 
 } // namespace Topics

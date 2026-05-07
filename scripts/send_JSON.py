@@ -89,7 +89,7 @@ MESSAGE_TEMPLATES = {
         "type": "STATUS",
         "sender": "ACS",
         "param": {
-            "mode": lambda: random.choice(["LOCAL", "REMOTE", "SAFE"])
+            "mode": lambda: random.choice(["REQ", "RELEASE", "ACCEPT", "REFUSE"])
         }
     },
     "CONTEXT": {

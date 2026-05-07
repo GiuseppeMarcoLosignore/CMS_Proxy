@@ -144,12 +144,14 @@ public:
     virtual void setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
     virtual void setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
     virtual void setChangeRequest(uint16_t destinationLradId, const std::string& mode) = 0;
+
 };
 
 class IRemote {
 public:
     virtual ~IRemote() = default;
     virtual void eventStatus(const std::string& topic, StatusEventValue value) = 0;
+    virtual void sendControlReq(const uint16_t& lradId) = 0;
 };
 
 class IEvent {

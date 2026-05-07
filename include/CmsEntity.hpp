@@ -31,6 +31,7 @@ public:
     void subscribeTopics();
     void periodicMessages();
     void eventStatus(const std::string& topic, StatusEventValue value) override;
+    void sendControlReq(const uint16_t& lradId) override;
     uint32_t extractMessageIdFromTopic(const char* topic) const;
 
     void setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb);

@@ -351,22 +351,18 @@ void Orchestrator::subscribeTopics() {
     });
 
     eventBus_->subscribe(Topics::CHANGE_REQ, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
-        if (message.is_string()) {
-            handleChangeRequest(lradId, message.get<std::string>());
-            return;
-        }
+        handleChangeRequest(lradId, message.get<std::string>());
+    });
 
-        if (message.is_object() && message.contains("mode") && message.at("mode").is_string()) {
-            handleChangeRequest(lradId, message.at("mode").get<std::string>());
-            return;
-        }
-
-        std::cout << "[Orchestrator] Cannot handle change request command: invalid payload" << std::endl;
-        cmsEntity_.eventStatus(Topics::CHANGE_REQ, StatusEventValue::SYSTEM_ERR);
+    eventBus_->subscribe(Topics::MASTER_INFO, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        extractMASTERdata(lradId, message);
     });
 
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
 }
+
+
+
 
 void Orchestrator::sendAckForTopic(const std::string& topic, uint16_t nackreason, const nlohmann::json& message) const {
     const uint32_t sourceMessageId = source_message_id_from_topic(topic);
@@ -1263,8 +1259,10 @@ void Orchestrator::extractMASTERdata(const uint8_t& lradId, const nlohmann::json
     lradStatus lrad = getLradFullStatus(name);
     if (param.contains("mode") && param.at("mode").is_string()) {
         const std::string mode = param.at("mode").get<std::string>();
-        lrad.controlledByCms = (mode == "MASTER" || mode == "ACCEPT");
-        lrad.alive.mode = mode;
+        if(mode == "ACCEPT") lrad.controlledByCms = true;
+        if(mode == "REFUSE") lrad.controlledByCms = false;
+        if(mode == "REQUEST") cmsEntity_.sendControlReq(lradId);
+
     }
     setLradFullStatus(std::move(lrad), name);
 }
@@ -1605,8 +1603,16 @@ void Orchestrator::handleChangeRequest(int destinationLradId, const std::string&
         return;
     }
     std::string resolvedMode = mode;
+    lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
     if (mode == "REQ" && isLradControlledByCms(destinationLradId)) {
         resolvedMode = "REFUSE";
+    }
+    if(mode == "RELEASE") {
+
+        lrad.controlledByCms = false;
+        setLradFullStatus(std::move(lrad), (destinationLradId == 1) ? "PORT" : "STARBOARD");
+        if(isLradControlledByCms(destinationLradId)) resolvedMode = "ACCEPT";
+
     }
 
     
