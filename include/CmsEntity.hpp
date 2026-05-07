@@ -36,9 +36,7 @@ public:
 
     void setMessageCallback(std::function<void(const std::string&, const uint16_t&, const nlohmann::json&)> cb);
 
-    bool convertIncomingPacket(const RawPacket& packet,
-                               std::string& outTopic,
-                               nlohmann::json& outMessage) const;
+    bool convertIncomingPacket(const RawPacket& packet) const;
     bool parseHeader(const RawPacket& packet, ParsedHeader& out) const;
 
     nlohmann::json parse_CS_LRAS_change_configuration_order_INS(const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const;

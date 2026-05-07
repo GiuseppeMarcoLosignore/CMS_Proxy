@@ -507,15 +507,10 @@ void CmsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
     }
 
     const uint32_t sourceMessageId = extract_message_id_from_header(packet);
-    std::string publishTopic;
-    nlohmann::json publishMessage;
-    if (!convertIncomingPacket(packet, publishTopic, publishMessage)) {
+    if (!convertIncomingPacket(packet)) {
         std::cerr << "[CMS Entity] Messaggio ignorato: source_id=" << sourceMessageId << std::endl;
         return;
     }
-
-    //messageCallback_(publishTopic, publishMessage);
-    
 }
 
 bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
@@ -550,39 +545,7 @@ bool CmsEntity::parseHeader(const RawPacket& packet, ParsedHeader& out) const {
     return false;
 }
 
-bool CmsEntity::convertIncomingPacket(const RawPacket& packet,
-                                      std::string& outTopic,
-                                      nlohmann::json& outMessage) const {
-    using ParserFn = json (CmsEntity::*)(const RawPacket&, uint16_t&, uint16_t&) const;
-
-    struct ParserBinding {
-        ParserFn parser;
-        const char* topic;
-    };
-
-    static const std::unordered_map<uint32_t, ParserBinding> additionalParserBindings = {
-        { MessageId_CS_LRAS_emission_mode_INS, { &CmsEntity::parse_CS_LRAS_emission_mode_INS, Topics::CS_LRAS_emission_mode_INS } },
-        { MessageId_CS_LRAS_inhibition_sectors_INS, { &CmsEntity::parse_CS_LRAS_inhibition_sectors_INS, Topics::CS_LRAS_inhibition_sectors_INS } },
-        { MessageId_CS_LRAS_joystick_control_lrad_1_INS, { &CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS, Topics::CS_LRAS_joystick_control_lrad_1_INS } },
-        { MessageId_CS_LRAS_joystick_control_lrad_2_INS, { &CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS, Topics::CS_LRAS_joystick_control_lrad_2_INS } },
-        { MessageId_CS_LRAS_recording_command_INS, { &CmsEntity::parse_CS_LRAS_recording_command_INS, Topics::CS_LRAS_recording_command_INS } },
-        { MessageId_CS_LRAS_request_emission_mode_INS, { &CmsEntity::parse_CS_LRAS_request_emission_mode_INS, Topics::CS_LRAS_request_emission_mode_INS } },
-        { MessageId_CS_LRAS_request_engagement_capability_INS, { &CmsEntity::parse_CS_LRAS_request_engagement_capability_INS, Topics::CS_LRAS_request_engagement_capability_INS } },
-        { MessageId_CS_LRAS_request_full_status_INS, { &CmsEntity::parse_CS_LRAS_request_full_status_INS, Topics::CS_LRAS_request_full_status_INS } },
-        { MessageId_CS_LRAS_request_installation_data_INS, { &CmsEntity::parse_CS_LRAS_request_installation_data_INS, Topics::CS_LRAS_request_installation_data_INS } },
-        { MessageId_CS_LRAS_request_message_table_INS, { &CmsEntity::parse_CS_LRAS_request_message_table_INS, Topics::CS_LRAS_request_message_table_INS } },
-        { MessageId_CS_LRAS_request_software_version_INS, { &CmsEntity::parse_CS_LRAS_request_software_version_INS, Topics::CS_LRAS_request_software_version_INS } },
-        { MessageId_CS_LRAS_request_thresholds_INS, { &CmsEntity::parse_CS_LRAS_request_thresholds_INS, Topics::CS_LRAS_request_thresholds_INS } },
-        { MessageId_CS_LRAS_request_translation_INS, { &CmsEntity::parse_CS_LRAS_request_translation_INS, Topics::CS_LRAS_request_translation_INS } },
-        { MessageId_CS_LRAS_video_tracking_command_INS, { &CmsEntity::parse_CS_LRAS_video_tracking_command_INS, Topics::CS_LRAS_video_tracking_command_INS } },
-        { MessageId_CS_MULTI_health_status_INS, { &CmsEntity::parse_CS_MULTI_health_status_INS, Topics::CS_MULTI_health_status_INS } },
-        { MessageId_CS_MULTI_update_cst_kinematics_INS, { &CmsEntity::parse_CS_MULTI_update_cst_kinematics_INS, Topics::CS_MULTI_update_cst_kinematics_INS } },
-        { MessageId_NAVS_MULTI_gyro_fore_nav_data_10ms_INS, { &CmsEntity::parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS, Topics::NAVS_MULTI_gyro_fore_nav_data_10ms_INS } },
-        { MessageId_NAVS_MULTI_health_status_INS, { &CmsEntity::parse_NAVS_MULTI_health_status_INS, Topics::NAVS_MULTI_health_status_INS } },
-        { MessageId_NAVS_MULTI_nav_data_100ms_INS, { &CmsEntity::parse_NAVS_MULTI_nav_data_100ms_INS, Topics::NAVS_MULTI_nav_data_100ms_INS } },
-        { MessageId_NAVS_MULTI_ships_admin_force_time_INS, { &CmsEntity::parse_NAVS_MULTI_ships_admin_force_time_INS, Topics::NAVS_MULTI_ships_admin_force_time_INS } }
-    };
-
+bool CmsEntity::convertIncomingPacket(const RawPacket& packet) const {
     ParsedHeader header;
     if (!parseHeader(packet, header)) {
         return false;
@@ -595,38 +558,83 @@ bool CmsEntity::convertIncomingPacket(const RawPacket& packet,
     switch (header.messageId) {
         case MessageId_CS_LRAS_change_configuration_order_INS:
             payload = parse_CS_LRAS_change_configuration_order_INS(packet, destinationLradId, nackreason);
-            outTopic = Topics::CS_LRAS_change_configuration_order_INS;
             break;
         case MessageId_CS_LRAS_cueing_order_cancellation_INS:
             payload = parse_CS_LRAS_cueing_order_cancellation_INS(packet, destinationLradId, nackreason);
-            outTopic = Topics::CS_LRAS_cueing_order_cancellation_INS;
             break;
         case MessageId_CS_LRAS_cueing_order_INS:
             payload = parse_CS_LRAS_cueing_order_INS(packet, destinationLradId, nackreason);
-            outTopic = Topics::CS_LRAS_cueing_order_INS;
             break;
         case MessageId_CS_LRAS_emission_control_INS:
             payload = parse_CS_LRAS_emission_control_INS(packet, destinationLradId, nackreason);
-            outTopic = Topics::CS_LRAS_emission_control_INS;
+            break;
+        case MessageId_CS_LRAS_emission_mode_INS:
+            payload = parse_CS_LRAS_emission_mode_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_inhibition_sectors_INS:
+            payload = parse_CS_LRAS_inhibition_sectors_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_joystick_control_lrad_1_INS:
+            payload = parse_CS_LRAS_joystick_control_lrad_1_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_joystick_control_lrad_2_INS:
+            payload = parse_CS_LRAS_joystick_control_lrad_2_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_recording_command_INS:
+            payload = parse_CS_LRAS_recording_command_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_emission_mode_INS:
+            payload = parse_CS_LRAS_request_emission_mode_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_engagement_capability_INS:
+            payload = parse_CS_LRAS_request_engagement_capability_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_full_status_INS:
+            payload = parse_CS_LRAS_request_full_status_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_installation_data_INS:
+            payload = parse_CS_LRAS_request_installation_data_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_message_table_INS:
+            payload = parse_CS_LRAS_request_message_table_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_software_version_INS:
+            payload = parse_CS_LRAS_request_software_version_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_thresholds_INS:
+            payload = parse_CS_LRAS_request_thresholds_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_request_translation_INS:
+            payload = parse_CS_LRAS_request_translation_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_LRAS_video_tracking_command_INS:
+            payload = parse_CS_LRAS_video_tracking_command_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_MULTI_health_status_INS:
+            payload = parse_CS_MULTI_health_status_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_CS_MULTI_update_cst_kinematics_INS:
+            payload = parse_CS_MULTI_update_cst_kinematics_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_NAVS_MULTI_gyro_fore_nav_data_10ms_INS:
+            payload = parse_NAVS_MULTI_gyro_fore_nav_data_10ms_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_NAVS_MULTI_health_status_INS:
+            payload = parse_NAVS_MULTI_health_status_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_NAVS_MULTI_nav_data_100ms_INS:
+            payload = parse_NAVS_MULTI_nav_data_100ms_INS(packet, destinationLradId, nackreason);
+            break;
+        case MessageId_NAVS_MULTI_ships_admin_force_time_INS:
+            payload = parse_NAVS_MULTI_ships_admin_force_time_INS(packet, destinationLradId, nackreason);
             break;
         default:
-            {
-                const auto bindingIt = additionalParserBindings.find(header.messageId);
-                if (bindingIt != additionalParserBindings.end()) {
-                    payload = (this->*(bindingIt->second.parser))(packet, destinationLradId, nackreason);
-                    outTopic = bindingIt->second.topic;
-                }
-            }
             break;
     }
 
     if (payload.is_null()) {
         return false;
     }
-
-    payload["destinationLradId"] = destinationLradId;
-    payload["nackreason"] = nackreason;
-    outMessage = std::move(payload);
     return true;
 }
 
@@ -1776,12 +1784,7 @@ void CmsEntity::periodicMessages() {
     periodicTimer_->expires_after(std::chrono::milliseconds(100));
     periodicTimer_->async_wait([this](const boost::system::error_code& ec) {
         if (!ec) {
-        /*    messageCallback_(Topics::LRAS_CS_lrad_1_status_INS, nlohmann::json::object());
-            messageCallback_(Topics::LRAS_CS_lrad_2_status_INS, nlohmann::json::object());
-            messageCallback_(Topics::LRAS_MULTI_full_status_v2_INS, nlohmann::json::object());
-            messageCallback_(Topics::LRAS_MULTI_health_status_INS, nlohmann::json::object());
-
-            periodicMessages();*/
+            // periodicMessages();
         }
     });
 }
