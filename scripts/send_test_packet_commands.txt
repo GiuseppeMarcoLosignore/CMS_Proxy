@@ -11,6 +11,7 @@ Supported message IDs:
 - 1679949826 : CS_LRAS_cueing_order_cancellation_INS
 - 1679949827 : CS_LRAS_cueing_order_INS
 - 1679949828 : CS_LRAS_emission_control_INS
+- 1679949829 : CS_LRAS_emission_mode_INS
 
 Common network options:
 --group <ip>                     Destination IP (default: 127.0.0.1)
@@ -76,11 +77,33 @@ Message 1679949828 options:
 Full example:
 python scripts/send_test_packet.py -m 1679949828 --lrad-id 1 --action-id 10 --audio-mode-validity 1 --volume-level 2 --audio-volume-db 12.5 --mute 0 --audio-mode 2 --recorded-message-id 123 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Test emission control" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 1 --light-mode-validity 1 --light-power 2 --light-zoom 15 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 20 --horizontal-reference-validity 1 --horizontal-reference 1
 
+Message 1679949829 options:
+--audio-enable-validity <0|1>            Audio Enable Validity (default: 1)
+--audio-volume-levels-validity <0|1>     Audio Volume Levels Validity (default: 1)
+--laser-enable-validity <0|1>            Laser Enable Validity (default: 1)
+--laser-min-distance-validity <0|1>      Laser Min Distance Validity (default: 1)
+--light-enable-validity <0|1>            Light Enable Validity (default: 1)
+--light-max-w-validity <0|1>             Light Max W Validity (default: 1)
+--lrf-enable-validity <0|1>              LRF Enable Validity (default: 1)
+--audio-enable <0|1>                     Audio Enable (0=off, 1=on, default: 0)
+--audio-level1 <float>                   Audio Level 1 dB (default: 0.0)
+--audio-level2 <float>                   Audio Level 2 dB (default: 0.0)
+--audio-level3 <float>                   Audio Level 3 dB (default: 0.0)
+--laser-enable <0|1>                     Laser Enable (0=off, 1=on, default: 0)
+--laser-min-distance <uint32>            Laser Min Distance in metres [100..6000] (default: 100)
+--light-enable <0|1>                     Light Enable (0=off, 1=on, default: 0)
+--light-max-w <0..3>                     Light Max W enum (default: 0)
+--lrf-enable <0|1>                       LRF Enable (0=off, 1=on, default: 0)
+
+Full example:
+python scripts/send_test_packet.py -m 1679949829 --lrad-id 1 --audio-enable-validity 1 --audio-volume-levels-validity 1 --laser-enable-validity 1 --laser-min-distance-validity 1 --light-enable-validity 1 --light-max-w-validity 1 --lrf-enable-validity 1 --audio-enable 1 --audio-level1 6.0 --audio-level2 3.0 --audio-level3 0.0 --laser-enable 1 --laser-min-distance 500 --light-enable 0 --light-max-w 1 --lrf-enable 1
+
 Quick default tests:
 python scripts/send_test_packet.py -m 1679949825
 python scripts/send_test_packet.py -m 1679949826
 python scripts/send_test_packet.py -m 1679949827
 python scripts/send_test_packet.py -m 1679949828
+python scripts/send_test_packet.py -m 1679949829
 
 Ready-to-send commands (copy/paste):
 
@@ -110,6 +133,15 @@ python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345
 
 9) Same emission control test, multicast destination example:
 python3 scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 200 --audio-mode-validity 1 --volume-level 1 --audio-volume-db 6.0 --mute 0 --audio-mode 2 --recorded-message-id 0 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Multicast test" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 0 --light-mode-validity 1 --light-power 1 --light-zoom 8 --lrf-mode-validity 1 --lrf-on-off 0 --camera-zoom-validity 1 --camera-zoom 10 --horizontal-reference-validity 1 --horizontal-reference 1
+
+10) Emission mode LRAD1 (audio + laser + LRF enabled):
+python3 scripts/send_test_packet.py -m 1679949829 --group 127.0.0.1 --port 12345 --lrad-id 1 --audio-enable-validity 1 --audio-volume-levels-validity 1 --laser-enable-validity 1 --laser-min-distance-validity 1 --light-enable-validity 1 --light-max-w-validity 1 --lrf-enable-validity 1 --audio-enable 1 --audio-level1 6.0 --audio-level2 3.0 --audio-level3 0.0 --laser-enable 1 --laser-min-distance 500 --light-enable 0 --light-max-w 1 --lrf-enable 1
+
+11) Emission mode LRAD2 (all off):
+python3 scripts/send_test_packet.py -m 1679949829 --group 127.0.0.1 --port 12345 --lrad-id 2 --audio-enable 0 --laser-enable 0 --laser-min-distance 100 --light-enable 0 --light-max-w 0 --lrf-enable 0
+
+12) Emission mode LRAD1 multicast:
+python3 scripts/send_test_packet.py -m 1679949829 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --audio-enable 1 --audio-level1 9.0 --laser-enable 1 --laser-min-distance 300 --light-enable 1 --light-max-w 2 --lrf-enable 1
 
 
 python3 send_JSON.py POSITION

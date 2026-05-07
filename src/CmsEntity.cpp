@@ -848,6 +848,8 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
 
     destinationLradId = lradId;
 
+    
+
     if(lrfModeValidity == 1) {
         lrfOnOff == 1 ?  messageCallback_(Topics::LRF_ON, lradId, lrfOnOff) : messageCallback_(Topics::LRF_OFF, lradId, lrfOnOff);
     }
@@ -882,19 +884,103 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
 
 json CmsEntity::parse_CS_LRAS_emission_mode_INS(
     const RawPacket& packet, uint16_t& destinationLradId, uint16_t& nackreason) const {
-    constexpr std::size_t minPacketSize = 20;
+    // Message layout (total 55 bytes):
+    // Header(16) + ActionId(4) + LRAD ID(2)
+    // + 7 validity flags(1 byte each)
+    // + AudioEnable(2) + AudioLevels(12)
+    // + LaserEnable(2) + LaserMinDistance(4)
+    // + LightEnable(2) + LightMaxW(2)
+    // + LRFEnable(2)
+    constexpr std::size_t minPacketSize = 55;
     if (packet.data.size() < minPacketSize) {
         return make_empty_payload();
     }
 
     const uint32_t actionId = read_u32_be(packet.data, 16);
     lastActionId.store(actionId);
+    const uint16_t lradId = read_u16_be(packet.data, 20);
 
-    (void)destinationLradId;
-    (void)nackreason;
+    const uint8_t audioEnableValidity = packet.data[22];
+    const uint8_t audioVolumeLevelsValidity = packet.data[23];
+    const uint8_t laserEnableValidity = packet.data[24];
+    const uint8_t laserMinDistanceValidity = packet.data[25];
+    const uint8_t lightEnableValidity = packet.data[26];
+    const uint8_t lightMaxWValidity = packet.data[27];
+    const uint8_t lrfEnableValidity = packet.data[28];
+
+    const uint16_t audioEnable = read_u16_be(packet.data, 29);
+    const float audioLevel1 = read_f32_be(packet.data, 31);
+    const float audioLevel2 = read_f32_be(packet.data, 35);
+    const float audioLevel3 = read_f32_be(packet.data, 39);
+    const uint16_t laserEnable = read_u16_be(packet.data, 43);
+    const uint32_t laserMinDistance = read_u32_be(packet.data, 45);
+    const uint16_t lightEnable = read_u16_be(packet.data, 49);
+    const uint16_t lightMaxW = read_u16_be(packet.data, 51);
+    const uint16_t lrfEnable = read_u16_be(packet.data, 53);
+
+    destinationLradId = lradId;
+
+    const auto is_validity = [](uint8_t value) {
+        return value == 0u || value == 1u;
+    };
+
+    if (!has_known_lrad(lradId) ||
+        !is_validity(audioEnableValidity) ||
+        !is_validity(audioVolumeLevelsValidity) ||
+        !is_validity(laserEnableValidity) ||
+        !is_validity(laserMinDistanceValidity) ||
+        !is_validity(lightEnableValidity) ||
+        !is_validity(lightMaxWValidity) ||
+        !is_validity(lrfEnableValidity) ||
+        (audioEnable > 1) ||
+        (laserEnable > 1) ||
+        (lightEnable > 1) ||
+        (lightMaxW > 3) ||
+        (lrfEnable > 1) ||
+        (laserMinDistance < 100u || laserMinDistance > 6000u)) {
+        nackreason = 2;
+    }
 
     json payload;
     payload["Action Id"] = actionId;
+    payload["LRAD ID"] = lradId;
+    payload["Audio Enable Validity"] = audioEnableValidity;
+    payload["Audio Volume Levels Validity"] = audioVolumeLevelsValidity;
+    payload["Laser Enable Validity"] = laserEnableValidity;
+    payload["Laser Min Distance Validity"] = laserMinDistanceValidity;
+    payload["Light Enable Validity"] = lightEnableValidity;
+    payload["Light Max W Validity"] = lightMaxWValidity;
+    payload["Laser Range Finder Enable Validity"] = lrfEnableValidity;
+    payload["Audio Enable"] = audioEnable;
+    payload["Audio Volume Levels"] = {
+        {"level 1", audioLevel1},
+        {"level 2", audioLevel2},
+        {"level 3", audioLevel3}
+    };
+    payload["Laser Enable"] = laserEnable;
+    payload["Laser Min Distance"] = laserMinDistance;
+    payload["Light Enable"] = lightEnable;
+    payload["Light Max W"] = lightMaxW;
+    payload["Laser Range Finder Enable"] = lrfEnable;
+
+    if(lrfEnableValidity == 1) {
+        lrfEnable == 0 ?  messageCallback_(Topics::LRF_ENABLE, lradId, nlohmann::json{{"enable", false}}) : messageCallback_(Topics::LRF_ENABLE, lradId, nlohmann::json{{"enable", true}});
+    }
+
+    if(laserEnableValidity == 1) {
+        laserEnable == 0 ?  messageCallback_(Topics::LAD_ENABLE, lradId, nlohmann::json{{"enable", false}}) : messageCallback_(Topics::LAD_ENABLE, lradId, nlohmann::json{{"enable", true}});
+    }
+
+    if(lightEnableValidity == 1) {
+        lightEnable == 0 ? messageCallback_(Topics::LIGHT_ENABLE, lradId, nlohmann::json{{"enable", false}}) : messageCallback_(Topics::LIGHT_ENABLE, lradId, nlohmann::json{{"enable", true}});
+    }
+
+    if(audioEnableValidity == 1) {
+        audioEnable == 0 ? messageCallback_(Topics::AUDIO_ENABLE, lradId, nlohmann::json{{"enable", false}}) : messageCallback_(Topics::AUDIO_ENABLE, lradId, nlohmann::json{{"enable", true}});
+        
+    }
+
+
     return payload;
 }
 

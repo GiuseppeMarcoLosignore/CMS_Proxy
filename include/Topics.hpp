@@ -69,6 +69,11 @@ inline constexpr const char* HD_ZOOM = "HD_ZOOM";
 inline constexpr const char* TH_ZOOM = "TH_ZOOM";
 inline constexpr const char* ZOOM_INFO = "ZOOM";
 
+inline constexpr const char* LIGHT_ENABLE = "LIGHT_ENABLE";
+inline constexpr const char* LAD_ENABLE = "LAD_ENABLE";
+inline constexpr const char* LRF_ENABLE = "LRF_ENABLE";
+inline constexpr const char* AUDIO_ENABLE = "AUDIO_ENABLE";
+
 inline constexpr const char* CHANGE_REQ = "CHANGE_REQ";
 inline constexpr const char* MASTER_INFO = "MASTER";
 

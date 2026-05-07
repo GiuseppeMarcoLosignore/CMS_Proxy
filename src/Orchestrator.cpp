@@ -231,6 +231,22 @@ void Orchestrator::subscribeTopics() {
         extractMASTERdata(lradId, message);
     });
 
+    eventBus_->subscribe(Topics::LAD_ENABLE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleLADenable(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::LRF_ENABLE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleLRFenable(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::LIGHT_ENABLE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleSEARCHLIGHTenable(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::AUDIO_ENABLE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleAUDIOenable(lradId, message);
+    });
+
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
 }
 
@@ -860,8 +876,15 @@ bool Orchestrator::inInShadow(int lradId) const {
     return azInside || elInside;
 }
 
-void Orchestrator::enablePayload(PayoladType /*type*/, std::string /*enable*/) {
-    // TODO
+void Orchestrator::enablePayload(int lradId, PayoladType type, bool enable) {
+    lradStatus lrad = getLradFullStatus((lradId == 1) ? "PORT" : "STARBOARD");
+    switch (type) {
+        case PayoladType::AUDIO:       lrad.audioEnabled = enable; break;
+        case PayoladType::LAD:         lrad.ladEnabled = enable; break;
+        case PayoladType::SEARCHLIGHT: lrad.searchlightEnabled = enable; break;
+        case PayoladType::LRF:         lrad.lrfEnabled = enable; break;
+    }
+    setLradFullStatus(std::move(lrad), (lradId == 1) ? "PORT" : "STARBOARD");
 }
 
 
@@ -1131,6 +1154,80 @@ void Orchestrator::handleChangeRequest(int destinationLradId, const std::string&
     acsEntity_.setChangeRequest(destinationLradId, resolvedMode);
 }
 
+void Orchestrator::handleLADenable(int destinationLradId, const nlohmann::json& message) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle LAD enable command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_ENABLE, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
+    if(message.contains("enable") && message["enable"].is_boolean()) {
+        enablePayload(destinationLradId, PayoladType::LAD, message["enable"].get<bool>());
+            cmsEntity_.eventStatus(Topics::LAD_ENABLE, StatusEventValue::NO_ERR);
+            return;
+        
+    } else {
+        std::cout << "[Orchestrator] Cannot handle LAD enable command: Invalid message format" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_ENABLE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+
+    
+}
+
+void Orchestrator::handleLRFenable(int destinationLradId, const nlohmann::json& message) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle LRF enable command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_ENABLE, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
+    if(message.contains("enable") && message["enable"].is_boolean()) {
+        enablePayload(destinationLradId, PayoladType::LRF, message["enable"].get<bool>());
+        cmsEntity_.eventStatus(Topics::LRF_ENABLE, StatusEventValue::NO_ERR);
+        return;
+    } else {
+        std::cout << "[Orchestrator] Cannot handle LRF enable command: Invalid message format" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_ENABLE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+}
+
+void Orchestrator::handleSEARCHLIGHTenable(int destinationLradId, const nlohmann::json& message) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle SEARCHLIGHT enable command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::LIGHT_ENABLE, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
+    if(message.contains("enable") && message["enable"].is_boolean()) {
+        enablePayload(destinationLradId, PayoladType::SEARCHLIGHT, message["enable"].get<bool>());
+        cmsEntity_.eventStatus(Topics::LIGHT_ENABLE, StatusEventValue::NO_ERR);
+        return;
+    } else {
+        std::cout << "[Orchestrator] Cannot handle SEARCHLIGHT enable command: Invalid message format" << std::endl;
+        cmsEntity_.eventStatus(Topics::LIGHT_ENABLE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+}
+
+void Orchestrator::handleAUDIOenable(int destinationLradId, const nlohmann::json& message) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle AUDIO enable command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::AUDIO_ENABLE, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
+    if(message.contains("enable") && message["enable"].is_boolean()) {
+        enablePayload(destinationLradId, PayoladType::AUDIO, message["enable"].get<bool>());
+        cmsEntity_.eventStatus(Topics::AUDIO_ENABLE, StatusEventValue::NO_ERR);
+        return;
+    } else {
+        std::cout << "[Orchestrator] Cannot handle AUDIO enable command: Invalid message format" << std::endl;
+        cmsEntity_.eventStatus(Topics::AUDIO_ENABLE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+}
 
 void Orchestrator::start_cueing() {
     std::cout << "[Orchestrator] start_cueing: TODO" << std::endl;

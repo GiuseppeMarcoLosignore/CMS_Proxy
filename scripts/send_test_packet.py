@@ -50,6 +50,53 @@ def generate_action_id() -> int:
     return random.randint(1, 0xFFFFFFFF)
 
 
+def build_emission_mode_payload(args) -> bytes:
+    """Build payload for CS_LRAS_emission_mode_INS (39 bytes).
+
+    Layout (offsets relative to start of payload, i.e. after 16-byte header):
+      [0-3]   ActionId        (uint32 BE)
+      [4-5]   LRAD ID         (uint16 BE)
+      [6]     audioEnableValidity     (uint8)
+      [7]     audioVolumeLevelsValidity (uint8)
+      [8]     laserEnableValidity     (uint8)
+      [9]     laserMinDistanceValidity (uint8)
+      [10]    lightEnableValidity     (uint8)
+      [11]    lightMaxWValidity       (uint8)
+      [12]    lrfEnableValidity       (uint8)
+      [13-14] AudioEnable     (uint16 BE)
+      [15-18] AudioLevel1     (float BE)
+      [19-22] AudioLevel2     (float BE)
+      [23-26] AudioLevel3     (float BE)
+      [27-28] LaserEnable     (uint16 BE)
+      [29-32] LaserMinDistance (uint32 BE)
+      [33-34] LightEnable     (uint16 BE)
+      [35-36] LightMaxW       (uint16 BE)
+      [37-38] LRFEnable       (uint16 BE)
+    Total payload: 39 bytes  (header 16 + payload 39 = 55 bytes)
+    """
+    return struct.pack(
+        ">IH BBBBBBB Hfff HI HH H",
+        int(args.action_id) & 0xFFFFFFFF,
+        args.lrad_id,
+        args.audio_enable_validity,
+        args.audio_volume_levels_validity,
+        args.laser_enable_validity,
+        args.laser_min_distance_validity,
+        args.light_enable_validity,
+        args.light_max_w_validity,
+        args.lrf_enable_validity,
+        args.audio_enable,
+        args.audio_level1,
+        args.audio_level2,
+        args.audio_level3,
+        args.laser_enable,
+        args.laser_min_distance,
+        args.light_enable,
+        args.light_max_w,
+        args.lrf_enable,
+    )
+
+
 def build_cueing_order_payload(args) -> bytes:
     """Build payload for CS_LRAS_cueing_order_INS (48 bytes)."""
     payload = bytearray(48)
@@ -172,6 +219,7 @@ def main():
             "  1679949826  -> CS_LRAS_cueing_order_cancellation_INS\n"
             "  1679949827  -> CS_LRAS_cueing_order_INS\n"
             "  1679949828  -> CS_LRAS_emission_control_INS\n"
+            "  1679949829  -> CS_LRAS_emission_mode_INS\n"
             "(default: 1679949825)"
         ),
     )
@@ -253,10 +301,44 @@ def main():
     parser.add_argument("--horizontal-reference", type=int, default=0,
                         help="Horizontal reference enum (default: 0)")
 
+    # Campi payload per 1679949829 (CS_LRAS_emission_mode_INS)
+    parser.add_argument("--audio-enable-validity", type=int, default=1, choices=[0, 1],
+                        help="Audio Enable Validity (0=invalid, 1=valid, default: 1)")
+    parser.add_argument("--audio-volume-levels-validity", type=int, default=1, choices=[0, 1],
+                        help="Audio Volume Levels Validity (0=invalid, 1=valid, default: 1)")
+    parser.add_argument("--laser-enable-validity", type=int, default=1, choices=[0, 1],
+                        help="Laser Enable Validity (0=invalid, 1=valid, default: 1)")
+    parser.add_argument("--laser-min-distance-validity", type=int, default=1, choices=[0, 1],
+                        help="Laser Min Distance Validity (0=invalid, 1=valid, default: 1)")
+    parser.add_argument("--light-enable-validity", type=int, default=1, choices=[0, 1],
+                        help="Light Enable Validity (0=invalid, 1=valid, default: 1)")
+    parser.add_argument("--light-max-w-validity", type=int, default=1, choices=[0, 1],
+                        help="Light Max W Validity (0=invalid, 1=valid, default: 1)")
+    parser.add_argument("--lrf-enable-validity", type=int, default=1, choices=[0, 1],
+                        help="LRF Enable Validity (0=invalid, 1=valid, default: 1)")
+    parser.add_argument("--audio-enable", type=int, default=0, choices=[0, 1],
+                        help="Audio Enable (0=off, 1=on, default: 0)")
+    parser.add_argument("--audio-level1", type=float, default=0.0,
+                        help="Audio Level 1 dB (float, default: 0.0)")
+    parser.add_argument("--audio-level2", type=float, default=0.0,
+                        help="Audio Level 2 dB (float, default: 0.0)")
+    parser.add_argument("--audio-level3", type=float, default=0.0,
+                        help="Audio Level 3 dB (float, default: 0.0)")
+    parser.add_argument("--laser-enable", type=int, default=0, choices=[0, 1],
+                        help="Laser Enable (0=off, 1=on, default: 0)")
+    parser.add_argument("--laser-min-distance", type=int, default=100,
+                        help="Laser Min Distance in metres [100..6000] (default: 100)")
+    parser.add_argument("--light-enable", type=int, default=0, choices=[0, 1],
+                        help="Light Enable (0=off, 1=on, default: 0)")
+    parser.add_argument("--light-max-w", type=int, default=0, choices=[0, 1, 2, 3],
+                        help="Light Max W enum [0..3] (default: 0)")
+    parser.add_argument("--lrf-enable", type=int, default=0, choices=[0, 1],
+                        help="LRF Enable (0=off, 1=on, default: 0)")
+
     args = parser.parse_args()
     args.action_id = generate_action_id() if args.action_id == 0 else args.action_id
 
-    supported_ids = sorted(set(MESSAGES.keys()) | {1679949827, 1679949828})
+    supported_ids = sorted(set(MESSAGES.keys()) | {1679949827, 1679949828, 1679949829})
     if args.message_id not in supported_ids:
         known = ', '.join(str(k) for k in supported_ids)
         parser.error(f"message-id {args.message_id} non riconosciuto. ID supportati: {known}")
@@ -267,6 +349,9 @@ def main():
     elif args.message_id == 1679949828:
         msg_info = {"description": "CS_LRAS_emission_control_INS"}
         payload = build_emission_control_payload(args)
+    elif args.message_id == 1679949829:
+        msg_info = {"description": "CS_LRAS_emission_mode_INS"}
+        payload = build_emission_mode_payload(args)
     else:
         msg_info = MESSAGES[args.message_id]
         payload = msg_info["builder"](args.action_id, args.lrad_id, args.configuration)

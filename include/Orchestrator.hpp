@@ -195,9 +195,6 @@ struct lradStatus {
     bool audioEnabled = true;
     bool isRecording = false;
     bool isCmsConnected = false;
-    float audioLvl1 = 0.0F;
-    float audioLvl2 = 0.0F; 
-    float audioLvl3 = 0.0F;
     float ladMinDistance = 0.0F; //NOHD Distance
     float warningDistance = 0.0F; //THRESHHOLD distance
     float dissuasionDistance = 0.0F;
@@ -233,7 +230,7 @@ public:
     bool canLadFire(int lradId) const;
     bool inInShadow(int lradId) const;
 
-    void enablePayload(PayoladType type, std::string enable);
+    void enablePayload(int lradId, PayoladType type, bool enable);
 
     void setLradFullStatus(lradStatus status, std::string name_);
     void setLrasFullStatus(lrasStatus status);
@@ -266,6 +263,10 @@ public:
     void handleHdZoom(int destinationLradId, const uint8_t zoomValue);
     void handleThZoom(int destinationLradId, const uint8_t zoomValue);
     void handleChangeRequest(int destinationLradId, const std::string& mode);
+    void handleLADenable(int destinationLradId, const nlohmann::json& message);
+    void handleLRFenable(int destinationLradId, const nlohmann::json& message);
+    void handleSEARCHLIGHTenable(int destinationLradId, const nlohmann::json& message);
+    void handleAUDIOenable(int destinationLradId, const nlohmann::json& message);
 
     void start_cueing();
     void stop_cueing();
