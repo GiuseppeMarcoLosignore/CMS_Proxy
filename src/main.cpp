@@ -9,6 +9,7 @@
 #include "CmsEntity.hpp"
 #include "Orchestrator.hpp"
 #include "EventBus.hpp"
+#include "TcpSocket.hpp"
 
 int main(int argc, char* argv[]) {
     try {
@@ -17,12 +18,22 @@ int main(int argc, char* argv[]) {
 
         auto event_bus = std::make_shared<EventBus>();
 
+        auto rxIoContext = std::make_shared<boost::asio::io_context>();
+
         auto cms_entity = std::make_shared<CmsEntity>(
             config.cms);
             
         auto acs_entity = std::make_shared<AcsEntity>(
             config.acs
         );
+
+        auto tcpSocket_ = std::make_shared<TcpSocket>(
+        *rxIoContext,
+        config.acs.tcp_listen_ip,
+        config.acs.tcp_listen_port
+        );
+
+        
 
         cms_entity->setMessageCallback([event_bus](const std::string& topic,const uint16_t& lradId, const nlohmann::json& message) {
             event_bus->publish(topic, lradId, message);
@@ -38,6 +49,9 @@ int main(int argc, char* argv[]) {
 
 
         auto orchestrator = std::make_shared<Orchestrator>(*cms_entity, *acs_entity, event_bus);
+        orchestrator->setNetConfigCallback([tcpSocket_](const std::string& ip, uint16_t port) {
+            tcpSocket_->configure_listener(ip, port);
+        });
         orchestrator->start();
 
         std::cout << "[SYSTEM] Proxy avviato correttamente con configurazione: "

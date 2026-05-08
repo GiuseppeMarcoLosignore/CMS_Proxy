@@ -6,10 +6,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <sstream>
 
 namespace {
 bool isKnownLradSender(const std::string& sender) {
@@ -143,6 +145,112 @@ void Orchestrator::stop() {
     }
     
     std::cout << "[Orchestrator] Stopped" << std::endl;
+}
+
+void Orchestrator::initializeLradNetinfo(const std::string& ipAddress, const uint8_t& lradId) {
+    if (ipAddress.empty()) {
+        return;
+    }
+
+    const std::string configPath = "config/network_config.ini";
+    std::ifstream inFile(configPath);
+    if (!inFile.is_open()) {
+        std::cerr << "[Orchestrator] Impossibile aprire il file di configurazione: " << configPath << std::endl;
+        return;
+    }
+
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(inFile, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        lines.push_back(line);
+    }
+    inFile.close();
+
+    auto trim = [](std::string value) {
+        auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
+        value.erase(value.begin(), std::find_if(value.begin(), value.end(), notSpace));
+        value.erase(std::find_if(value.rbegin(), value.rend(), notSpace).base(), value.end());
+        return value;
+    };
+
+    const std::string idText = std::to_string(static_cast<unsigned int>(lradId));
+    const std::string sectionHeader = "[acs.destination." + idText + "]";
+
+    std::vector<std::string> destinationBlock;
+    destinationBlock.push_back(sectionHeader);
+    destinationBlock.push_back("name = ");
+    destinationBlock.push_back("lrad = LRAD" + idText);
+    destinationBlock.push_back("id   = " + idText);
+    destinationBlock.push_back("ip   = " + ipAddress);
+    destinationBlock.push_back("port = 9000");
+
+    std::size_t sectionStart = lines.size();
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (trim(lines[i]) == sectionHeader) {
+            sectionStart = i;
+            break;
+        }
+    }
+
+    if (sectionStart < lines.size()) {
+        std::size_t sectionEnd = lines.size();
+        for (std::size_t i = sectionStart + 1; i < lines.size(); ++i) {
+            const std::string trimmed = trim(lines[i]);
+            if (!trimmed.empty() && trimmed.front() == '[' && trimmed.back() == ']') {
+                sectionEnd = i;
+                break;
+            }
+        }
+
+        lines.erase(lines.begin() + static_cast<std::ptrdiff_t>(sectionStart),
+                    lines.begin() + static_cast<std::ptrdiff_t>(sectionEnd));
+        lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(sectionStart),
+                     destinationBlock.begin(),
+                     destinationBlock.end());
+    } else {
+        if (!lines.empty() && !lines.back().empty()) {
+            lines.push_back("");
+        }
+        lines.insert(lines.end(), destinationBlock.begin(), destinationBlock.end());
+    }
+
+    std::ofstream outFile(configPath, std::ios::trunc);
+    if (!outFile.is_open()) {
+        std::cerr << "[Orchestrator] Impossibile scrivere il file di configurazione: " << configPath << std::endl;
+        return;
+    }
+
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        outFile << lines[i];
+        if (i + 1 < lines.size()) {
+            outFile << '\n';
+        }
+    }
+
+    netConfigCallback_(ipAddress, 9000);
+    addNewLrad("LRAD" + idText, lradId);
+}
+
+void Orchestrator::setNetConfigCallback(std::function<void(const std::string&, const uint16_t&)> callback) {
+    netConfigCallback_ = callback;
+}
+
+void Orchestrator::addNewLrad(const std::string& name, const uint8_t& lradId) {
+    if (name.empty()) {
+        return;
+    }
+
+    lradStatus newLrad{};
+    newLrad.alive.name = name;
+
+    // Add the new LRAD to the list
+    {
+        std::lock_guard<std::mutex> lock(lradMutex_);
+        lradList_->push_back(newLrad);
+    }
 }
 
 void Orchestrator::subscribeTopics() {
@@ -374,6 +482,8 @@ void Orchestrator::extractALIVEdata(const uint8_t& lradId, const nlohmann::json&
     setLrasFullStatus(std::move(lrasStatus));
         
     }
+    else 
+    initializeLradNetinfo(payload.value("ipAddress", "ip"), lradList_->size() + 1);
     
 }
 

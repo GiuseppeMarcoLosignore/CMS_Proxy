@@ -97,22 +97,16 @@ void AcsEntity::start() {
         multicastEndpoints
     );
 
-    tcpSocket_ = std::make_shared<TcpSocket>(
-        rxIoContext_,
-        startupConfig.tcp_listen_ip,
-        startupConfig.tcp_listen_port
-    );
+
 
     udpSocket_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
         onPacketReceived(packet, sourceInfo);
     });
 
-    tcpSocket_->set_callback([this](const RawPacket& packet, const PacketSourceInfo& sourceInfo) {
-        onPacketReceived(packet, sourceInfo);
-    });
+    
 
     udpSocket_->start();
-    tcpSocket_->start();
+    
 
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
     rxThread_ = std::jthread([this]() {

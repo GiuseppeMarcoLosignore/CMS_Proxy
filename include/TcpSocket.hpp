@@ -25,9 +25,10 @@ public:
     SendResult send(const RawPacket& packet,
                     const std::string& target_host,
                     uint16_t target_port) override;
+    void configure_listener(const std::string& listen_address, uint16_t port);
 
 private:
-    void configure_listener(const std::string& listen_address, uint16_t port);
+    
     void close_outgoing_socket();
     void do_accept();
     void do_read(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket,

@@ -221,6 +221,9 @@ public:
 
     void subscribeTopics();
     void initializeDefaultStatus();
+    void initializeLradNetinfo(const std::string& ipAddress, const uint8_t& lradId);
+    void setNetConfigCallback(std::function<void(const std::string&, const uint16_t&)> callback);
+    void addNewLrad(const std::string& name, const uint8_t& lradId);
 
     bool isDataUpdated() const;
     bool isAcsConnected() const;
@@ -277,4 +280,5 @@ private:
     AcsEntity &acsEntity_;
     std::thread updateThread_;
     std::shared_ptr<EventBus> eventBus_;
+    std::function<void(const std::string&, const uint16_t&)> netConfigCallback_;
 };

@@ -169,6 +169,18 @@ MESSAGE_TEMPLATES = {
             "ahd": lambda: str(random.randint(0, 100000)),
             "logSession": lambda: str(random.randint(0, 100000))
         }
+    },
+    "ALIVE": {
+        "header": "ALIVE",
+        "type": "STATUS",
+        "sender": "ACS",
+        "param": {
+            "name": lambda: random.choice(["PORT", "STARBOARD"]),
+            "ipAddress": lambda: f"192.168.1.{random.randint(1, 254)}",
+            "state": lambda: random.choice(["ONLINE", "OFFLINE", "DEGRADED"]),
+            "mode": lambda: random.choice(["ACTIVE", "STANDBY", "MAINTENANCE"]),
+            "swVersion": lambda: f"{random.randint(1,3)}.{random.randint(0,9)}.{random.randint(0,99)}"
+        }
     }
 }
 
@@ -217,7 +229,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "message_type",
-        help="Tipo di messaggio da inviare (ERROR, AUDIO, LAD, SEARCHLIGHT, LRF, STABIL, SHADOW, ZOOM, MASTER, CONTEXT, POSITION, DELTA, TRACKING, CONFIG, IMU, HOURS)"
+        help="Tipo di messaggio da inviare (ERROR, AUDIO, LAD, SEARCHLIGHT, LRF, STABIL, SHADOW, ZOOM, MASTER, CONTEXT, POSITION, DELTA, TRACKING, CONFIG, IMU, HOURS, ALIVE)"
     )
     parser.add_argument(
         "--host",
