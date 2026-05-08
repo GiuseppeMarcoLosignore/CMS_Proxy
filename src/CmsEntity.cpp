@@ -660,7 +660,7 @@ json CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
     lastActionId.store(static_cast<uint32_t>(actionId));
 
     messageCallback_(Topics::CHANGE_REQ, lradId, nlohmann::json{
-        {"mode", actionId == 0 ? "RELEASE" : "REQ"}
+        {"mode", rawConfig == 0 ? "RELEASE" : "REQ"}
     });
 
 

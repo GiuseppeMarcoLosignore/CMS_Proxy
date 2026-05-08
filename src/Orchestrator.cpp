@@ -350,27 +350,28 @@ void Orchestrator::extractALIVEdata(const uint8_t& lradId, const nlohmann::json&
 
     if(name == "PORT" || name == "LRAD1") {
         auto readStringField = [&param](const char* primaryKey, const char* fallbackKey = nullptr) -> std::string {
-            if (param.contains(primaryKey) && param.at(primaryKey).is_string()) {
+        if (param.contains(primaryKey) && param.at(primaryKey).is_string()) {
                 return param.at(primaryKey).get<std::string>();
-            }
+        }
 
-            if (fallbackKey != nullptr && param.contains(fallbackKey) && param.at(fallbackKey).is_string()) {
+        if (fallbackKey != nullptr && param.contains(fallbackKey) && param.at(fallbackKey).is_string()) {
                 return param.at(fallbackKey).get<std::string>();
-            }
+        }
 
-            return {};
-        };
+        return {};
+    };
+    
 
-        lradStatus lrad = getLradFullStatus(name);
-        lrad.alive.state = readStringField("state");
-        lrad.alive.mode = readStringField("mode");
-        lrad.alive.ipAddress = readStringField("ipAddress", "ip");
+    lradStatus lrad = getLradFullStatus(name);
+    lrad.alive.state = readStringField("state");
+    lrad.alive.mode = readStringField("mode");
+    lrad.alive.ipAddress = readStringField("ipAddress", "ip");
 
-        setLradFullStatus(std::move(lrad), name);
+    setLradFullStatus(std::move(lrad), name);
 
-        lrasStatus lrasStatus = getLrasFullStatus();
-        lrasStatus.swVersion = readStringField("swVersion");
-        setLrasFullStatus(std::move(lrasStatus));
+    lrasStatus lrasStatus = getLrasFullStatus();
+    lrasStatus.swVersion = readStringField("swVersion");
+    setLrasFullStatus(std::move(lrasStatus));
         
     }
     
