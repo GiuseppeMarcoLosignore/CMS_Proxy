@@ -659,7 +659,9 @@ json CmsEntity::parse_CS_LRAS_change_configuration_order_INS(
 
     lastActionId.store(static_cast<uint32_t>(actionId));
 
-    messageCallback_(Topics::CHANGE_REQ, lradId, rawConfig == 0 ? "RELEASE" : "REQ");
+    messageCallback_(Topics::CHANGE_REQ, lradId, nlohmann::json{
+        {"mode", actionId == 0 ? "RELEASE" : "REQ"}
+    });
 
 
     return payload;
@@ -851,32 +853,37 @@ json CmsEntity::parse_CS_LRAS_emission_control_INS(
     
 
     if(lrfModeValidity == 1) {
-        lrfOnOff == 1 ?  messageCallback_(Topics::LRF_ON, lradId, lrfOnOff) : messageCallback_(Topics::LRF_OFF, lradId, lrfOnOff);
+        messageCallback_(Topics::LRF_MODE, lradId, nlohmann::json{
+            {"mode", lrfOnOff == 1 ? "ON" : "OFF"}
+        });
     }
 
     if(laserModeValidity == 1) {
-        laserMode == 0 ?  messageCallback_(Topics::LAD_OFF, lradId, "") :
-        laserMode == 1 ? messageCallback_(Topics::LAD_ON, lradId, "") : 
-        messageCallback_(Topics::LAD_STROBE, lradId, "");
+        messageCallback_(Topics::LAD_MODE, lradId, nlohmann::json{
+            {"mode", laserMode == 1 ? "ON" : "OFF"}
+        });
     }
 
     if(lightModeValidity == 1) {
-        lightPower != 0 ? messageCallback_(Topics::SEARCHLIGHT_POWER, lradId, lightPower) : 
-        messageCallback_(Topics::SEARCHLIGHT_POWER, lradId, lightPower);
-
-        messageCallback_(Topics::SEARCHLIGHT_FOCUS, lradId, lightZoom);
+        messageCallback_(Topics::SEARCHLIGHT_ADVANCED, lradId, nlohmann::json{
+            {"power", lightPower == 0 ? "OFF" : (lightPower == 1 ? "LOW" : (lightPower == 2 ? "MEDIUM" : "HIGH"))},
+            {"zoom", (uint8_t)lightZoom}
+        });
     }
 
     if(audioModeValidity == 1) {
-        messageCallback_(Topics::AUDIO_GAIN, lradId, volumeLevel);
-
-        messageCallback_(Topics::AUDIO_MUTE, lradId, mute == 1 ? true : false);
-        
+        messageCallback_(Topics::AUDIO_SETTINGS, lradId, nlohmann::json{
+            {"gain", audioVolumeDb},
+            {"mute", mute == 1}
+        });
     }
 
     
     if(cameraZoomValidity == 1) {
-        messageCallback_(Topics::HD_ZOOM, lradId, cameraZoom);
+        messageCallback_(Topics::ZOOM_SETTINGS, lradId, nlohmann::json{
+            {"value", cameraZoom*30/100}, // Convert from 0-100 range to 0-30 range
+            {"target", "HD"}
+        });
     }
 
     return payload;
@@ -1912,16 +1919,22 @@ void CmsEntity::sendControlReq(const uint16_t& lradId) {
 
 
 uint32_t CmsEntity::extractMessageIdFromTopic(const char* topic) const {
-    if (strcmp(topic, Topics::LRF_ON) == 0) {
+    if (strcmp(topic, Topics::LRF_MODE) == 0) {
         return 1679949828; // Emission Control 
     }
-    if (strcmp(topic, Topics::LRF_OFF) == 0) {
-        return 1679949828; // Emission Control 
-    }
-    if (strcmp(topic, Topics::LAD_ON) == 0) {
+    if (strcmp(topic, Topics::LAD_MODE) == 0) {
         return 1679949828; // Emission Control 
     } 
-    if (strcmp(topic, Topics::LAD_OFF) == 0) {
+    if (strcmp(topic, Topics::SEARCHLIGHT_MODE) == 0) {
+        return 1679949828; // Emission Control 
+    }
+    if (strcmp(topic, Topics::SEARCHLIGHT_ADVANCED) == 0) {
+        return 1679949828; // Emission Control 
+    }
+    if (strcmp(topic, Topics::AUDIO_SETTINGS) == 0) {
+        return 1679949828; // Emission Control 
+    }
+    if (strcmp(topic, Topics::ZOOM_SETTINGS) == 0) {
         return 1679949828; // Emission Control 
     }
     if(strcmp(topic, Topics::CHANGE_REQ) == 0) {

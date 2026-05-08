@@ -248,25 +248,17 @@ public:
     void extractMASTERdata(const uint8_t& lradId, const nlohmann::json& payload);
     void extractPOSITIONdata(const uint8_t& lradId, const nlohmann::json& payload);
 
-    void handleLRFon(int destinationLradId);
-    void handleLRFoff(int destinationLradId);
-    void handleLADon(int destinationLradId);
-    void handleLADoff(int destinationLradId);
-    void handleLADstrobe(int destinationLradId);
-    void handleSearchlightOn(int destinationLradId);
-    void handleSearchlightOff(int destinationLradId);
-    void handleSearchlightStrobe(int destinationLradId);
-    void handleAudioGain(int destinationLradId, float gain);
-    void handleAudioMute(int destinationLradId, bool mute);
-    void handleSearchlightFocus(int destinationLradId, float focus);
-    void handleSearchlightPower(int destinationLradId, const uint8_t& power);
-    void handleHdZoom(int destinationLradId, const uint8_t zoomValue);
-    void handleThZoom(int destinationLradId, const uint8_t zoomValue);
-    void handleChangeRequest(int destinationLradId, const std::string& mode);
-    void handleLADenable(int destinationLradId, const nlohmann::json& message);
-    void handleLRFenable(int destinationLradId, const nlohmann::json& message);
-    void handleSEARCHLIGHTenable(int destinationLradId, const nlohmann::json& message);
-    void handleAUDIOenable(int destinationLradId, const nlohmann::json& message);
+    void handleLRFmode(int destinationLradId, const nlohmann::json& payload);
+    void handleLADmode(int destinationLradId, const nlohmann::json& payload);
+    void handleSearchlightMode(int destinationLradId, const nlohmann::json& payload);
+    void handleAudioSettings(int destinationLradId, const nlohmann::json& payload);
+    void handleSearchlightAdvanced(int destinationLradId, const nlohmann::json& payload);
+    void handleZoomMode(int destinationLradId, const nlohmann::json& payload);
+    void handleChangeRequest(int destinationLradId, const nlohmann::json& payload);
+    void handleLADenable(int destinationLradId, const nlohmann::json& payload);
+    void handleLRFenable(int destinationLradId, const nlohmann::json& payload);
+    void handleSEARCHLIGHTenable(int destinationLradId, const nlohmann::json& payload);
+    void handleAUDIOenable(int destinationLradId, const nlohmann::json& payload);
 
     void start_cueing();
     void stop_cueing();

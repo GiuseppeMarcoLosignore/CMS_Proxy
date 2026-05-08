@@ -45,28 +45,20 @@ inline constexpr const char* CcAtomPower = "POWER";
 // Runtime config
 inline constexpr const char* NetworkConfigChanged = "system.network_config.changed";
 
-inline constexpr const char* LRF_ON = "LRF_ON";
-inline constexpr const char* LRF_OFF = "LRF_OFF";
+inline constexpr const char* LRF_MODE = "LRF_MODE";
 inline constexpr const char* LRF_INFO = "LRF";
 
-inline constexpr const char* LAD_ON = "LAD_ON";
-inline constexpr const char* LAD_OFF = "LAD_OFF";
-inline constexpr const char* LAD_STROBE = "LAD_STROBE";
+inline constexpr const char* LAD_MODE = "LAD_MODE";
 inline constexpr const char* LAD_INFO = "LAD";
 
-inline constexpr const char* SEARCHLIGHT_ON = "SEARCHLIGHT_ON";
-inline constexpr const char* SEARCHLIGHT_OFF = "SEARCHLIGHT_OFF";
-inline constexpr const char* SEARCHLIGHT_POWER = "SEARCHLIGHT_POWER";
-inline constexpr const char* SEARCHLIGHT_STROBE = "SEARCHLIGHT_STROBE";
-inline constexpr const char* SEARCHLIGHT_FOCUS = "SEARCHLIGHT_FOCUS";
+inline constexpr const char* SEARCHLIGHT_MODE = "SEARCHLIGHT_MODE";
+inline constexpr const char* SEARCHLIGHT_ADVANCED = "SEARCHLIGHT_ADVANCED";
 inline constexpr const char* SEARCHLIGHT_INFO = "SEARCHLIGHT";
 
-inline constexpr const char* AUDIO_GAIN = "AUDIO_GAIN";
-inline constexpr const char* AUDIO_MUTE = "AUDIO_MUTE";
+inline constexpr const char* AUDIO_SETTINGS = "AUDIO_SETTINGS";
 inline constexpr const char* AUDIO_INFO = "AUDIO";
 
-inline constexpr const char* HD_ZOOM = "HD_ZOOM";
-inline constexpr const char* TH_ZOOM = "TH_ZOOM";
+inline constexpr const char* ZOOM_SETTINGS = "ZOOM_SETTINGS";
 inline constexpr const char* ZOOM_INFO = "ZOOM";
 
 inline constexpr const char* LIGHT_ENABLE = "LIGHT_ENABLE";
