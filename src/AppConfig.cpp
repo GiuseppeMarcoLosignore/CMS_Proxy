@@ -46,6 +46,83 @@ std::vector<std::string> parse_multicast_groups_list(const std::string& value) {
     return groups;
 }
 
+void parse_destination_node(const pt::ptree& dest_node, std::map<uint16_t, AcsDestination>& outDestinations) {
+    const int id_value = dest_node.get<int>("id");
+    if (id_value < 0 || id_value > 65535) {
+        throw std::runtime_error("ID ACS non valido: " + std::to_string(id_value));
+    }
+
+    const uint16_t id = static_cast<uint16_t>(id_value);
+    AcsDestination dest;
+    dest.id = id;
+    dest.ip_address = dest_node.get<std::string>("ip");
+    dest.port = get_port(dest_node, "port");
+    outDestinations[id] = dest;
+}
+
+void parse_destinations_from_root(const pt::ptree& root, std::map<uint16_t, AcsDestination>& outDestinations) {
+    if (const auto groupedDests = root.get_child_optional("acs.destination")) {
+        for (const auto& [key, dest_node] : *groupedDests) {
+            (void)key;
+            parse_destination_node(dest_node, outDestinations);
+        }
+        return;
+    }
+
+    const std::string flatPrefix = "acs.destination.";
+    for (const auto& [sectionName, sectionNode] : root) {
+        if (sectionName.rfind(flatPrefix, 0) == 0) {
+            parse_destination_node(sectionNode, outDestinations);
+        }
+    }
+}
+
+std::vector<AcsDestination> extract_destinations_from_root(const pt::ptree& root) {
+    std::vector<AcsDestination> destinations;
+
+    auto append_if_valid = [&destinations](const pt::ptree& dest_node) {
+        AcsDestination destination;
+
+        if (const auto id = dest_node.get_optional<int>("id")) {
+            if (*id < 0 || *id > 65535) {
+                return;
+            }
+            destination.id = static_cast<uint16_t>(*id);
+        }
+
+        if (const auto ip = dest_node.get_optional<std::string>("ip")) {
+            destination.ip_address = trim_copy(*ip);
+        }
+
+        if (const auto port = dest_node.get_optional<int>("port")) {
+            if (*port >= 1 && *port <= 65535) {
+                destination.port = static_cast<uint16_t>(*port);
+            }
+        }
+
+        if (destination.id != 0 || !destination.ip_address.empty() || destination.port != 0) {
+            destinations.push_back(std::move(destination));
+        }
+    };
+
+    if (const auto groupedDests = root.get_child_optional("acs.destination")) {
+        for (const auto& [key, dest_node] : *groupedDests) {
+            (void)key;
+            append_if_valid(dest_node);
+        }
+        return destinations;
+    }
+
+    const std::string flatPrefix = "acs.destination.";
+    for (const auto& [sectionName, sectionNode] : root) {
+        if (sectionName.rfind(flatPrefix, 0) == 0) {
+            append_if_valid(sectionNode);
+        }
+    }
+
+    return destinations;
+}
+
 CmsConfig parse_cms(const pt::ptree& root) {
     if (!root.get_child_optional("cms")) {
         throw std::runtime_error("Sezione 'cms' mancante o non valida");
@@ -120,22 +197,13 @@ AcsConfig parse_acs(const pt::ptree& root) {
         cfg.tx_multicast_port  = get_port(root, "acs.multicast_tx.port");
     }
 
-    if (const auto dests = root.get_child_optional("acs.destination")) {
-        for (const auto& [key, dest_node] : *dests) {
-            const int id_value = dest_node.get<int>("id");
-            if (id_value < 0 || id_value > 65535) {
-                throw std::runtime_error("ID ACS non valido: " + std::to_string(id_value));
-            }
-            const uint16_t id = static_cast<uint16_t>(id_value);
-            AcsDestination dest;
-            dest.id         = id;
-            dest.ip_address = dest_node.get<std::string>("ip");
-            dest.port       = get_port(dest_node, "port");
-            cfg.destinations[id] = dest;
-        }
-    }
+    parse_destinations_from_root(root, cfg.destinations);
 
     return cfg;
+}
+
+std::vector<AcsDestination> extract_acs_destinations(const pt::ptree& root) {
+    return extract_destinations_from_root(root);
 }
 
 } // namespace
@@ -152,4 +220,15 @@ AppConfig loadAppConfig(const std::string& config_path) {
     cfg.cms  = parse_cms(root);
     cfg.acs  = parse_acs(root);
     return cfg;
+}
+
+std::vector<AcsDestination> extractAcsDestination(const std::string& config_path) {
+    pt::ptree root;
+    try {
+        pt::ini_parser::read_ini(config_path, root);
+    } catch (const pt::ini_parser::ini_parser_error& e) {
+        throw std::runtime_error("Errore nel file di configurazione: " + std::string(e.what()));
+    }
+
+    return extract_acs_destinations(root);
 }

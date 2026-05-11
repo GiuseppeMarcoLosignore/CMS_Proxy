@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Invia messaggi JSON generici a 127.0.0.1:56101 via TCP unicast."""
+"""Invia solo messaggi ALIVE via UDP multicast a 225.0.0.25:2525."""
 
 import socket
 import json
@@ -7,8 +7,9 @@ import time
 import argparse
 import random
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 56101
+DEFAULT_GROUP = "225.0.0.25"
+DEFAULT_PORT = 2525
+DEFAULT_MESSAGE_TYPE = "ALIVE"
 
 # Message templates with their parameter ranges
 MESSAGE_TEMPLATES = {
@@ -176,7 +177,7 @@ MESSAGE_TEMPLATES = {
         "sender": "ACS",
         "param": {
             "name": lambda: random.choice(["PORT", "STARBOARD"]),
-            "ipAddress": lambda: f"192.168.1.{random.randint(1, 254)}",
+            "ipAddress": lambda: "127.0.0.1",
             "state": lambda: random.choice(["ONLINE", "OFFLINE", "DEGRADED"]),
             "mode": lambda: random.choice(["ACTIVE", "STANDBY", "MAINTENANCE"]),
             "swVersion": lambda: f"{random.randint(1,3)}.{random.randint(0,9)}.{random.randint(0,99)}"
@@ -185,13 +186,9 @@ MESSAGE_TEMPLATES = {
 }
 
 
-def build_message(message_type: str) -> bytes:
-    """Build a JSON message by type, with random parameters."""
-    if message_type not in MESSAGE_TEMPLATES:
-        raise ValueError(f"Tipo di messaggio sconosciuto: {message_type}. "
-                        f"Disponibili: {', '.join(MESSAGE_TEMPLATES.keys())}")
-    
-    template = MESSAGE_TEMPLATES[message_type]
+def build_message() -> bytes:
+    """Build an ALIVE JSON message with random parameters."""
+    template = MESSAGE_TEMPLATES[DEFAULT_MESSAGE_TYPE]
     msg = {}
     
     for key, value in template.items():
@@ -200,20 +197,20 @@ def build_message(message_type: str) -> bytes:
         else:
             msg[key] = value
     
-    return (json.dumps(msg, separators=(',', ':')) + "\n").encode('utf-8')
+    return (json.dumps(msg, separators=(",", ":")) + "\n").encode("utf-8")
 
 
-def run(host: str, port: int, message_type: str, rate_hz: float):
+def run(group: str, port: int, rate_hz: float):
     interval = 1.0 / rate_hz
 
-    print(f"Connessione a {host}:{port} ...")
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.connect((host, port))
-        print(f"Connesso. Invio messaggi {message_type} a {rate_hz} Hz. Ctrl+C per interrompere.")
+    print(f"Invio UDP multicast verso {group}:{port} ...")
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+        print(f"Pronto. Invio messaggi {DEFAULT_MESSAGE_TYPE} a {rate_hz} Hz. Ctrl+C per interrompere.")
         try:
             while True:
-                payload = build_message(message_type)
-                sock.sendall(payload)
+                payload = build_message()
+                sock.sendto(payload, (group, port))
                 print(f"  >> {payload.decode().strip()}")
                 time.sleep(interval)
         except KeyboardInterrupt:
@@ -222,25 +219,18 @@ def run(host: str, port: int, message_type: str, rate_hz: float):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Invia messaggi JSON generici via TCP unicast.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Tipi di messaggio disponibili:\n  " + 
-               "\n  ".join(MESSAGE_TEMPLATES.keys())
-    )
-    parser.add_argument(
-        "message_type",
-        help="Tipo di messaggio da inviare (ERROR, AUDIO, LAD, SEARCHLIGHT, LRF, STABIL, SHADOW, ZOOM, MASTER, CONTEXT, POSITION, DELTA, TRACKING, CONFIG, IMU, HOURS, ALIVE)"
-    )
-    parser.add_argument(
-        "--host",
-        default=DEFAULT_HOST,
-        help=f"IP destinazione (default: {DEFAULT_HOST})"
+        description="Invia solo messaggi ALIVE via UDP multicast.",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=DEFAULT_PORT,
         help=f"Porta destinazione (default: {DEFAULT_PORT})"
+    )
+    parser.add_argument(
+        "--group",
+        default=DEFAULT_GROUP,
+        help=f"Gruppo multicast destinazione (default: {DEFAULT_GROUP})"
     )
     parser.add_argument(
         "--rate",
@@ -250,4 +240,4 @@ if __name__ == "__main__":
     )
     
     args = parser.parse_args()
-    run(args.host, args.port, args.message_type, args.rate)
+    run(args.group, args.port, args.rate)

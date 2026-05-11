@@ -220,14 +220,18 @@ std::optional<AcsDestination> AcsEntity::findDestination(uint16_t id) const {
 }
 
 std::optional<AcsDestination> AcsEntity::findDestination(const std::string& ip) const {
-    std::lock_guard<std::mutex> lock(destinationsMutex_);
-    for (const auto& [_, destination] : destinations_) {
+    const std::vector<AcsDestination> destinations = extractAcsDestination("config/network_config.ini");
+    for (const auto& destination : destinations) {
         if (destination.ip_address == ip) {
             return destination;
         }
     }
 
-    return std::nullopt;
+    AcsDestination empty;
+    empty.id = 0;
+    empty.ip_address = ip;
+
+    return empty;
 }
 
 void AcsEntity::handleOutgoingJsonEvent(const std::string& topic, const nlohmann::json& message) {
@@ -275,18 +279,9 @@ void AcsEntity::onPacketReceived(const RawPacket& packet, const PacketSourceInfo
 
     if(payload["sender"] == "ACS") {
         const auto destination = findDestination(sourceInfo.source_ip);
-        if (destination.has_value()) {
-            if(destination->id == 1) {
-                lradId = 1;
-            }
-            else if(destination->id == 2) {
-                lradId = 2;
-            }
-        }
+        if (destination.has_value()) 
+            messageCallback_(sendTopic, destination->id, payload);
     }
-
-    messageCallback_(sendTopic, lradId, payload);
-
 }
 
 void AcsEntity::createHeader(std::string header, std::string type, std::string sender, nlohmann::json param, nlohmann::json& outPayload) {

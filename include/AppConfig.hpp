@@ -46,3 +46,4 @@ struct NetworkConfigChangedEvent : public IEvent {
 };
 
 AppConfig loadAppConfig(const std::string& config_path);
+std::vector<AcsDestination> extractAcsDestination(const std::string& config_path);

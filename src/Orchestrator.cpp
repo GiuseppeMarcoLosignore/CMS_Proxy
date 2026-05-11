@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -77,7 +78,7 @@ Orchestrator::Orchestrator(CmsEntity &cmsEntity, AcsEntity &acsEntity, std::shar
 void Orchestrator::start() {
     std::cout << "[Orchestrator] Starting..." << std::endl;
 
-    initializeDefaultStatus();
+    // initializeDefaultStatus();
     
     subscribeTopics();
     
@@ -217,9 +218,10 @@ void Orchestrator::initializeLradNetinfo(const std::string& ipAddress, const uin
         lines.insert(lines.end(), destinationBlock.begin(), destinationBlock.end());
     }
 
-    std::ofstream outFile(configPath, std::ios::trunc);
+    const std::string tempPath = configPath + ".tmp";
+    std::ofstream outFile(tempPath, std::ios::trunc);
     if (!outFile.is_open()) {
-        std::cerr << "[Orchestrator] Impossibile scrivere il file di configurazione: " << configPath << std::endl;
+        std::cerr << "[Orchestrator] Impossibile scrivere il file temporaneo di configurazione: " << tempPath << std::endl;
         return;
     }
 
@@ -230,7 +232,25 @@ void Orchestrator::initializeLradNetinfo(const std::string& ipAddress, const uin
         }
     }
 
-    netConfigCallback_(ipAddress, 9000);
+    outFile.flush();
+    outFile.close();
+
+    std::error_code fsError;
+    std::filesystem::remove(configPath, fsError);
+    fsError.clear();
+    std::filesystem::rename(tempPath, configPath, fsError);
+    if (fsError) {
+        std::cerr << "[Orchestrator] Impossibile sostituire il file di configurazione: " << fsError.message() << std::endl;
+        std::filesystem::remove(tempPath, fsError);
+        return;
+    }
+
+    if (netConfigCallback_) {
+        netConfigCallback_(ipAddress, 9000);
+    } else {
+        std::cerr << "[Orchestrator] Callback di rete non impostata, skip notifica net config" << std::endl;
+    }
+
     addNewLrad("LRAD" + idText, lradId);
 }
 
@@ -245,11 +265,52 @@ void Orchestrator::addNewLrad(const std::string& name, const uint8_t& lradId) {
 
     lradStatus newLrad{};
     newLrad.alive.name = name;
+    newLrad.alive.state = "Unknown";
+    newLrad.alive.mode = "Unknown";
+    newLrad.alive.ipAddress = "0.0.0.0";
+    newLrad.alive.swVersion = "Unknown";
+    newLrad.lrad_id = lradId;
+    newLrad.controlledByCms = false;
+    newLrad.cueingActive = false;
+    newLrad.videotracking = false;
+    newLrad.ladEnabled = true;
+    newLrad.searchlightEnabled = true;
+    newLrad.lrfEnabled = true;
+    newLrad.audioEnabled = true;
+    newLrad.isRecording = false;
+    newLrad.isCmsConnected = false;
+    newLrad.audio.gain = 0.0F;
+    newLrad.audio.mute = false;
+    newLrad.lad.mode = "OFF";
+    newLrad.searchlight.mode = "OFF";
+    newLrad.searchlight.power = "OFF";
+    newLrad.searchlight.focus = "0";
+    newLrad.lrf.mode = "OFF";
+    newLrad.lrf.value = 0.0F;
+    newLrad.zoom.id = "HD";
+    newLrad.zoom.value = 0.0F;
 
-    // Add the new LRAD to the list
     {
         std::lock_guard<std::mutex> lock(lradMutex_);
-        lradList_->push_back(newLrad);
+        std::vector<lradStatus> lradList;
+        if (const std::shared_ptr<std::vector<lradStatus>> lradListPtr = std::atomic_load(&lradList_); lradListPtr) {
+            lradList = *lradListPtr;
+        }
+
+        const auto alreadyPresent = std::find_if(
+            lradList.begin(),
+            lradList.end(),
+            [&name, lradId](const lradStatus& lrad) {
+                return lrad.alive.name == name || lrad.lrad_id == lradId;
+            }
+        );
+
+        if (alreadyPresent != lradList.end()) {
+            return;
+        }
+
+        lradList.push_back(std::move(newLrad));
+        std::atomic_store(&lradList_, std::make_shared<std::vector<lradStatus>>(std::move(lradList)));
     }
 }
 
@@ -338,6 +399,12 @@ void Orchestrator::subscribeTopics() {
 
     eventBus_->subscribe(Topics::AUDIO_ENABLE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
         handleAUDIOenable(lradId, message);
+    });
+
+
+
+    eventBus_->subscribe(Topics::AcsAlive, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        extractALIVEdata(lradId, message);
     });
 
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
@@ -448,7 +515,7 @@ lrasStatus Orchestrator::getLrasFullStatus() const {
 //TO TEST
 void Orchestrator::extractALIVEdata(const uint8_t& lradId, const nlohmann::json& payload) {
     const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
-    if (name.empty()) return;
+    
     
     if (!payload.contains("param") || !payload.at("param").is_object()) {
         return;
@@ -456,7 +523,7 @@ void Orchestrator::extractALIVEdata(const uint8_t& lradId, const nlohmann::json&
 
     const auto& param = payload.at("param");
 
-    if(name == "PORT" || name == "LRAD1") {
+    if(name == "PORT" || name == "STARBOARD") {
         auto readStringField = [&param](const char* primaryKey, const char* fallbackKey = nullptr) -> std::string {
         if (param.contains(primaryKey) && param.at(primaryKey).is_string()) {
                 return param.at(primaryKey).get<std::string>();
@@ -482,8 +549,28 @@ void Orchestrator::extractALIVEdata(const uint8_t& lradId, const nlohmann::json&
     setLrasFullStatus(std::move(lrasStatus));
         
     }
-    else 
-    initializeLradNetinfo(payload.value("ipAddress", "ip"), lradList_->size() + 1);
+    else {
+        std::size_t lradCount = lradId - 1; // Default to current ID minus one
+        {
+            std::lock_guard<std::mutex> lock(lradMutex_);
+            if (const std::shared_ptr<std::vector<lradStatus>> lradListPtr = std::atomic_load(&lradList_); lradListPtr) {
+                lradCount = lradListPtr->size();
+            }
+        }
+
+        if (static_cast<std::size_t>(lradId) < lradCount + 1) {
+            std::string discoveredIp;
+            if (param.contains("ipAddress") && param.at("ipAddress").is_string()) {
+                discoveredIp = param.at("ipAddress").get<std::string>();
+            } else if (param.contains("ip") && param.at("ip").is_string()) {
+                discoveredIp = param.at("ip").get<std::string>();
+            }
+
+            if (!discoveredIp.empty()) {
+                initializeLradNetinfo(discoveredIp, lradCount + 1);
+            }
+        }
+    }
     
 }
 
