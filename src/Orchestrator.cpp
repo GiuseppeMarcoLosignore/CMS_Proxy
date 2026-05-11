@@ -79,6 +79,9 @@ void Orchestrator::start() {
     std::cout << "[Orchestrator] Starting..." << std::endl;
 
     // initializeDefaultStatus();
+    for(size_t i = 0; i < extractAcsDestination("config/network_config.ini").size(); ++i) 
+        addNewLrad("LRAD" + std::to_string(i+1), static_cast<uint8_t>(i+1));
+        
     
     subscribeTopics();
     
@@ -1074,8 +1077,14 @@ void Orchestrator::enablePayload(int lradId, PayoladType type, bool enable) {
 void Orchestrator::extractMASTERdata(const uint8_t& lradId, const nlohmann::json& payload) {
     const std::string name = (lradId == 1) ? "PORT" : (lradId == 2) ? "STARBOARD" : "";
     if (name.empty()) return;
-    if (!payload.contains("param") || !payload.at("param").is_object()) {
+    if (!payload.contains("param")) {
         return;
+    }
+
+
+    if(pendingCmsTimer_ ) {
+        pendingCmsTimer_->destroy();
+        pendingCmsTimer_ = nullptr;
     }
     const auto& param = payload.at("param");
     lradStatus lrad = getLradFullStatus(name);
@@ -1083,8 +1092,13 @@ void Orchestrator::extractMASTERdata(const uint8_t& lradId, const nlohmann::json
         const std::string mode = param.at("mode").get<std::string>();
         if(mode == "ACCEPT") lrad.controlledByCms = true;
         if(mode == "REFUSE") lrad.controlledByCms = false;
-        if(mode == "REQUEST") cmsEntity_.sendControlReq(lradId);
-
+        if(mode == "REQUEST") {
+        pendingAcsTimer_ = std::make_shared<Timer>(std::chrono::seconds(120), [this, lradId]() {
+        eventBus_->publish(Topics::CHANGE_REQ, lradId, nlohmann::json{{"param", {{"mode", "ACCEPT"}}}});
+        });
+        cmsEntity_.sendControlReq(lradId);
+        pendingAcsTimer_->start();
+        }
     }
     setLradFullStatus(std::move(lrad), name);
 }
@@ -1294,14 +1308,24 @@ void Orchestrator::handleChangeRequest(int destinationLradId, const nlohmann::js
         resolvedMode = "REFUSE";
     }
     if(mode == "RELEASE") {
-
+        if(pendingAcsTimer_) {
+            pendingAcsTimer_->destroy();
+            pendingAcsTimer_ = nullptr;
+        }
         lrad.controlledByCms = false;
         setLradFullStatus(std::move(lrad), (destinationLradId == 1) ? "PORT" : "STARBOARD");
         if(isLradControlledByCms(destinationLradId)) resolvedMode = "ACCEPT";
 
     }
 
-    
+    if(mode == "REQ") {
+        pendingCmsTimer_ = std::make_shared<Timer>(std::chrono::seconds(5), [this, destinationLradId]() {
+            eventBus_->publish(Topics::AcsMaster, destinationLradId, nlohmann::json{{"param", {{"mode", "REFUSE"}}}});
+        });
+        pendingCmsTimer_->start();
+    }
+
+
     cmsEntity_.eventStatus(Topics::CHANGE_REQ, StatusEventValue::NO_ERR);
     acsEntity_.setChangeRequest(destinationLradId, resolvedMode);
 }

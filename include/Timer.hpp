@@ -4,11 +4,12 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <thread>
 
-namespace atom_timer {
+
 
 class Timer {
 public:
@@ -17,8 +18,9 @@ public:
    * @param timeout_ms Durata del timeout in millisecondi
    * @param callback Funzione da invocare allo scadere del timeout
    */
-  explicit Timer(uint64_t timeout_ms, std::function<void()> callback)
-      : timeout_duration_(std::chrono::milliseconds(timeout_ms)),
+  template <typename Rep, typename Period>
+  explicit Timer(std::chrono::duration<Rep, Period> timeout, std::function<void()> callback)
+      : timeout_duration_(std::chrono::duration_cast<std::chrono::milliseconds>(timeout)),
         callback_(callback), running_(false) {}
 
   /**
@@ -74,6 +76,6 @@ private:
   std::condition_variable cv_;
 };
 
-} // namespace atom_timer
+
 
 #endif // ATOM_TIMER_HPP

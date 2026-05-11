@@ -12,6 +12,7 @@
 #include "AcsEntity.hpp"
 #include "EventBus.hpp"
 #include "IInterfaces.hpp"
+#include "Timer.hpp"
 
 
 
@@ -276,6 +277,8 @@ private:
     std::shared_ptr<lrasStatus> lras;
     mutable std::mutex lradMutex_;
     mutable std::mutex lrasMutex_;
+    std::shared_ptr<Timer> pendingCmsTimer_;
+    std::shared_ptr<Timer> pendingAcsTimer_;
     CmsEntity &cmsEntity_;
     AcsEntity &acsEntity_;
     std::thread updateThread_;
