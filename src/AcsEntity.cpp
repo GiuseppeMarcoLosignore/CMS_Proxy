@@ -106,6 +106,12 @@ void AcsEntity::start() {
     
 
     udpSocket_->start();
+
+    tcpSocket_ = std::make_shared<TcpSocket>(
+        rxIoContext_,
+        kAnyListenIp,
+        startupConfig.tcp_listen_port
+    );
     
 
     rxWorkGuard_.emplace(rxIoContext_.get_executor());
@@ -470,6 +476,27 @@ void AcsEntity::setChangeRequest(uint16_t destinationLradId, const std::string& 
     createMASTER(destinationLradId, mode);
 }
 
+void AcsEntity::setMoveDelta(uint16_t destinationLradId, float azDelta, float elDelta) {
+    std::cout << "[ACS Entity] Comando MOVE DELTA ricevuto: azDelta=" << azDelta << ", elDelta=" << elDelta << std::endl;
+    createDELTA(destinationLradId, azDelta, elDelta);
+}
+
+void AcsEntity::setMoveAbsolute(uint16_t destinationLradId, float azimuth, float elevation) {
+    std::cout << "[ACS Entity] Comando MOVE ABSOLUTE ricevuto: azimuth=" << azimuth << ", elevation=" << elevation << std::endl;
+    createPOSITION(destinationLradId, azimuth, elevation, 0);
+}
+
+void AcsEntity::setAzShadow(uint16_t destinationLradId, float az1, float az2) {
+    std::cout << "[ACS Entity] Comando AZ SHADOW ricevuto: az1=" << az1 << ", az2=" << az2 << std::endl;
+    createSHADOW(destinationLradId, az1, az2, 0.0f, 0.0f, "AZ", "AZ");
+}
+
+void AcsEntity::setElShadow(uint16_t destinationLradId, float el1, float el2) {
+    std::cout << "[ACS Entity] Comando EL SHADOW ricevuto: el1=" << el1 << ", el2=" << el2 << std::endl;
+    createSHADOW(destinationLradId, 0.0f, 0.0f, el1, el2, "EL", "EL");
+}
+
+
 
 void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
     nlohmann::json param;
@@ -494,21 +521,23 @@ void AcsEntity::createLRF(uint16_t destinationLradId, const std::string& mode) {
 }
 
 //TODO: implementare le altre createXXX per gli altri tipi di comando previsti (es. ZOOM, SHADOW, etc.) mappando opportunamente i parametri in ingresso e quelli richiesti dall'ACS, e gestendo eventuali errori di formato o di parametri mancanti
-void AcsEntity::createSHADOW(uint16_t destinationLradId, float az1, float el1, float az2, float el2) {
+void AcsEntity::createSHADOW(uint16_t destinationLradId, float start_1, float stop_1, float start_2, float stop_2, std::string target1, std::string target2) {
     nlohmann::json param;
     nlohmann::json payload;
     nlohmann::json sectors;
 
-    if (az1 != 0 || el1 != 0) {
+    if (start_1 != 0 || stop_1 != 0) {
         nlohmann::json sector1;
-        sector1["az"] = az1;
-        sector1["el"] = el1;
+        sector1["target"] = target1;
+        sector1["start"] = start_1;
+        sector1["stop"] = stop_1;
         sectors.push_back(sector1);
     }
-    if (az2 != 0 || el2 != 0) {
+    if (start_2 != 0 || stop_2 != 0) {
         nlohmann::json sector2;
-        sector2["az"] = az2;
-        sector2["el"] = el2;
+        sector2["target"] = target2;
+        sector2["start"] = start_2;
+        sector2["stop"] = stop_2;
         sectors.push_back(sector2);
     }
 
@@ -585,8 +614,8 @@ void AcsEntity::createDELTA(uint16_t destinationLradId, float az, float el) {
     nlohmann::json param;
     nlohmann::json payload;
 
-    param["az"] = az;
-    param["el"] = el;
+    param["az"] = az*0.5;
+    param["el"] = el*0.5;
     createHeader("DELTA", "CMD", "CMS", param, payload);
 
     const auto destination = findDestination(destinationLradId);

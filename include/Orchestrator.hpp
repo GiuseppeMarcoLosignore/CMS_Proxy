@@ -263,6 +263,10 @@ public:
     void handleLRFenable(int destinationLradId, const nlohmann::json& payload);
     void handleSEARCHLIGHTenable(int destinationLradId, const nlohmann::json& payload);
     void handleAUDIOenable(int destinationLradId, const nlohmann::json& payload);
+    void handleAbsoluteMove(int destinationLradId, const nlohmann::json& payload);
+    void handleDeltaMove(int destinationLradId, const nlohmann::json& payload);
+    void handleAzShadow(int destinationLradId, const nlohmann::json& payload);
+    void handleElShadow(int destinationLradId, const nlohmann::json& payload);
 
     void start_cueing();
     void stop_cueing();

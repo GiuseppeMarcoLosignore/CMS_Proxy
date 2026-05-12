@@ -410,6 +410,23 @@ void Orchestrator::subscribeTopics() {
         extractALIVEdata(lradId, message);
     });
 
+
+    eventBus_->subscribe(Topics::MOVE_ABSOLUTE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleAbsoluteMove(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::MOVE_DELTA, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleDeltaMove(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::AZ_SHADOW, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleAzShadow(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::EL_SHADOW, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        handleElShadow(lradId, message);
+    });
+
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
 }
 
@@ -1090,8 +1107,10 @@ void Orchestrator::extractMASTERdata(const uint8_t& lradId, const nlohmann::json
     lradStatus lrad = getLradFullStatus(name);
     if (param.contains("mode") && param.at("mode").is_string()) {
         const std::string mode = param.at("mode").get<std::string>();
-        if(mode == "ACCEPT") lrad.controlledByCms = true;
-        if(mode == "REFUSE") lrad.controlledByCms = false;
+        if(mode == "ACCEPT") 
+        lrad.controlledByCms = true;
+        if(mode == "REFUSE") 
+        lrad.controlledByCms = false;
         if(mode == "REQUEST") {
         pendingAcsTimer_ = std::make_shared<Timer>(std::chrono::seconds(120), [this, lradId]() {
         eventBus_->publish(Topics::CHANGE_REQ, lradId, nlohmann::json{{"param", {{"mode", "ACCEPT"}}}});
@@ -1111,6 +1130,11 @@ void Orchestrator::handleLRFmode(int destinationLradId,  const nlohmann::json& p
     }
     if(!isPayloadEnabled(destinationLradId, PayoladType::LRF)) { //trial
         std::cout << "[Orchestrator] Cannot handle LRF command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_MODE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LRF command: LRAD not controlled by CMS" << std::endl;
         cmsEntity_.eventStatus(Topics::LRF_MODE, StatusEventValue::SYSTEM_ERR);
         return;
     }
@@ -1138,6 +1162,21 @@ void Orchestrator::handleLADmode(int destinationLradId,  const nlohmann::json& p
     }
     if(!isPayloadEnabled(destinationLradId, PayoladType::LAD)) { //trial
         std::cout << "[Orchestrator] Cannot handle LAD command: Payload not enabled" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_MODE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LAD command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_MODE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(inInShadow(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LAD command: LRAD in shadow" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_MODE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!canLadFire(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LAD command: LRF conditions not met" << std::endl;
         cmsEntity_.eventStatus(Topics::LAD_MODE, StatusEventValue::SYSTEM_ERR);
         return;
     }
@@ -1169,6 +1208,16 @@ void Orchestrator::handleSearchlightMode(int destinationLradId, const nlohmann::
         cmsEntity_.eventStatus(Topics::SEARCHLIGHT_MODE, StatusEventValue::SYSTEM_ERR);
         return;
     }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_MODE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(inInShadow(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight command: LRAD in shadow" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_MODE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
     const std::string mode = payload.at("mode").get<std::string>();
     if(mode == "ON") {
         cmsEntity_.eventStatus(Topics::SEARCHLIGHT_MODE, StatusEventValue::NO_ERR);
@@ -1187,8 +1236,8 @@ void Orchestrator::handleAudioSettings(int destinationLradId, const nlohmann::js
         cmsEntity_.eventStatus(Topics::AUDIO_SETTINGS, StatusEventValue::NETWORK_ERR);
         return;
     }
-    if(!isPayloadEnabled(destinationLradId, PayoladType::AUDIO)) { //trial
-        std::cout << "[Orchestrator] Cannot handle Audio gain command: Payload not enabled" << std::endl;
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle Audio gain command: LRAD not controlled by CMS" << std::endl;
         cmsEntity_.eventStatus(Topics::AUDIO_SETTINGS, StatusEventValue::SYSTEM_ERR);
         return;
     }
@@ -1214,7 +1263,7 @@ void Orchestrator::handleAudioSettings(int destinationLradId, const nlohmann::js
         std::cout << "[Orchestrator] Cannot handle Audio mute command: Invalid payload" << std::endl;
         cmsEntity_.eventStatus(Topics::AUDIO_SETTINGS, StatusEventValue::SYSTEM_ERR);
         return;
-        }
+    }
 
 
 
@@ -1230,7 +1279,17 @@ void Orchestrator::handleSearchlightAdvanced(int destinationLradId, const nlohma
         std::cout << "[Orchestrator] Cannot handle Searchlight advanced command: Payload not enabled" << std::endl;
         return;
     }
-     if(payload.contains("power") && payload.at("power").is_string()) {
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight advanced command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_ADVANCED, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(inInShadow(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle Searchlight advanced command: LRAD in shadow" << std::endl;
+        cmsEntity_.eventStatus(Topics::SEARCHLIGHT_ADVANCED, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(payload.contains("power") && payload.at("power").is_string()) {
         std::string power = payload.at("power").get<std::string>();
         cmsEntity_.eventStatus(Topics::SEARCHLIGHT_ADVANCED, StatusEventValue::NO_ERR);
         acsEntity_.setSearchlightPower(destinationLradId, power == "OFF" ? 0 : power == "LOW" ? 1 : power == "MID" ? 2 : 3);
@@ -1258,6 +1317,11 @@ void Orchestrator::handleZoomMode(int destinationLradId, const nlohmann::json& p
     }
     if(!payload.contains("target") || !payload["target"].is_string()) { 
         std::cout << "[Orchestrator] Cannot handle HD zoom command: Invalid zoom value" << std::endl;
+        cmsEntity_.eventStatus(Topics::ZOOM_SETTINGS, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle zoom command: LRAD not controlled by CMS" << std::endl;
         cmsEntity_.eventStatus(Topics::ZOOM_SETTINGS, StatusEventValue::SYSTEM_ERR);
         return;
     }
@@ -1320,7 +1384,7 @@ void Orchestrator::handleChangeRequest(int destinationLradId, const nlohmann::js
 
     if(mode == "REQ") {
         pendingCmsTimer_ = std::make_shared<Timer>(std::chrono::seconds(5), [this, destinationLradId]() {
-            eventBus_->publish(Topics::AcsMaster, destinationLradId, nlohmann::json{{"param", {{"mode", "REFUSE"}}}});
+            eventBus_->publish(Topics::AcsMaster, destinationLradId, nlohmann::json{{"param", {{"mode", "ACCEPT"}}}});
         });
         pendingCmsTimer_->start();
     }
@@ -1334,6 +1398,11 @@ void Orchestrator::handleLADenable(int destinationLradId, const nlohmann::json& 
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle LAD enable command: ACS not connected" << std::endl;
         cmsEntity_.eventStatus(Topics::LAD_ENABLE, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LAD enable command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::LAD_ENABLE, StatusEventValue::SYSTEM_ERR);
         return;
     }
     lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
@@ -1357,6 +1426,11 @@ void Orchestrator::handleLRFenable(int destinationLradId, const nlohmann::json& 
         cmsEntity_.eventStatus(Topics::LRF_ENABLE, StatusEventValue::NETWORK_ERR);
         return;
     }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle LRF enable command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::LRF_ENABLE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
     lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
     if(message.contains("enable") && message["enable"].is_boolean()) {
         enablePayload(destinationLradId, PayoladType::LRF, message["enable"].get<bool>());
@@ -1373,6 +1447,11 @@ void Orchestrator::handleSEARCHLIGHTenable(int destinationLradId, const nlohmann
     if(!isAcsConnected()) {
         std::cout << "[Orchestrator] Cannot handle SEARCHLIGHT enable command: ACS not connected" << std::endl;
         cmsEntity_.eventStatus(Topics::LIGHT_ENABLE, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle SEARCHLIGHT enable command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::LIGHT_ENABLE, StatusEventValue::SYSTEM_ERR);
         return;
     }
     lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
@@ -1393,6 +1472,11 @@ void Orchestrator::handleAUDIOenable(int destinationLradId, const nlohmann::json
         cmsEntity_.eventStatus(Topics::AUDIO_ENABLE, StatusEventValue::NETWORK_ERR);
         return;
     }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle AUDIO enable command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::AUDIO_ENABLE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
     lradStatus lrad = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
     if(message.contains("enable") && message["enable"].is_boolean()) {
         enablePayload(destinationLradId, PayoladType::AUDIO, message["enable"].get<bool>());
@@ -1403,6 +1487,94 @@ void Orchestrator::handleAUDIOenable(int destinationLradId, const nlohmann::json
         cmsEntity_.eventStatus(Topics::AUDIO_ENABLE, StatusEventValue::SYSTEM_ERR);
         return;
     }
+}
+
+void Orchestrator::handleAbsoluteMove(int destinationLradId, const nlohmann::json& payload) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle absolute move command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::MOVE_ABSOLUTE, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle absolute move command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::MOVE_ABSOLUTE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!payload.contains("az") || !payload.contains("el") || !payload["az"].is_number() || !payload["el"].is_number()) {
+        std::cout << "[Orchestrator] Cannot handle absolute move command: Invalid payload" << std::endl;
+        cmsEntity_.eventStatus(Topics::MOVE_ABSOLUTE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    float az = payload["az"].get<float>();
+    float el = payload["el"].get<float>();
+    cmsEntity_.eventStatus(Topics::MOVE_ABSOLUTE, StatusEventValue::NO_ERR);
+    acsEntity_.setMoveAbsolute(destinationLradId, az, el);
+}
+
+void Orchestrator::handleDeltaMove(int destinationLradId, const nlohmann::json& payload) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle delta move command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::MOVE_DELTA, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle delta move command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::MOVE_DELTA, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!payload.contains("xPosition") || !payload.contains("yPosition") || !payload["xPosition"].is_number() || !payload["yPosition"].is_number()) {
+        std::cout << "[Orchestrator] Cannot handle delta move command: Invalid payload" << std::endl;
+        cmsEntity_.eventStatus(Topics::MOVE_DELTA, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    float az = payload["xPosition"].get<float>();
+    float el = payload["yPosition"].get<float>();
+    cmsEntity_.eventStatus(Topics::MOVE_DELTA, StatusEventValue::NO_ERR);
+    acsEntity_.setMoveDelta(destinationLradId, az, el);
+}
+
+void Orchestrator::handleAzShadow(int destinationLradId, const nlohmann::json& payload) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle azimuth shadow command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::AZ_SHADOW, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle azimuth shadow command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::AZ_SHADOW, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!payload.contains("az1") || !payload.contains("az2") || !payload["az1"].is_number() || !payload["az2"].is_number()) {
+        std::cout << "[Orchestrator] Cannot handle azimuth shadow command: Invalid payload" << std::endl;
+        cmsEntity_.eventStatus(Topics::AZ_SHADOW, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    float az1 = payload["az1"].get<float>();
+    float az2 = payload["az2"].get<float>();
+    cmsEntity_.eventStatus(Topics::AZ_SHADOW, StatusEventValue::NO_ERR);
+    acsEntity_.setAzShadow(destinationLradId, az1, az2);
+}
+
+void Orchestrator::handleElShadow(int destinationLradId, const nlohmann::json& payload) {
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot handle elevation shadow command: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::EL_SHADOW, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot handle elevation shadow command: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::EL_SHADOW, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(!payload.contains("el1") || !payload.contains("el2") || !payload["el1"].is_number() || !payload["el2"].is_number()) {
+        std::cout << "[Orchestrator] Cannot handle elevation shadow command: Invalid payload" << std::endl;
+        cmsEntity_.eventStatus(Topics::EL_SHADOW, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    float el1 = payload["el1"].get<float>();
+    float el2 = payload["el2"].get<float>();
+    cmsEntity_.eventStatus(Topics::EL_SHADOW, StatusEventValue::NO_ERR);
+    acsEntity_.setElShadow(destinationLradId, el1, el2);
 }
 
 void Orchestrator::start_cueing() {

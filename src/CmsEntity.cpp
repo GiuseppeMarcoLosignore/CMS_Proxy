@@ -1017,13 +1017,13 @@ json CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
     payload["LRAD ID"] = lradId;
     payload["Sector 1"] = {
         {"On Off", sector1OnOff},
-        {"start", sector1Start},
-        {"stop", sector1Stop}
+        {"az1", sector1Start},
+        {"az2", sector1Stop}
     };
     payload["Sector 2"] = {
         {"On Off", sector2OnOff},
-        {"start", sector2Start},
-        {"stop", sector2Stop}
+        {"az1", sector2Start},
+        {"az2", sector2Stop}
     };
 
     destinationLradId = lradId;
@@ -1034,6 +1034,13 @@ json CmsEntity::parse_CS_LRAS_inhibition_sectors_INS(
 
     if (!has_known_lrad(lradId)) {
         nackreason = 2;
+    }
+
+    if(sector1OnOff == 1) {
+        messageCallback_(Topics::AZ_SHADOW, lradId, payload["Sector 1"]);
+    }
+    if(sector2OnOff == 1) {
+        messageCallback_(Topics::AZ_SHADOW, lradId, payload["Sector 2"]);
     }
 
     return payload;
@@ -1054,14 +1061,16 @@ json CmsEntity::parse_CS_LRAS_joystick_control_lrad_1_INS(
 
     json payload;
     payload["LRAD ID"] = 1;
-    payload["xPosition"] = xPosition;
-    payload["yPosition"] = yPosition;
+    payload["xPosition"] = xPosition/32768.0f;
+    payload["yPosition"] = yPosition/32768.0f;
 
     destinationLradId = 1;
 
     if (!has_known_lrad(1)) {
         nackreason = 2;
     }
+
+    messageCallback_(Topics::MOVE_DELTA, 1, payload);
 
     return payload;
 }
@@ -1081,14 +1090,16 @@ json CmsEntity::parse_CS_LRAS_joystick_control_lrad_2_INS(
 
     json payload;
     payload["LRAD ID"] = 2;
-    payload["xPosition"] = xPosition;
-    payload["yPosition"] = yPosition;
+    payload["xPosition"] = xPosition/32768.0f;
+    payload["yPosition"] = yPosition/32768.0f;
 
     destinationLradId = 2;
 
     if (!has_known_lrad(2)) {
         nackreason = 2;
     }
+
+    messageCallback_(Topics::MOVE_DELTA, 2, payload);
 
     return payload;
 }

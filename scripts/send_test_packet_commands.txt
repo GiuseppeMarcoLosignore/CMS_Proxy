@@ -12,10 +12,13 @@ Supported message IDs:
 - 1679949827 : CS_LRAS_cueing_order_INS
 - 1679949828 : CS_LRAS_emission_control_INS
 - 1679949829 : CS_LRAS_emission_mode_INS
+- 1679949830 : CS_LRAS_inhibition_sectors_INS
+- 1679949831 : CS_LRAS_joystick_control_lrad_1_INS
+- 1679949832 : CS_LRAS_joystick_control_lrad_2_INS
 
 Common network options:
---group <ip>                     Destination IP (default: 127.0.0.1)
---port <port>                    UDP port (default: 12345)
+--group <ip>                     Destination IP (use: 226.1.1.30)
+--port <port>                    UDP port (use: 55000)
 --ttl <n>                        Multicast TTL (default: 1)
 --sender <id>                    Sender ID in header (default: 2)
 
@@ -26,13 +29,13 @@ Message 1679949825 options:
 --configuration <uint16>         Configuration value (default: 0)
 
 Example:
-python scripts/send_test_packet.py -m 1679949825 --lrad-id 2 --configuration 1
+python scripts/send_test_packet.py -m 1679949825 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 2 --configuration 1
 
 Message 1679949826 options:
 (no specific options beyond --lrad-id)
 
 Example:
-python scripts/send_test_packet.py -m 1679949826 --lrad-id 1
+python scripts/send_test_packet.py -m 1679949826 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1
 
 Message 1679949827 options:
 --cueing-type <1|2>              Cueing Type (default: 1)
@@ -46,7 +49,7 @@ Message 1679949827 options:
 --vz <float>                     Vz in m/s (default: 0.0)
 
 Example:
-python scripts/send_test_packet.py -m 1679949827 --lrad-id 1 --cueing-type 2 --cstn 100 --kinematics-type 1 --x 10.5 --y 5.2 --z 1.0 --vx 0.5 --vy 0.1 --vz 0.0
+python scripts/send_test_packet.py -m 1679949827 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --cueing-type 2 --cstn 100 --kinematics-type 1 --x 10.5 --y 5.2 --z 1.0 --vx 0.5 --vy 0.1 --vz 0.0
 
 Message 1679949828 options:
 --action-id <uint32>                     Action ID (default: 0)
@@ -75,7 +78,7 @@ Message 1679949828 options:
 --horizontal-reference <uint16>          Horizontal reference enum (default: 0)
 
 Full example:
-python scripts/send_test_packet.py -m 1679949828 --lrad-id 1 --action-id 10 --audio-mode-validity 1 --volume-level 2 --audio-volume-db 12.5 --mute 0 --audio-mode 2 --recorded-message-id 123 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Test emission control" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 1 --light-mode-validity 1 --light-power 2 --light-zoom 15 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 20 --horizontal-reference-validity 1 --horizontal-reference 1
+python scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 10 --audio-mode-validity 1 --volume-level 2 --audio-volume-db 12.5 --mute 0 --audio-mode 2 --recorded-message-id 123 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Test emission control" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 1 --light-mode-validity 1 --light-power 2 --light-zoom 15 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 20 --horizontal-reference-validity 1 --horizontal-reference 1
 
 Message 1679949829 options:
 --audio-enable-validity <0|1>            Audio Enable Validity (default: 1)
@@ -96,52 +99,86 @@ Message 1679949829 options:
 --lrf-enable <0|1>                       LRF Enable (0=off, 1=on, default: 0)
 
 Full example:
-python scripts/send_test_packet.py -m 1679949829 --lrad-id 1 --audio-enable-validity 1 --audio-volume-levels-validity 1 --laser-enable-validity 1 --laser-min-distance-validity 1 --light-enable-validity 1 --light-max-w-validity 1 --lrf-enable-validity 1 --audio-enable 1 --audio-level1 6.0 --audio-level2 3.0 --audio-level3 0.0 --laser-enable 1 --laser-min-distance 500 --light-enable 0 --light-max-w 1 --lrf-enable 1
+python scripts/send_test_packet.py -m 1679949829 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --audio-enable-validity 1 --audio-volume-levels-validity 1 --laser-enable-validity 1 --laser-min-distance-validity 1 --light-enable-validity 1 --light-max-w-validity 1 --lrf-enable-validity 1 --audio-enable 1 --audio-level1 6.0 --audio-level2 3.0 --audio-level3 0.0 --laser-enable 1 --laser-min-distance 500 --light-enable 0 --light-max-w 1 --lrf-enable 1
+
+Message 1679949830 options:
+--sector1-on-off <0|1>                  Sector 1 enable flag (default: 1)
+--sector1-az1 <float>                   Sector 1 azimuth start (default: 0.0)
+--sector1-az2 <float>                   Sector 1 azimuth stop (default: 0.0)
+--sector2-on-off <0|1>                  Sector 2 enable flag (default: 0)
+--sector2-az1 <float>                   Sector 2 azimuth start (default: 0.0)
+--sector2-az2 <float>                   Sector 2 azimuth stop (default: 0.0)
+
+Full example:
+python scripts/send_test_packet.py -m 1679949830 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 300 --sector1-on-off 1 --sector1-az1 10.0 --sector1-az2 45.0 --sector2-on-off 1 --sector2-az1 200.0 --sector2-az2 250.0
+
+Message 1679949831 / 1679949832 options:
+--joystick-x <float>                    Joystick axis X normalized [-1.0..1.0] (default: 0.0)
+--joystick-y <float>                    Joystick axis Y normalized [-1.0..1.0] (default: 0.0)
+
+Full examples:
+python scripts/send_test_packet.py -m 1679949831 --group 226.1.1.30 --port 55000 --ttl 1 --joystick-x 0.5 --joystick-y -0.25
+python scripts/send_test_packet.py -m 1679949832 --group 226.1.1.30 --port 55000 --ttl 1 --joystick-x -0.7 --joystick-y 0.1
 
 Quick default tests:
-python scripts/send_test_packet.py -m 1679949825
-python scripts/send_test_packet.py -m 1679949826
-python scripts/send_test_packet.py -m 1679949827
-python scripts/send_test_packet.py -m 1679949828
-python scripts/send_test_packet.py -m 1679949829
+python scripts/send_test_packet.py -m 1679949825 --group 226.1.1.30 --port 55000 --ttl 1
+python scripts/send_test_packet.py -m 1679949826 --group 226.1.1.30 --port 55000 --ttl 1
+python scripts/send_test_packet.py -m 1679949827 --group 226.1.1.30 --port 55000 --ttl 1
+python scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1
+python scripts/send_test_packet.py -m 1679949829 --group 226.1.1.30 --port 55000 --ttl 1
+python scripts/send_test_packet.py -m 1679949830 --group 226.1.1.30 --port 55000 --ttl 1
+python scripts/send_test_packet.py -m 1679949831 --group 226.1.1.30 --port 55000 --ttl 1
+python scripts/send_test_packet.py -m 1679949832 --group 226.1.1.30 --port 55000 --ttl 1
 
 Ready-to-send commands (copy/paste):
 
 1) Change configuration to LRAD1 (REQ):
-python3 scripts/send_test_packet.py -m 1679949825 --group 127.0.0.1 --port 12345 --lrad-id 1 --configuration 1
+python3 scripts/send_test_packet.py -m 1679949825 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --configuration 1
 
 2) Change configuration to LRAD2 (RELEASE):
-python3 scripts/send_test_packet.py -m 1679949825 --group 127.0.0.1 --port 12345 --lrad-id 2 --configuration 0
+python3 scripts/send_test_packet.py -m 1679949825 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 2 --configuration 0
 
 3) Cueing order cancellation LRAD1:
-python3 scripts/send_test_packet.py -m 1679949826 --group 127.0.0.1 --port 55000 --lrad-id 1
+python3 scripts/send_test_packet.py -m 1679949826 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1
 
 4) Cueing order 3D (kinematics type 1) LRAD1:
-python3 scripts/send_test_packet.py -m 1679949827 --group 127.0.0.1 --port 12345 --lrad-id 1 --cueing-type 2 --cstn 101 --kinematics-type 1 --x 25.0 --y 12.0 --z 3.0 --vx 0.6 --vy 0.2 --vz 0.1
+python3 scripts/send_test_packet.py -m 1679949827 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --cueing-type 2 --cstn 101 --kinematics-type 1 --x 25.0 --y 12.0 --z 3.0 --vx 0.6 --vy 0.2 --vz 0.1
 
 5) Cueing order 2D (kinematics type 3) LRAD2:
-python3 scripts/send_test_packet.py -m 1679949827 --group 127.0.0.1 --port 12345 --lrad-id 2 --cueing-type 1 --cstn 202 --kinematics-type 3 --x 8.0 --y 4.0 --vx 0.3 --vy 0.1
+python3 scripts/send_test_packet.py -m 1679949827 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 2 --cueing-type 1 --cstn 202 --kinematics-type 3 --x 8.0 --y 4.0 --vx 0.3 --vy 0.1
 
 6) Emission control baseline LRAD1 (voice mode):
-python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345 --lrad-id 1 --action-id 100 --audio-mode-validity 1 --volume-level 1 --audio-volume-db 8.5 --mute 0 --audio-mode 2 --recorded-message-id 0 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 0 --light-mode-validity 1 --light-power 1 --light-zoom 10 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 15 --horizontal-reference-validity 1 --horizontal-reference 1
+python3 scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 100 --audio-mode-validity 1 --volume-level 1 --audio-volume-db 8.5 --mute 0 --audio-mode 2 --recorded-message-id 0 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 0 --light-mode-validity 1 --light-power 1 --light-zoom 10 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 15 --horizontal-reference-validity 1 --horizontal-reference 1
 
 7) Emission control recorded message LRAD1:
-python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345 --lrad-id 1 --action-id 101 --audio-mode-validity 1 --volume-level 2 --audio-volume-db 12.0 --mute 0 --audio-mode 3 --recorded-message-id 123 --recorded-language 1 --recorded-loop 1 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 1 --light-mode-validity 1 --light-power 2 --light-zoom 20 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 30 --horizontal-reference-validity 1 --horizontal-reference 1
+python3 scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 101 --audio-mode-validity 1 --volume-level 2 --audio-volume-db 12.0 --mute 0 --audio-mode 3 --recorded-message-id 123 --recorded-language 1 --recorded-loop 1 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 1 --light-mode-validity 1 --light-power 2 --light-zoom 20 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 30 --horizontal-reference-validity 1 --horizontal-reference 1
 
 8) Emission control free text LRAD2:
-python3 scripts/send_test_packet.py -m 1679949828 --group 127.0.0.1 --port 12345 --lrad-id 2 --action-id 102 --audio-mode-validity 1 --volume-level 3 --audio-volume-db 18.0 --mute 0 --audio-mode 4 --recorded-message-id 0 --recorded-language 0 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Warning stay clear of vessel" --free-text-loop 1 --laser-mode-validity 1 --laser-mode 2 --light-mode-validity 1 --light-power 3 --light-zoom 25 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 40 --horizontal-reference-validity 1 --horizontal-reference 0
+python3 scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 2 --action-id 102 --audio-mode-validity 1 --volume-level 3 --audio-volume-db 18.0 --mute 0 --audio-mode 4 --recorded-message-id 0 --recorded-language 0 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Warning stay clear of vessel" --free-text-loop 1 --laser-mode-validity 1 --laser-mode 2 --light-mode-validity 1 --light-power 3 --light-zoom 25 --lrf-mode-validity 1 --lrf-on-off 1 --camera-zoom-validity 1 --camera-zoom 40 --horizontal-reference-validity 1 --horizontal-reference 0
 
-9) Same emission control test, multicast destination example:
+9) Emission control multicast destination example:
 python3 scripts/send_test_packet.py -m 1679949828 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 200 --audio-mode-validity 1 --volume-level 1 --audio-volume-db 6.0 --mute 0 --audio-mode 2 --recorded-message-id 0 --recorded-language 1 --recorded-loop 0 --free-text-language-in 0 --free-text-language-out 1 --free-text-message "Multicast test" --free-text-loop 0 --laser-mode-validity 1 --laser-mode 0 --light-mode-validity 1 --light-power 1 --light-zoom 8 --lrf-mode-validity 1 --lrf-on-off 0 --camera-zoom-validity 1 --camera-zoom 10 --horizontal-reference-validity 1 --horizontal-reference 1
 
 10) Emission mode LRAD1 (audio + laser + LRF enabled):
-python3 scripts/send_test_packet.py -m 1679949829 --group 127.0.0.1 --port 12345 --lrad-id 1 --audio-enable-validity 1 --audio-volume-levels-validity 1 --laser-enable-validity 1 --laser-min-distance-validity 1 --light-enable-validity 1 --light-max-w-validity 1 --lrf-enable-validity 1 --audio-enable 1 --audio-level1 6.0 --audio-level2 3.0 --audio-level3 0.0 --laser-enable 1 --laser-min-distance 500 --light-enable 0 --light-max-w 1 --lrf-enable 1
+python3 scripts/send_test_packet.py -m 1679949829 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --audio-enable-validity 1 --audio-volume-levels-validity 1 --laser-enable-validity 1 --laser-min-distance-validity 1 --light-enable-validity 1 --light-max-w-validity 1 --lrf-enable-validity 1 --audio-enable 1 --audio-level1 6.0 --audio-level2 3.0 --audio-level3 0.0 --laser-enable 1 --laser-min-distance 500 --light-enable 0 --light-max-w 1 --lrf-enable 1
 
 11) Emission mode LRAD2 (all off):
-python3 scripts/send_test_packet.py -m 1679949829 --group 127.0.0.1 --port 12345 --lrad-id 2 --audio-enable 0 --laser-enable 0 --laser-min-distance 100 --light-enable 0 --light-max-w 0 --lrf-enable 0
+python3 scripts/send_test_packet.py -m 1679949829 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 2 --audio-enable 0 --laser-enable 0 --laser-min-distance 100 --light-enable 0 --light-max-w 0 --lrf-enable 0
 
 12) Emission mode LRAD1 multicast:
 python3 scripts/send_test_packet.py -m 1679949829 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --audio-enable 1 --audio-level1 9.0 --laser-enable 1 --laser-min-distance 300 --light-enable 1 --light-max-w 2 --lrf-enable 1
+
+13) Inhibition sectors LRAD1 (2 settori attivi):
+python3 scripts/send_test_packet.py -m 1679949830 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 1 --action-id 300 --sector1-on-off 1 --sector1-az1 10.0 --sector1-az2 45.0 --sector2-on-off 1 --sector2-az1 200.0 --sector2-az2 250.0
+
+14) Inhibition sectors LRAD2 (solo settore 1):
+python3 scripts/send_test_packet.py -m 1679949830 --group 226.1.1.30 --port 55000 --ttl 1 --lrad-id 2 --action-id 301 --sector1-on-off 1 --sector1-az1 300.0 --sector1-az2 330.0 --sector2-on-off 0 --sector2-az1 0.0 --sector2-az2 0.0
+
+15) Joystick control LRAD1 (msg 1679949831):
+python3 scripts/send_test_packet.py -m 1679949831 --group 226.1.1.30 --port 55000 --ttl 1 --joystick-x 32 --joystick-y -64
+
+16) Joystick control LRAD2 (msg 1679949832):
+python3 scripts/send_test_packet.py -m 1679949832 --group 226.1.1.30 --port 55000 --ttl 1 --joystick-x -30000 --joystick-y 1500
 
 
 python3 send_JSON.py POSITION

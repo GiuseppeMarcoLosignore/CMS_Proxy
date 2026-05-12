@@ -16,6 +16,12 @@ Messaggi supportati (selezionabili con --message-id / -m):
                                  payload: actionId(4)=0 + lradId(2) + cueingType(2) + cstn(4) + kinematics(36)
     1679949828  -> CS_LRAS_emission_control_INS
                                  payload: struttura completa (822 byte)
+    1679949830  -> CS_LRAS_inhibition_sectors_INS
+                                 payload: actionId(4) + lradId(2) + sector1(10) + sector2(10)
+    1679949831  -> CS_LRAS_joystick_control_lrad_1_INS
+                                 payload: x(int16) + y(int16)
+    1679949832  -> CS_LRAS_joystick_control_lrad_2_INS
+                                 payload: x(int16) + y(int16)
 
 Uso:
   python scripts/send_test_packet.py -m 1679949825 --lrad-id 2 --configuration 1
@@ -182,6 +188,52 @@ def build_emission_control_payload(args) -> bytes:
 
     return bytes(payload)
 
+
+def build_inhibition_sectors_payload(args) -> bytes:
+    """Build payload for CS_LRAS_inhibition_sectors_INS (26 bytes).
+
+    Layout:
+      [0-3]   ActionId        (uint32 BE)
+      [4-5]   LRAD ID         (uint16 BE)
+      [6-7]   Sector1 OnOff   (uint16 BE)
+      [8-11]  Sector1 az1     (float BE)
+      [12-15] Sector1 az2     (float BE)
+      [16-17] Sector2 OnOff   (uint16 BE)
+      [18-21] Sector2 az1     (float BE)
+      [22-25] Sector2 az2     (float BE)
+    """
+    return struct.pack(
+        ">IHHffHff",
+        int(args.action_id) & 0xFFFFFFFF,
+        int(args.lrad_id) & 0xFFFF,
+        int(args.sector1_on_off) & 0xFFFF,
+        float(args.sector1_az1),
+        float(args.sector1_az2),
+        int(args.sector2_on_off) & 0xFFFF,
+        float(args.sector2_az1),
+        float(args.sector2_az2),
+    )
+
+
+def normalized_axis_to_i16(value: float) -> int:
+    """Convert joystick axis from normalized [-32768, 32768] to int16 domain."""
+    if value < -32768. or value > 32768.:
+        raise ValueError("Joystick axis must be in range [-32768, 32768]")
+
+    raw = int(value * 32768.0)
+    if raw > 32767:
+        raw = 32767
+    if raw < -32768:
+        raw = -32768
+    return raw
+
+
+def build_joystick_control_payload(args) -> bytes:
+    """Build payload for joystick control INS messages (4 bytes)."""
+    x_raw = normalized_axis_to_i16(float(args.joystick_x))
+    y_raw = normalized_axis_to_i16(float(args.joystick_y))
+    return struct.pack(">hh", x_raw, y_raw)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -220,6 +272,9 @@ def main():
             "  1679949827  -> CS_LRAS_cueing_order_INS\n"
             "  1679949828  -> CS_LRAS_emission_control_INS\n"
             "  1679949829  -> CS_LRAS_emission_mode_INS\n"
+            "  1679949830  -> CS_LRAS_inhibition_sectors_INS\n"
+            "  1679949831  -> CS_LRAS_joystick_control_lrad_1_INS\n"
+            "  1679949832  -> CS_LRAS_joystick_control_lrad_2_INS\n"
             "(default: 1679949825)"
         ),
     )
@@ -253,7 +308,7 @@ def main():
 
     # Campi payload per 1679949828
     parser.add_argument("--action-id", type=lambda x: int(x, 0), default=0,
-                        help="Action ID (solo per 1679949828, default: 0)")
+                        help="Action ID (usato da 1679949828/1679949829/1679949830, default: 0=random)")
     parser.add_argument("--audio-mode-validity", type=int, default=1,
                         help="Audio Mode Validity (default: 1)")
     parser.add_argument("--volume-level", type=int, default=0,
@@ -335,10 +390,30 @@ def main():
     parser.add_argument("--lrf-enable", type=int, default=0, choices=[0, 1],
                         help="LRF Enable (0=off, 1=on, default: 0)")
 
+    # Campi payload per 1679949830 (CS_LRAS_inhibition_sectors_INS)
+    parser.add_argument("--sector1-on-off", type=int, default=1, choices=[0, 1],
+                        help="Sector 1 OnOff (0=off, 1=on, solo per 1679949830)")
+    parser.add_argument("--sector1-az1", type=float, default=0.0,
+                        help="Sector 1 az1 (gradi, solo per 1679949830)")
+    parser.add_argument("--sector1-az2", type=float, default=0.0,
+                        help="Sector 1 az2 (gradi, solo per 1679949830)")
+    parser.add_argument("--sector2-on-off", type=int, default=0, choices=[0, 1],
+                        help="Sector 2 OnOff (0=off, 1=on, solo per 1679949830)")
+    parser.add_argument("--sector2-az1", type=float, default=0.0,
+                        help="Sector 2 az1 (gradi, solo per 1679949830)")
+    parser.add_argument("--sector2-az2", type=float, default=0.0,
+                        help="Sector 2 az2 (gradi, solo per 1679949830)")
+
+    # Campi payload per 1679949831 / 1679949832 (joystick control)
+    parser.add_argument("--joystick-x", type=float, default=0.0,
+                        help="Asse X joystick normalizzato [-1.0, 1.0] (solo per 1679949831/1679949832)")
+    parser.add_argument("--joystick-y", type=float, default=0.0,
+                        help="Asse Y joystick normalizzato [-1.0, 1.0] (solo per 1679949831/1679949832)")
+
     args = parser.parse_args()
     args.action_id = generate_action_id() if args.action_id == 0 else args.action_id
 
-    supported_ids = sorted(set(MESSAGES.keys()) | {1679949827, 1679949828, 1679949829})
+    supported_ids = sorted(set(MESSAGES.keys()) | {1679949827, 1679949828, 1679949829, 1679949830, 1679949831, 1679949832})
     if args.message_id not in supported_ids:
         known = ', '.join(str(k) for k in supported_ids)
         parser.error(f"message-id {args.message_id} non riconosciuto. ID supportati: {known}")
@@ -352,6 +427,15 @@ def main():
     elif args.message_id == 1679949829:
         msg_info = {"description": "CS_LRAS_emission_mode_INS"}
         payload = build_emission_mode_payload(args)
+    elif args.message_id == 1679949830:
+        msg_info = {"description": "CS_LRAS_inhibition_sectors_INS"}
+        payload = build_inhibition_sectors_payload(args)
+    elif args.message_id == 1679949831:
+        msg_info = {"description": "CS_LRAS_joystick_control_lrad_1_INS"}
+        payload = build_joystick_control_payload(args)
+    elif args.message_id == 1679949832:
+        msg_info = {"description": "CS_LRAS_joystick_control_lrad_2_INS"}
+        payload = build_joystick_control_payload(args)
     else:
         msg_info = MESSAGES[args.message_id]
         payload = msg_info["builder"](args.action_id, args.lrad_id, args.configuration)

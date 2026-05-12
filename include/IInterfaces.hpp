@@ -144,6 +144,10 @@ public:
     virtual void setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
     virtual void setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) = 0;
     virtual void setChangeRequest(uint16_t destinationLradId, const std::string& mode) = 0;
+    virtual void setMoveDelta(uint16_t destinationLradId, float azDelta, float elDelta) = 0;
+    virtual void setMoveAbsolute(uint16_t destinationLradId, float azimuth, float elevation) = 0;
+    virtual void setAzShadow(uint16_t destinationLradId, float az1, float az2) = 0;
+    virtual void setElShadow(uint16_t destinationLradId, float el1, float el2) = 0;
 
 };
 
@@ -192,4 +196,11 @@ class ISender {
 public:
     virtual ~ISender() = default;
     virtual SendResult send(const RawPacket& packet, const std::string& target_host, uint16_t target_port) = 0;
+};
+
+class IDatabase {
+public:
+    virtual ~IDatabase() = default;
+    virtual int getDatabaseSize() = 0;
+    virtual void getDatabaseItem(const Lrad_full& status, int itemId) = 0;
 };

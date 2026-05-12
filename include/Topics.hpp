@@ -69,6 +69,11 @@ inline constexpr const char* AUDIO_ENABLE = "AUDIO_ENABLE";
 inline constexpr const char* CHANGE_REQ = "CHANGE_REQ";
 inline constexpr const char* MASTER_INFO = "MASTER";
 
+inline constexpr const char* MOVE_DELTA = "MOVE_DELTA";
+inline constexpr const char* MOVE_ABSOLUTE = "MOVE_ABSOLUTE";
+inline constexpr const char* AZ_SHADOW = "AZ_SHADOW";
+inline constexpr const char* EL_SHADOW = "EL_SHADOW";
+
 
 
 } // namespace Topics

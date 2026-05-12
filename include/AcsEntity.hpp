@@ -43,7 +43,7 @@ public:
     void createLAD(uint16_t destinationLradId, const std::string& mode, bool overrideMode);
     void createSEARCHLIGHT(uint16_t destinationLradId, const uint8_t& power, float focus, const std::string& mode);
     void createLRF(uint16_t destinationLradId, const std::string& mode);
-    void createSHADOW(uint16_t destinationLradId, float az1, float el1, float az2, float el2);
+    void createSHADOW(uint16_t destinationLradId, float start_1, float stop_1, float start_2, float stop_2, std::string target1, std::string target2);
     void createZOOM(uint16_t destinationLradId, const std::string& id, const uint8_t value);
     void createMASTER(uint16_t destinationLradId, const std::string& mode);
     void createPOSITION(uint16_t destinationLradId, float az, float el, int goTo);
@@ -65,6 +65,10 @@ public:
     void setHdZoom(uint16_t destinationLradId, const uint8_t zoomValue) override;
     void setThZoom(uint16_t destinationLradId, const uint8_t zoomValue) override;  
     void setChangeRequest(uint16_t destinationLradId, const std::string& mode) override; 
+    void setMoveDelta(uint16_t destinationLradId, float azDelta, float elDelta) override;
+    void setMoveAbsolute(uint16_t destinationLradId, float azimuth, float elevation) override;
+    void setAzShadow(uint16_t destinationLradId, float az1, float az2) override;
+    void setElShadow(uint16_t destinationLradId, float el1, float el2) override;
 
 private:
     AcsConfig config_;
