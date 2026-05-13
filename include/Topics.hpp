@@ -74,6 +74,11 @@ inline constexpr const char* MOVE_ABSOLUTE = "MOVE_ABSOLUTE";
 inline constexpr const char* AZ_SHADOW = "AZ_SHADOW";
 inline constexpr const char* EL_SHADOW = "EL_SHADOW";
 
+inline constexpr const char* CUEING_START = "CUEING_START";
+inline constexpr const char* CUEING_STOP = "CUEING_STOP";
+inline constexpr const char* CUEING_UPDATE = "CUEING_UPDATE";
+inline constexpr const char* CUEING_AVIABILITY = "CUEING_AVIABILITY";
+
 
 
 } // namespace Topics

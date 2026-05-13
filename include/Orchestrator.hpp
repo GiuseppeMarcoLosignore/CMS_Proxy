@@ -14,6 +14,8 @@
 #include "IInterfaces.hpp"
 #include "Timer.hpp"
 
+#include "../utils/CueingUpdateJson.hpp"
+
 
 
 
@@ -201,6 +203,8 @@ struct lradStatus {
     float dissuasionDistance = 0.0F;
     float persuasionDistance = 0.0F;
 
+    nlohmann::json cueingData; // Store the latest cueing data for this LRAD
+
 };
 
 struct lrasStatus {
@@ -268,8 +272,10 @@ public:
     void handleAzShadow(int destinationLradId, const nlohmann::json& payload);
     void handleElShadow(int destinationLradId, const nlohmann::json& payload);
 
-    void start_cueing();
-    void stop_cueing();
+    void start_cueing(int lradId, const nlohmann::json& message);
+    void stop_cueing(int lradId);
+    void update_cueing(int lradId, const nlohmann::json& message);
+    void cueing_availability(int lradId, const nlohmann::json& message);
     void manage_recording(nlohmann::json message);
 
 
@@ -286,6 +292,7 @@ private:
     CmsEntity &cmsEntity_;
     AcsEntity &acsEntity_;
     std::thread updateThread_;
+    std::jthread cueingThread_;
     std::shared_ptr<EventBus> eventBus_;
     std::function<void(const std::string&, const uint16_t&)> netConfigCallback_;
 };

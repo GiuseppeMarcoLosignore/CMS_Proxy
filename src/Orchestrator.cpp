@@ -427,6 +427,23 @@ void Orchestrator::subscribeTopics() {
         handleElShadow(lradId, message);
     });
 
+
+    eventBus_->subscribe(Topics::CUEING_START, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        start_cueing(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::CUEING_STOP, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        stop_cueing(lradId);
+    });
+
+    eventBus_->subscribe(Topics::CUEING_UPDATE, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        update_cueing(lradId, message);
+    });
+
+    eventBus_->subscribe(Topics::CUEING_AVIABILITY, [this](const std::string& topic, const uint16_t lradId, const nlohmann::json& message) {
+        cueing_availability(lradId, message);
+    });
+
     std::cout << "[Orchestrator] Topics subscribed" << std::endl;
 }
 
@@ -1577,12 +1594,76 @@ void Orchestrator::handleElShadow(int destinationLradId, const nlohmann::json& p
     acsEntity_.setElShadow(destinationLradId, el1, el2);
 }
 
-void Orchestrator::start_cueing() {
+void Orchestrator::start_cueing(int destinationLradId, const nlohmann::json& message) {
     std::cout << "[Orchestrator] start_cueing: TODO" << std::endl;
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot start cueing: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::CUEING_START, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+     if(!isLradControlledByCms(destinationLradId)) {
+        std::cout << "[Orchestrator] Cannot start cueing: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::CUEING_START, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    cueingThread_ = std::jthread([this, destinationLradId, message](std::stop_token st) {
+        // Simulate cueing process
+        lradStatus lradStatus = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
+        lradStatus.cueingActive = true;
+        lradStatus.cueingData = message;
+        nlohmann::json output;
+        setLradFullStatus(lradStatus, (destinationLradId == 1) ? "PORT" : "STARBOARD");
+        while(!st.stop_requested()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            if(!UpdateCueingFromJson(lradStatus.cueingData, &output)) {
+                cmsEntity_.eventStatus(Topics::CUEING_UPDATE, StatusEventValue::SYSTEM_ERR);
+                 return;
+            }
+            if(output != nullptr) {
+                eventBus_->publish(Topics::MOVE_ABSOLUTE, destinationLradId, output);
+                output = nullptr;
+            }
+            lradStatus = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
+        }
+    });
+    cmsEntity_.eventStatus(Topics::CUEING_START, StatusEventValue::NO_ERR);   
+
 }
 
-void Orchestrator::stop_cueing() {
+void Orchestrator::stop_cueing(int lradId) {
     std::cout << "[Orchestrator] stop_cueing: TODO" << std::endl;
+    if(!isAcsConnected()) {
+        std::cout << "[Orchestrator] Cannot stop cueing: ACS not connected" << std::endl;
+        cmsEntity_.eventStatus(Topics::CUEING_STOP, StatusEventValue::NETWORK_ERR);
+        return;
+    }
+    if(!isLradControlledByCms(lradId)) {
+        std::cout << "[Orchestrator] Cannot stop cueing: LRAD not controlled by CMS" << std::endl;
+        cmsEntity_.eventStatus(Topics::CUEING_STOP, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    if(cueingThread_.joinable()) {
+        cueingThread_.request_stop();
+        cueingThread_.join();
+    }
+    lradStatus lradStatus = getLradFullStatus((lradId == 1) ? "PORT" : "STARBOARD");
+    lradStatus.cueingActive = false;
+    setLradFullStatus(lradStatus, (lradId == 1) ? "PORT" : "STARBOARD");
+    cmsEntity_.eventStatus(Topics::CUEING_STOP, StatusEventValue::NO_ERR);
+}
+
+void Orchestrator::update_cueing(int destinationLradId, const nlohmann::json& message) {
+
+    lradStatus lradStatus = getLradFullStatus((destinationLradId == 1) ? "PORT" : "STARBOARD");
+    if(!lradStatus.cueingActive) {
+        std::cout << "[Orchestrator] Cannot update cueing: Cueing not active" << std::endl;
+        cmsEntity_.eventStatus(Topics::CUEING_UPDATE, StatusEventValue::SYSTEM_ERR);
+        return;
+    }
+    lradStatus.cueingData = message;
+    setLradFullStatus(lradStatus, (destinationLradId == 1) ? "PORT" : "STARBOARD");
+    cmsEntity_.eventStatus(Topics::CUEING_UPDATE, StatusEventValue::NO_ERR);
 }
 
 void Orchestrator::manage_recording(nlohmann::json /*message*/) {
